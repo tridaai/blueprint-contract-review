@@ -9,14 +9,19 @@
   :root { --indigo:#4F46E5; --ink:#0A0A0A; --muted:#6B7280; --line:#E5E7EB; --bg:#FFFFFF; --soft:#F9FAFB; --bad:#B91C1C; --good:#047857; --warn:#B45309; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color:var(--ink); background:var(--bg); }
-  header { display:flex; align-items:center; gap:16px; padding:18px 28px; border-bottom:1px solid var(--line); }
+  header { display:flex; align-items:center; gap:16px; padding:18px 28px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header img { height:38px; }
   header h1 { font-size:19px; margin:0; font-weight:700; }
   header h1 .accent { color:var(--indigo); }
   header p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+  .gh-link { margin-left:auto; display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--ink); text-decoration:none; flex-shrink:0; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--soft); }
+  .gh-link svg { display:block; }
+  .gh-link span { font-size:11px; font-weight:600; color:var(--muted); }
+  .gh-link:hover { border-color:var(--indigo); background:#EEF2FF; }
+  .gh-link:hover span { color:var(--indigo); }
   main { max-width:1180px; margin:0 auto; padding:22px 28px 60px; display:grid; grid-template-columns: 380px 1fr; gap:22px; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  section { border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:18px; background:#fff; }
+  section { border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:18px; background:#fff; overflow-x:auto; }
   h2 { font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--indigo); margin:0 0 12px; }
   label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
   select, textarea, input[type=text] { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; font-size:13px; background:#fff; }
@@ -50,6 +55,10 @@
     <h1>Blueprint Demo Console — <span class="accent">Contract Review Agent</span></h1>
     <p>Reference prototype · synthetic data only · the agent flags and explains — counsel decides. It never states a legal conclusion, never approves a contract, never sends redlines.</p>
   </div>
+  <a class="gh-link" href="https://github.com/tridaai/blueprint-contract-review" target="_blank" rel="noopener" title="View source on GitHub">
+    <svg height="22" viewBox="0 0 16 16" width="22" fill="currentColor" aria-hidden="true"><path d="M8 0c-4.42 0-8 3.58-8 8 0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+    <span>Go to code</span>
+  </a>
 </header>
 
 <main>
