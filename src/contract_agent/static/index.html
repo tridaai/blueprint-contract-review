@@ -268,7 +268,7 @@ async function loadCertificates() {
       ${data.certificates.map(c => `<tr>
         <td>${c.overdue ? '<span class="flag">expired ' + esc(-c.days_until) + 'd ago</span>' : esc(c.expiry_date) + '<br><span class="note">in ' + esc(c.days_until) + 'd</span>'}</td>
         <td>${esc(c.contract_id)}<br><span class="note">${esc(c.counterparty_name || '')}</span></td>
-        <td>${pill('certificate of insurance')} <span class="note">passed review — renewal is the open item</span></td></tr>`).join('')}
+        <td>${pill('certificate of insurance')} <span class="note">${c.renewal_evidence_failed ? 'a renewal arrived (' + esc(c.renewal_contract_id) + ') but failed the evidence check against the original terms — the watch stays open on this expiry' : c.renewed ? 'renewed on evidence — cover extended and the original requirement set evidenced in full' : 'passed review — renewal is the open item'}</span></td></tr>`).join('')}
       </tbody></table>`;
   } catch (e) {
     $('certificates').innerHTML = '<span class="empty">Certificate watch unavailable.</span>';
@@ -488,10 +488,10 @@ function render(result) {
           <td>${esc(o.source_clause_id)}${o.source_ref ? ' (§' + esc(o.source_ref) + ')' : ''}</td></tr>`).join('')}
         </tbody></table>`
       : `<p class="empty">No dated or recurring obligations extracted from this contract.</p>`);
-  const allExhibitChecks = (result.exhibit_checks || []).concat(result.subprocessor_drift || []);
+  const allExhibitChecks = (result.exhibit_checks || []).concat(result.subprocessor_drift || [], result.certificate_renewal || []);
   if (allExhibitChecks.length) {
     const chkPill = s => s === 'consistent' ? pill('consistent', 'good') : s === 'mismatch' ? pill('mismatch', 'bad') : s === 'exhibit_missing' ? pill('exhibit missing', 'bad') : pill('missing in exhibit', 'warn');
-    html += `<h3>Exhibit consistency <span class="note">(cross-document checks in code — does the exhibit contain what the clause promises? subprocessor_list_drift is cross-round: the annex's movement since the prior round)</span></h3>
+    html += `<h3>Exhibit consistency <span class="note">(cross-document checks in code — does the exhibit contain what the clause promises? subprocessor_list_drift and insurance_certificate_renewal are cross-round: the annex's movement since the prior round, and the renewal certificate read against the original round's terms)</span></h3>
     <table><thead><tr><th>Check</th><th>Promised</th><th>Exhibit says</th><th>Status</th><th>Detail</th></tr></thead><tbody>
     ${allExhibitChecks.map(c => `<tr>
       <td>${esc(c.name)}</td>

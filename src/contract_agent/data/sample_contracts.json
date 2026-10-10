@@ -713,5 +713,53 @@
         "raw_text": "Compensation Schedule\n\nBase salary: $240,000 per annum.\nSeverance on termination without cause: $60,000.\n"
       }
     ]
+  },
+  {
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Brightpath Managed Services Ltd",
+    "our_role": "customer",
+    "sender_name": "Contracts \u2014 Brightpath Managed Services Ltd",
+    "received_at": "2026-11-20T09:00:00",
+    "contract_id": "CTR-2036",
+    "cover_email_text": "Ahead of the December expiry, attached is the renewed package for the Brightpath managed services agreement, with the renewal certificate of insurance, for counsel's review.",
+    "notes": "Certificate renewal sample (evidenced): round 2 of the CTR-2029 chain \u2014 the renewal certificate extends cover to December 31, 2027 at the original limits with both endorsements, so the renewal check against the original requirement set comes back consistent and the renewal watch closes on the earlier expiry on evidence.",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n4. Term and Termination\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice.\n\n5. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n6. Data Protection\nEach party shall process personal data in accordance with the Data Processing Addendum entered into by the parties. A party shall notify the other party of a personal data breach within 48 hours of discovery and shall maintain appropriate technical and organisational security measures.\n\n7. Insurance\nThe Provider shall maintain commercial general liability insurance with limits of at least $2,000,000 per occurrence and professional liability insurance of not less than $1,000,000. The Provider shall, before starting the services, furnish a certificate of insurance naming the Customer as an additional insured and including a waiver of subrogation in the Customer's favour.\n\n8. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\nIn witness whereof, the parties have executed this Agreement.\n"
+      },
+      {
+        "doc_type": "exhibit",
+        "document_id": "Exhibit D",
+        "raw_text": "Exhibit D \u2014 Certificate of Insurance\n\nThis certificate is issued as a matter of information only and confers no rights upon the certificate holder.\n\nNamed insured: Brightpath Managed Services Ltd\n\nCommercial general liability insurance: $2,000,000 per occurrence.\nProfessional liability insurance: $1,000,000 per claim.\n\nThe Customer is named as an additional insured under the general liability policy.\nThe insurer provides a waiver of subrogation in favour of the Customer.\n\nThis certificate expires on December 31, 2027.\n"
+      }
+    ],
+    "supersedes": "CTR-2029"
+  },
+  {
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Brightpath Managed Services Ltd",
+    "our_role": "customer",
+    "sender_name": "Contracts \u2014 Brightpath Managed Services Ltd",
+    "received_at": "2026-11-25T09:00:00",
+    "contract_id": "CTR-2037",
+    "cover_email_text": "Attached is the renewal package for the Brightpath managed services agreement, with the renewal certificate of insurance, for counsel's review.",
+    "notes": "Certificate renewal sample (quietly dropped): an alternative round 2 of the CTR-2029 chain \u2014 the renewal draft restates the insurance clause at professional liability of $250,000 with no waiver of subrogation, and the renewal certificate matches the restated draft, so the round's own checks pass it; read against CTR-2029's original requirement set, the renewal check comes back mismatch and the renewal watch stays open on the 2026 expiry.",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n4. Term and Termination\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice.\n\n5. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n6. Data Protection\nEach party shall process personal data in accordance with the Data Processing Addendum entered into by the parties. A party shall notify the other party of a personal data breach within 48 hours of discovery and shall maintain appropriate technical and organisational security measures.\n\n7. Insurance\nThe Provider shall maintain commercial general liability insurance with limits of at least $2,000,000 per occurrence and professional liability insurance of not less than $250,000. The Provider shall, before starting the services, furnish a certificate of insurance naming the Customer as an additional insured.\n\n8. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\nIn witness whereof, the parties have executed this Agreement.\n"
+      },
+      {
+        "doc_type": "exhibit",
+        "document_id": "Exhibit D",
+        "raw_text": "Exhibit D \u2014 Certificate of Insurance\n\nThis certificate is issued as a matter of information only and confers no rights upon the certificate holder.\n\nNamed insured: Brightpath Managed Services Ltd\n\nCommercial general liability insurance: $2,000,000 per occurrence.\nProfessional liability insurance: $250,000 per claim.\n\nThe Customer is named as an additional insured under the general liability policy.\n\nThis certificate expires on December 31, 2027.\n"
+      }
+    ],
+    "supersedes": "CTR-2029"
   }
 ]

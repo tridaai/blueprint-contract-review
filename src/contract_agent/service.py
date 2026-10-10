@@ -451,6 +451,7 @@ class ContractService:
         )
         self._attach_round_diff(model, result)
         self._attach_subprocessor_drift(model, result)
+        self._attach_certificate_renewal(model, result)
         self._get_store().save(
             ApprovalRecord(
                 result=result,
@@ -661,6 +662,43 @@ class ContractService:
                 title=(
                     f"Sub-processor list drift vs {prior_model.contract_id}: "
                     f"{check.status}"
+                ),
+                details=[check.detail],
+            )
+        )
+
+    def _attach_certificate_renewal(
+        self, model: ContractInput, result: AgentResult
+    ) -> None:
+        """Renewal-certificate evidence (``certificate_renewal.py``):
+        when this round supersedes a stored one and its certificate
+        runs past the prior round's, the renewal is read against
+        the ORIGINAL round's insurance requirement set — limits or
+        endorsements quietly dropped at renewal are a mismatch
+        against the original clause even when the current draft
+        has been restated to match the thinner certificate.
+        Attached after the run like the drift: the comparison
+        needs the prior round's stored package."""
+        if not model.supersedes or model.supersedes == model.contract_id:
+            return
+        prior = self._get_store().get(model.supersedes)
+        if prior is None or not prior.contract:
+            return
+        from .certificate_renewal import build_certificate_renewal
+        from .schemas import TraceStep
+
+        prior_model = ContractInput.model_validate(prior.contract)
+        renewal = build_certificate_renewal(prior_model, model)
+        if not renewal:
+            return
+        result.certificate_renewal = renewal
+        check = renewal[0]
+        result.trace.append(
+            TraceStep(
+                name="certificate_renewal",
+                title=(
+                    f"Certificate renewal vs {prior_model.contract_id}'s "
+                    f"original terms: {check.status}"
                 ),
                 details=[check.detail],
             )

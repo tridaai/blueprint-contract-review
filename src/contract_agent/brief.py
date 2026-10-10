@@ -92,6 +92,10 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
             {"status": c.status, "found": c.found}
             for c in latest.subprocessor_drift
         ],
+        "certificate_renewal": [
+            {"status": c.status, "found": c.found}
+            for c in latest.certificate_renewal
+        ],
         "provenance_warnings": line_provenance_warnings(chain, latest),
         "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
         "reflection_flags": sum(
@@ -219,6 +223,15 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             f"Sub-processor list drift vs the prior round: "
             f"{drift['found']} ({drift['status']}) — see Exhibit "
             "findings."
+        )
+    cur_renewal = current.get("certificate_renewal", [])
+    prev_renewal = previous.get("certificate_renewal", [])
+    if cur_renewal and cur_renewal != prev_renewal:
+        renewal = cur_renewal[0]
+        lines.append(
+            f"Certificate renewal vs the original terms: "
+            f"{renewal['found']} ({renewal['status']}) — see "
+            "Exhibit findings."
         )
     prev_warnings = set(previous.get("provenance_warnings", []))
     for warning in current.get("provenance_warnings", []):
@@ -635,7 +648,11 @@ def build_negotiation_brief(
     # -- Exhibit findings ---------------------------------------------------
     lines.append("## Exhibit findings")
     lines.append("")
-    exhibit_rows = list(latest.exhibit_checks) + list(latest.subprocessor_drift)
+    exhibit_rows = (
+        list(latest.exhibit_checks)
+        + list(latest.subprocessor_drift)
+        + list(latest.certificate_renewal)
+    )
     if not exhibit_rows:
         lines.append(
             "No cross-document checks were generated for this package "
@@ -656,6 +673,15 @@ def build_negotiation_brief(
                 "the annex's movement since the previous round of "
                 "this chain, with any addition read against the "
                 "notice period the clause promises."
+            )
+        if latest.certificate_renewal:
+            lines.append("")
+            lines.append(
+                "The `insurance_certificate_renewal` row is "
+                "cross-round: the renewal certificate read against "
+                "the ORIGINAL round's insurance requirement set — "
+                "the renewal watch closes on this evidence, not "
+                "on the certificate's arrival."
             )
     lines.append("")
 

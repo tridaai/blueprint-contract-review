@@ -29,6 +29,16 @@ as one ``certificate_expiring`` event per watch, and on its own
 read surface (``ContractService.certificate_watches`` /
 ``GET /certificates/expiring``). Report-only, like the sweep: the
 watch announces; it chases no one.
+
+**Closing the watch takes evidence** (round 12). A renewal
+certificate arriving as a later round supersedes the earlier one
+for the watch — but only when the renewal check
+(``certificate_renewal.py``) evidences the ORIGINAL requirement
+set in full. A renewal that quietly dropped a limit or an
+endorsement fails that check, and the watch does not close on
+its arrival: it stays open on the last relied-upon expiry, with
+the failed renewal named on the row. Arrival is not evidence;
+the check is.
 """
 
 from __future__ import annotations
@@ -47,14 +57,20 @@ def certificate_watch_window_days() -> int:
     return env_int(WATCH_WINDOW_ENV, DEFAULT_WATCH_WINDOW_DAYS)
 
 
-def _latest_rounds(records: list[ApprovalRecord]) -> list[ApprovalRecord]:
-    """The latest round of every negotiation chain in the record
-    set (plus every unchained record): the round whose certificate
-    the contract currently relies on. Chains follow the
-    ``supersedes`` links, as everywhere (``concessions._chains``)."""
-    from .concessions import _chains
-
-    return [chain[-1] for chain in _chains(records)]
+def _relied_upon_expiry(record: ApprovalRecord):
+    """The expiry a record's review relied on: its consistent
+    ``insurance_certificate_expiry`` check's recorded date, or
+    None when the record's certificate was not relied upon."""
+    for check in record.result.exhibit_checks:
+        if check.name != "insurance_certificate_expiry":
+            continue
+        if check.status != "consistent":
+            return None
+        try:
+            return date.fromisoformat(check.found or ""), check
+        except ValueError:
+            return None
+    return None
 
 
 def certificate_watches(
@@ -64,33 +80,59 @@ def certificate_watches(
     ``today``, soonest first. Pure over the stored records: the
     expiry is the one the stored expiry check recorded in its
     ``found`` field — an unparseable value yields no watch, never
-    a guessed date."""
+    a guessed date.
+
+    Per chain, the operative certificate is the latest round's —
+    unless that round's renewal failed the evidence check
+    (``certificate_renewal.py``): then the renewal evidenced
+    nothing, and the watch stays open on the most recent earlier
+    round whose certificate WAS relied on, with the failed
+    renewal named on the row (``renewal_evidence_failed``). A
+    passing renewal marks its row ``renewed`` — the watch moved
+    to the new expiry on evidence, not on arrival."""
+    from .concessions import _chains
+
     rows: list[dict] = []
-    for record in _latest_rounds(records):
-        result = record.result
-        for check in result.exhibit_checks:
-            if check.name != "insurance_certificate_expiry":
-                continue
-            if check.status != "consistent":
-                continue  # not relied upon — already a finding, not a watch
-            try:
-                expiry = date.fromisoformat(check.found or "")
-            except ValueError:
-                continue
-            days_until = (expiry - today).days
-            if days_until > window_days:
-                continue
-            rows.append(
-                {
-                    "contract_id": result.contract_id,
-                    "counterparty_name": result.counterparty_name,
-                    "status": result.status,
-                    "expiry_date": expiry.isoformat(),
-                    "days_until": days_until,
-                    "overdue": days_until < 0,
-                    "exhibit_document_id": check.exhibit_document_id,
-                }
-            )
-            break  # one expiry check per contract at most
+    for chain in _chains(records):
+        latest = chain[-1]
+        renewal = next(
+            (
+                c
+                for c in latest.result.certificate_renewal
+                if c.name == "insurance_certificate_renewal"
+            ),
+            None,
+        )
+        source = latest
+        renewal_failed = False
+        if renewal is not None and renewal.status != "consistent":
+            for earlier in reversed(chain[:-1]):
+                if _relied_upon_expiry(earlier) is not None:
+                    source = earlier
+                    renewal_failed = True
+                    break
+        relied = _relied_upon_expiry(source)
+        if relied is None:
+            continue  # not relied upon — already a finding, not a watch
+        expiry, check = relied
+        result = source.result
+        days_until = (expiry - today).days
+        if days_until > window_days:
+            continue
+        row = {
+            "contract_id": result.contract_id,
+            "counterparty_name": result.counterparty_name,
+            "status": result.status,
+            "expiry_date": expiry.isoformat(),
+            "days_until": days_until,
+            "overdue": days_until < 0,
+            "exhibit_document_id": check.exhibit_document_id,
+            "renewed": renewal is not None and renewal.status == "consistent",
+        }
+        if renewal_failed:
+            row["renewal_evidence_failed"] = True
+            row["renewal_contract_id"] = latest.result.contract_id
+            row["renewal_status"] = renewal.status
+        rows.append(row)
     rows.sort(key=lambda row: (row["expiry_date"], row["contract_id"]))
     return rows
