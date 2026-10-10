@@ -171,12 +171,46 @@ def build_concession_profile(
     # actually decided on, and what the follow-up drafts did with
     # them — decision evidence for the hold statistics, beside the
     # verdict movement the clause-type rows above are built from.
+    # Each line is also joined to its ORIGIN (round 10): what
+    # counsel's own desk did with the line's edits before the
+    # counterparty ever saw them, classified on read from the
+    # carrying record so outcomes marked late are never stale.
+    from .walkaway import classify_line_origin
+
     wa_counts: Counter = Counter()
     wa_by_type: dict[str, Counter] = {}
+    wa_by_origin: dict[str, Counter] = {}
     for record in mine:
         for outcome in record.result.walk_away_outcomes:
             wa_counts[outcome.status] += 1
             wa_by_type.setdefault(outcome.clause_type, Counter())[outcome.status] += 1
+            origin, _detail = classify_line_origin(record.result, outcome)
+            bucket = wa_by_origin.setdefault(origin, Counter())
+            bucket["proposed"] += 1
+            bucket[outcome.status] += 1
+
+    def _origin_row(counts: Counter) -> dict:
+        resolved = (
+            counts.get("held", 0)
+            + counts.get("softened", 0)
+            + counts.get("dropped", 0)
+        )
+        return {
+            "proposed": counts.get("proposed", 0),
+            "held": counts.get("held", 0),
+            "softened": counts.get("softened", 0),
+            "dropped": counts.get("dropped", 0),
+            "clause_removed": counts.get("clause_removed", 0),
+            "pending": counts.get("pending", 0),
+            # clause_removed lines were never tested, so they are
+            # neither held nor lost: resolved counts only outcomes
+            # the follow-up draft actually pronounced on.
+            "resolved": resolved,
+            "held_rate": (
+                round(counts.get("held", 0) / resolved, 3) if resolved else None
+            ),
+        }
+
     walk_away_lines = {
         "proposed": sum(wa_counts.values()),
         "held": wa_counts.get("held", 0),
@@ -187,6 +221,10 @@ def build_concession_profile(
         "by_clause_type": {
             clause_type: dict(counts)
             for clause_type, counts in sorted(wa_by_type.items())
+        },
+        "by_origin": {
+            origin: _origin_row(counts)
+            for origin, counts in sorted(wa_by_origin.items())
         },
     }
     return {
@@ -245,6 +283,44 @@ def concession_evidence_lines(profile: dict) -> list[str]:
                 if walk_away["pending"]
                 else ""
             )
+        )
+    # Who drops the line (round 10): lines counsel sent intact vs
+    # lines counsel modified or rejected at their own desk first.
+    # The contrast is spoken only when both sides have resolved
+    # lines — one side's rate alone would invite a story the
+    # record does not support.
+    by_origin = walk_away.get("by_origin") or {}
+    intact = by_origin.get("sent_intact") or {}
+    desk_resolved = sum(
+        (by_origin.get(origin) or {}).get("resolved", 0)
+        for origin in ("modified_by_counsel", "rejected_by_counsel")
+    )
+    desk_held = sum(
+        (by_origin.get(origin) or {}).get("held", 0)
+        for origin in ("modified_by_counsel", "rejected_by_counsel")
+    )
+    if intact.get("resolved") and desk_resolved:
+        intact_rate = intact["held"] / intact["resolved"]
+        desk_rate = desk_held / desk_resolved
+        if desk_rate < intact_rate:
+            verdict = (
+                "the losses concentrate at counsel's own desk — the "
+                "line is being given up before the counterparty has "
+                "to move it"
+            )
+        elif desk_rate > intact_rate:
+            verdict = (
+                "lines counsel sends intact are the ones being "
+                "moved — the losses are at the counterparty's desk, "
+                "not counsel's"
+            )
+        else:
+            verdict = "the two hold at the same rate — origin is not the difference"
+        lines.append(
+            f"walk-away lines by origin: sent intact by counsel, "
+            f"{intact['held']} of {intact['resolved']} resolved "
+            f"line(s) held; modified or rejected at counsel's desk "
+            f"first, {desk_held} of {desk_resolved} held — {verdict}"
         )
     for row in profile["clause_types"]:
         if row["tendency"] == "concedes":

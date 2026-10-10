@@ -389,6 +389,18 @@ class WalkAwayOutcome(BaseModel):
     final_position: str = ""  # the follow-up round's position for the clause
     resolved_in: str = ""  # the follow-up round's contract_id, once resolved
     detail: str = ""
+    # Who moved the line before it went out (round 10, walkaway.py's
+    # classify_line_origin): the join with the decision's own edit
+    # outcomes. sent_intact = counsel accepted the line's edits as
+    # proposed; modified_by_counsel / rejected_by_counsel = counsel
+    # changed or dropped the line at their own desk; unmarked = no
+    # per-edit outcomes on record; no_edit_on_record = the packet
+    # proposed the line without a concrete tier-2 edit. The status
+    # says what the counterparty's draft did; the origin says what
+    # counsel's desk did first — together they say where a lost
+    # line was actually lost.
+    origin: str = ""
+    origin_detail: str = ""
 
 
 class ReflectionPattern(BaseModel):

@@ -34,6 +34,18 @@ The concession profile (``concessions.py``) reads the captured
 outcomes as its hold statistics: decision evidence — lines counsel
 actually decided on, and what the next draft did with them — rather
 than verdict movement alone.
+
+**Origin** (round 10): a resolved outcome says what the
+counterparty's draft did with the line. It does not say what
+counsel's own desk did with it first — and those are different
+losses. ``classify_line_origin`` joins each captured line to the
+decision record's per-edit outcomes for the edits that carried
+the line (the clause's tier-2 edits): counsel may have sent the
+line intact, modified its language before sending, or rejected
+the edit outright — in which case the line was lost at counsel's
+desk before the counterparty ever saw it, whatever the follow-up
+draft later did. The profile aggregates held rates by origin, so
+"the line keeps being lost" resolves into whose desk loses it.
 """
 
 from __future__ import annotations
@@ -48,31 +60,116 @@ from .store import ApprovalRecord
 _HELD = ("preferred", "acceptable_fallback")
 
 
+def classify_line_origin(
+    result: AgentResult, outcome: WalkAwayOutcome
+) -> tuple[str, str]:
+    """Where a captured walk-away line stood when it left counsel's
+    desk: the join between the line and the decision record's
+    per-edit outcomes for the edits that carried it (the clause's
+    tier-2 edits, aligned by clause id, falling back to clause
+    type). Returns ``(origin, detail)``:
+
+    - ``sent_intact`` — every edit carrying the line was accepted
+      as proposed;
+    - ``modified_by_counsel`` — counsel settled on their own
+      language for at least one of the line's edits (and rejected
+      none): what went out was counsel's softening, not the
+      packet's line;
+    - ``rejected_by_counsel`` — counsel rejected at least one of
+      the line's edits: the line, as proposed, never went out;
+    - ``unmarked`` — the edits exist but counsel recorded no
+      outcomes for them: the record cannot say what went out;
+    - ``no_edit_on_record`` — the packet proposed the line in its
+      diffs but carried no concrete tier-2 edit for the clause.
+    """
+    edits = [
+        index
+        for index, edit in enumerate(result.proposed_edits)
+        if edit.clause_id == outcome.clause_id and edit.tier == 2
+    ]
+    if not edits:
+        edits = [
+            index
+            for index, edit in enumerate(result.proposed_edits)
+            if edit.clause_type == outcome.clause_type and edit.tier == 2
+        ]
+    if not edits:
+        return (
+            "no_edit_on_record",
+            "The packet proposed this line in its clause diffs but "
+            "carried no concrete tier-2 edit for the clause — there "
+            "is no edit for an outcome to attach to.",
+        )
+    outcomes = {
+        o.edit_index: o.outcome
+        for o in result.edit_outcomes
+        if o.edit_index in edits
+    }
+    if not outcomes:
+        return (
+            "unmarked",
+            "Counsel recorded no per-edit outcomes for the edit(s) "
+            "carrying this line — what went out is not on record.",
+        )
+    if any(value == "rejected" for value in outcomes.values()):
+        return (
+            "rejected_by_counsel",
+            "Counsel rejected at least one of the edits carrying "
+            "this line at decision time — the line as proposed "
+            "never went to the counterparty.",
+        )
+    if any(value == "modified" for value in outcomes.values()):
+        return (
+            "modified_by_counsel",
+            "Counsel modified the language of at least one edit "
+            "carrying this line before it went out — the line the "
+            "counterparty answered was counsel's settled language, "
+            "not the packet's proposal.",
+        )
+    if len(outcomes) == len(edits):
+        return (
+            "sent_intact",
+            "Counsel accepted every edit carrying this line as "
+            "proposed — the line went out exactly as the packet "
+            "drafted it.",
+        )
+    return (
+        "unmarked",
+        "Counsel marked some of the edits carrying this line but "
+        "not all — what went out is only partly on record.",
+    )
+
+
 def capture_walk_away_outcomes(
     result: AgentResult, decided_at: str = ""
 ) -> list[WalkAwayOutcome]:
     """The walk-away lines a decided packet proposed, as fresh
-    (pending) outcomes anchored to the result's decision fields."""
+    (pending) outcomes anchored to the result's decision fields.
+    Each line's origin is classified at capture (from the outcomes
+    recorded with the decision) and refreshed at resolution, when
+    later-marked outcomes may have completed the picture."""
     outcomes: list[WalkAwayOutcome] = []
     for diff in result.clause_diffs:
         if diff.proposed_tier != 2:
             continue
-        outcomes.append(
-            WalkAwayOutcome(
-                clause_id=diff.clause_id,
-                clause_type=diff.clause_type,
-                line_language=diff.tier_language or diff.playbook_fallback,
-                position_at_decision=diff.position,
-                decision=result.decision or "",
-                decided_by=result.decided_by or "",
-                captured_at=decided_at or (result.decided_at or ""),
-                status="pending",
-                detail=(
-                    "No follow-up round is in the store yet — whether "
-                    "the line held waits on the counterparty's next draft."
-                ),
-            )
+        outcome = WalkAwayOutcome(
+            clause_id=diff.clause_id,
+            clause_type=diff.clause_type,
+            line_language=diff.tier_language or diff.playbook_fallback,
+            position_at_decision=diff.position,
+            decision=result.decision or "",
+            decided_by=result.decided_by or "",
+            captured_at=decided_at or (result.decided_at or ""),
+            status="pending",
+            detail=(
+                "No follow-up round is in the store yet — whether "
+                "the line held waits on the counterparty's next draft."
+            ),
         )
+        outcome.origin, outcome.origin_detail = classify_line_origin(
+            result, outcome
+        )
+        outcomes.append(outcome)
     return outcomes
 
 
@@ -114,10 +211,18 @@ def resolve_walk_away_outcomes(
     if decided_contract_id not in ids:
         return [o.model_copy() for o in outcomes]
     index = ids.index(decided_contract_id)
+    decided_result = chain[index].result
     follow_up = chain[index + 1].result if index + 1 < len(chain) else None
     resolved: list[WalkAwayOutcome] = []
     for outcome in outcomes:
         updated = outcome.model_copy()
+        # The origin is re-classified from the decided record every
+        # resolution: edit outcomes are often marked after the
+        # decision that captured the line, and a stale origin would
+        # blame the wrong desk.
+        updated.origin, updated.origin_detail = classify_line_origin(
+            decided_result, updated
+        )
         if follow_up is None:
             updated.status = "pending"
             updated.final_position = ""
