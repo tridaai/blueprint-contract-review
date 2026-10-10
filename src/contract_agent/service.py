@@ -464,9 +464,11 @@ class ContractService:
                 )
             )
         rounds = self._chain_rounds(model, result)
+        re_traded_types: set[str] = set()
         if len(rounds) >= 3:
             chain = build_round_chain(rounds)
             result.round_chain = chain
+            re_traded_types = set(chain.re_traded_clause_types)
             result.trace.append(
                 TraceStep(
                     name="round_chain",
@@ -477,18 +479,41 @@ class ContractService:
                     details=list(chain.summary),
                 )
             )
+        # Reflection patterns: a clause type whose agreed edits were
+        # flagged agreed-but-not-reflected in two consecutive
+        # follow-ups (see reflection_patterns.py). The pattern is
+        # computed over the chain's stored reflections — this round's
+        # own reflection was attached just above.
+        from .reflection_patterns import find_reflection_patterns
+
+        patterns = find_reflection_patterns(rounds)
+        if patterns:
+            result.reflection_patterns = patterns
+            result.trace.append(
+                TraceStep(
+                    name="reflection_pattern",
+                    title=(
+                        f"Reflection patterns: {len(patterns)} clause "
+                        "type(s) agreed twice, reflected neither time"
+                    ),
+                    details=[pattern.detail for pattern in patterns],
+                )
+            )
+        if len(rounds) >= 3 or patterns:
             # Tier refinement: with the full chain known, rebuild the
             # clause diffs so fallback-tier proposals use the true
-            # round number and the chain's re-trade flags (the graph
-            # could only assume "round 2" from the supersedes link).
+            # round number, the chain's re-trade flags, and any
+            # reflection-pattern escalations (the graph could only
+            # assume "round 2" from the supersedes link).
             from .clause_diffs import build_clause_diffs
             from .proposed_edits import build_proposed_edits
 
             result.clause_diffs = build_clause_diffs(
                 result.clauses,
                 result.clause_verdicts,
-                round_number=chain.rounds,
-                re_traded_types=set(chain.re_traded_clause_types),
+                round_number=len(rounds),
+                re_traded_types=re_traded_types,
+                reflection_escalated_types={p.clause_type for p in patterns},
             )
             # The edit script maps the diffs' tier language — when
             # the tiers move with the chain, the edits move with them.
@@ -780,7 +805,9 @@ class ContractService:
         """Recompute the reflection of any stored round that
         supersedes ``contract_id`` — outcomes are often marked after
         the follow-up draft has already been analysed, and its
-        stored reflection must not go stale against them."""
+        stored reflection must not go stale against them. The
+        reflection patterns that read the chain's reflections (one
+        more round down) are refreshed with it."""
         from .edit_reflection import build_edit_reflection
 
         store = self._get_store()
@@ -791,9 +818,74 @@ class ContractService:
             if (record.contract or {}).get("supersedes") != contract_id:
                 continue
             refreshed = build_edit_reflection(prior.result, record.result)
-            if refreshed != record.result.edit_reflection:
+            changed = refreshed != record.result.edit_reflection
+            if changed:
                 record.result.edit_reflection = refreshed
+            if self._refresh_reflection_patterns(record):
+                changed = True
+            if changed:
                 store.save(record)
+            # A pattern two rounds down reads THIS record's
+            # reflection, so refresh the patterns (not the
+            # reflections) of the rounds that supersede it.
+            for nxt in store.all_records():
+                if (nxt.contract or {}).get("supersedes") != record.result.contract_id:
+                    continue
+                if self._refresh_reflection_patterns(nxt):
+                    store.save(nxt)
+
+    def _stored_chain(self, record: ApprovalRecord) -> list[AgentResult]:
+        """The stored negotiation chain ending at ``record``'s
+        result, oldest → newest, walked through the store's
+        ``supersedes`` links (the stored-record twin of
+        ``_chain_rounds``)."""
+        store = self._get_store()
+        chain = [record.result]
+        seen = {record.result.contract_id}
+        supersedes = (record.contract or {}).get("supersedes") or ""
+        while supersedes and supersedes not in seen:
+            seen.add(supersedes)
+            prior = store.get(supersedes)
+            if prior is None:
+                break
+            chain.append(prior.result)
+            supersedes = (prior.contract or {}).get("supersedes") or ""
+        chain.reverse()
+        return chain
+
+    def _refresh_reflection_patterns(self, record: ApprovalRecord) -> bool:
+        """Recompute one stored record's reflection patterns from
+        its chain; when they change, re-derive its clause diffs so
+        the tier escalation lands. Proposed edits are rebuilt only
+        when counsel has marked no outcomes on the record yet —
+        outcomes index into the edit list, and a settled negotiation
+        is never renumbered under counsel's marks. Returns True when
+        the record changed."""
+        from .reflection_patterns import find_reflection_patterns
+
+        chain = self._stored_chain(record)
+        patterns = find_reflection_patterns(chain)
+        if patterns == record.result.reflection_patterns:
+            return False
+        record.result.reflection_patterns = patterns
+        from .clause_diffs import build_clause_diffs
+        from .proposed_edits import build_proposed_edits
+
+        chain_report = record.result.round_chain
+        record.result.clause_diffs = build_clause_diffs(
+            record.result.clauses,
+            record.result.clause_verdicts,
+            round_number=len(chain),
+            re_traded_types=(
+                set(chain_report.re_traded_clause_types) if chain_report else set()
+            ),
+            reflection_escalated_types={p.clause_type for p in patterns},
+        )
+        if not record.result.edit_outcomes:
+            record.result.proposed_edits = build_proposed_edits(
+                record.result.clause_diffs
+            )
+        return True
 
     def get(self, contract_id: str) -> AgentResult | None:
         record = self._get_store().get(contract_id)

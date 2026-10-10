@@ -237,6 +237,7 @@ class ClauseDiff(BaseModel):
     tier_name: str = ""
     tier_language: str = ""  # the language of the proposed tier
     tier_reason: str = ""
+    pattern_escalated: bool = False  # a reflection pattern (below) drove this clause to the walk-away line
 
 
 class ProposedEdit(BaseModel):
@@ -321,6 +322,27 @@ class EditReflection(BaseModel):
     outcome: str = ""  # accepted | modified
     status: str = ""  # reflected | agreed_not_reflected | not_checkable
     coverage: Optional[float] = None  # share of the agreed language's checkable sentences that landed, 0..1
+    detail: str = ""
+
+
+class ReflectionPattern(BaseModel):
+    """A clause type whose agreed edits keep not landing
+    (``reflection_patterns.py``): counsel agreed an edit on this
+    clause type, the follow-up draft did not show it, counsel agreed
+    the edit again on the next round, and that draft did not show it
+    either — flagged ``agreed_not_reflected`` in TWO consecutive
+    follow-ups. One miss is a drafting oversight; the same ask
+    missing twice running is a pattern, and the packet answers it
+    differently: the clause's proposed tier escalates to the
+    walk-away line (``fallback_tiers.py``), and the brief names the
+    pattern with its round history. Keyed by clause type — the same
+    ask, re-agreed round after round, is what counsel experiences as
+    one edit that never lands."""
+
+    clause_type: str = "other"
+    flagged_in: list[str] = Field(default_factory=list)  # follow-up contract ids that raised the flag, oldest → newest
+    agreed_in: list[str] = Field(default_factory=list)  # the rounds whose agreed edits those follow-ups checked
+    flags: int = 0  # total agreed_not_reflected flags for this type across the chain
     detail: str = ""
 
 
@@ -605,6 +627,7 @@ class AgentResult(BaseModel):
     proposed_edits: list[ProposedEdit] = Field(default_factory=list)
     edit_outcomes: list[EditOutcome] = Field(default_factory=list)  # counsel's per-edit decisions (recorded post-analysis)
     edit_reflection: list[EditReflection] = Field(default_factory=list)  # prior round's accepted edits, checked against this draft
+    reflection_patterns: list[ReflectionPattern] = Field(default_factory=list)  # clause types flagged not-reflected in two consecutive follow-ups
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
     round_chain: Optional[RoundChain] = None  # set when the chain has 3+ rounds
     exhibit_checks: list[ExhibitCheck] = Field(default_factory=list)

@@ -36,21 +36,28 @@ def build_clause_diffs(
     verdicts: list[ClauseVerdict],
     round_number: int = 1,
     re_traded_types: frozenset[str] | set[str] = frozenset(),
+    reflection_escalated_types: frozenset[str] | set[str] = frozenset(),
 ) -> list[ClauseDiff]:
     """Pair each flagged clause's counterparty text with its playbook
-    fallback, in document order (verdicts are built in clause order)."""
+    fallback, in document order (verdicts are built in clause order).
+    ``reflection_escalated_types`` are the clause types under a
+    reflection pattern (``reflection_patterns.py``) — their tier
+    proposals escalate to the walk-away line, and the diff is marked
+    ``pattern_escalated`` so surfaces can badge the reason."""
     by_id = {unit.clause_id: unit for unit in units}
     diffs: list[ClauseDiff] = []
     for verdict in verdicts:
         if verdict.position not in FLAGGED_POSITIONS:
             continue
         unit = by_id.get(verdict.clause_id)
+        pattern = verdict.clause_type in reflection_escalated_types
         tier, tier_name, tier_language, tier_reason = propose_tier(
             verdict.clause_type,
             verdict.position,
             verdict.fallback_language or "",
             round_number=round_number,
             re_traded=verdict.clause_type in re_traded_types,
+            reflection_escalated=pattern,
         )
         diffs.append(
             ClauseDiff(
@@ -67,6 +74,7 @@ def build_clause_diffs(
                 tier_name=tier_name,
                 tier_language=tier_language,
                 tier_reason=tier_reason,
+                pattern_escalated=pattern,
             )
         )
     return diffs

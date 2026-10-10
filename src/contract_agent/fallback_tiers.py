@@ -22,6 +22,11 @@ negotiation's state — never by the model:
 - a clause type the chain reports as RE-TRADED also proposes tier 2,
   whatever the round: ground that was won and then given back is not
   re-opened with the soft concession;
+- a clause type under a REFLECTION PATTERN proposes tier 2 ahead of
+  every other rule (``reflection_patterns.py``): counsel agreed an
+  edit on it, the follow-up draft did not show it, counsel agreed
+  again, and that draft did not show it either — the soft concession
+  was agreed twice and honoured neither time;
 - everything else proposes tier 1.
 
 The proposal lands on the clause diff (``ClauseDiff.proposed_tier``
@@ -57,6 +62,7 @@ def propose_tier(
     fallback_language: str,
     round_number: int = 1,
     re_traded: bool = False,
+    reflection_escalated: bool = False,
 ) -> tuple[int, str, str, str]:
     """The tier proposal for one flagged clause:
     ``(tier, tier_name, tier_language, tier_reason)``.
@@ -83,6 +89,24 @@ def propose_tier(
             "the clause sits at a walk-away position and the playbook "
             "carries no walk-away line for this clause type — counsel "
             "drafts the final line",
+        )
+    if reflection_escalated:
+        pattern_reason = (
+            "a reflection pattern: an agreed edit on this clause was "
+            "flagged agreed-but-not-reflected in two consecutive "
+            "follow-ups — the soft concession was agreed twice and "
+            "honoured neither time, so the packet proposes the final line"
+        )
+        if line:
+            return 2, TIER_NAMES[2], line[1], pattern_reason
+        return (
+            1,
+            TIER_NAMES[1],
+            fallback_language,
+            pattern_reason
+            + "; the playbook carries no walk-away line for this clause "
+            "type, so the first fallback stands and counsel drafts "
+            "anything harder",
         )
     escalated_reason = None
     if re_traded:
