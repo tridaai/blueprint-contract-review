@@ -196,11 +196,13 @@ async function loadQueue() {
     const res = await fetch('/queue', {headers: headers()});
     if (!res.ok) throw new Error('none');
     const data = await res.json();
+    const reviewAlerts = (data.suspension_review_alerts || []).map(a =>
+      `<div class="row"><span class="flag">Pattern-term suspension review ${a.review_state === 'overdue' ? 'OVERDUE' : 'due'}: ${esc(a.clause_type)} — review-by ${esc(a.review_by)} (set aside by ${esc(a.suspended_by)}). Counsel re-confirms or lifts it in the calibration panel; the scorer keeps honouring it meanwhile.</span></div>`).join('');
     if (!data.queue.length) {
-      $('queue').innerHTML = '<span class="empty">Queue is clear — nothing awaiting counsel.</span>';
+      $('queue').innerHTML = reviewAlerts + '<span class="empty">Queue is clear — nothing awaiting counsel.</span>';
       return;
     }
-    $('queue').innerHTML = `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th>SLA</th><th>Owner</th><th></th></tr></thead><tbody>
+    $('queue').innerHTML = reviewAlerts + `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th>SLA</th><th>Owner</th><th></th></tr></thead><tbody>
       ${data.queue.map(q => `<tr data-contract="${esc(q.contract_id)}" style="cursor:pointer">
         <td>${esc(q.contract_id)}<br><span class="note">${esc(q.counterparty_name || '')}</span></td>
         <td>${pill(q.posture, q.posture === 'aligned' ? 'good' : q.posture === 'negotiable' ? 'warn' : 'bad')}</td>
@@ -348,9 +350,11 @@ async function loadCalibration() {
       return;
     }
     const candidates = (data.calibration_candidates || []).join(', ');
+    const dueReview = data.suspensions_due_review || [];
     let html = `Pattern-term calibration: applied ${esc(data.applications)}× · decided ${esc(data.decisive)}×` +
       (candidates ? ` · <span class="flag">calibration candidate(s) for counsel: ${esc(candidates)} — applied repeatedly, never decisive</span>` : ' · no calibration candidates') +
       (suspended.length ? ` · <span class="flag">suspended by counsel: ${esc(suspended.join(', '))} — the scorer no longer applies the term to those types</span>` : '') +
+      (dueReview.length ? ` · <span class="flag">suspension review due: ${esc(dueReview.join(', '))} — the set-aside has reached its shelf life; counsel re-confirms or lifts it</span>` : '') +
       ' · the report proposes; the term moves only when counsel moves it.';
     const rows = (data.clause_types || []).filter(r => r.calibration_candidate || r.suspended);
     if (rows.length) {
@@ -366,8 +370,9 @@ async function loadCalibration() {
         if (!actor) { alert('Enter counsel name (section 3) first — a suspension carries a name.'); return; }
         const reason = prompt('Reason for suspending the pattern term for ' + btn.dataset.suspend + ' (goes on the record):');
         if (!reason) return;
+        const reviewBy = prompt('Review-by date for this suspension (YYYY-MM-DD, blank for none) — a suspension is a decision with a shelf life:', '') || '';
         const r = await fetch('/options/pattern-calibration/suspend', {
-          method: 'POST', headers: headers(), body: JSON.stringify({clause_type: btn.dataset.suspend, actor, note: reason})
+          method: 'POST', headers: headers(), body: JSON.stringify({clause_type: btn.dataset.suspend, actor, note: reason, review_by: reviewBy})
         });
         if (r.ok) loadCalibration();
         else alert('Suspension failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));

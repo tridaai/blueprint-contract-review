@@ -40,9 +40,23 @@ of re-flagging it as a candidate every run. The historical facts
 (applications, decisive count) are reported as they stand: a
 suspension stops future applications, it does not rewrite the
 record the decision was taken on.
+
+**Shelf life** (round 12): a suspension may carry a review-by
+date — a set-aside taken on one chain's evidence should be
+revisited deliberately, not inherited forever. The report reads
+each dated suspension against today: ``scheduled`` (review still
+ahead), ``due`` (inside the review window), or ``overdue`` (the
+date passed with no re-confirmation — the set-aside is stale,
+and the report says so on the row and in the headline list
+``suspensions_due_review``, which the queue surface carries
+too). An overdue suspension still binds the scorer: staleness
+is counsel's prompt to act, not the agent quietly restoring a
+term counsel set aside.
 """
 
 from __future__ import annotations
+
+from datetime import date
 
 from .options import PATTERN_TERM_CAP
 from .store import ApprovalRecord
@@ -51,6 +65,55 @@ from .store import ApprovalRecord
 # term applied once and not decisive is a small sample, not a
 # calibration fact.
 MIN_APPLICATIONS = 2
+
+# A suspension's review is "due" once its date is this close —
+# the same order of warning the certificate watch gives an
+# expiry: close enough that the next working session should
+# see it.
+REVIEW_WINDOW_DAYS = 30
+
+
+def suspension_review_state(suspension, today: date) -> dict | None:
+    """One suspension's review position against ``today``, or
+    None when it carries no review date (an undated suspension
+    makes no dated promise) or is not active (a lifted one has
+    nothing left to review)."""
+    if suspension.status != "active" or not suspension.review_by:
+        return None
+    try:
+        review_by = date.fromisoformat(suspension.review_by)
+    except ValueError:
+        return None
+    days_until = (review_by - today).days
+    state = (
+        "overdue"
+        if days_until < 0
+        else "due"
+        if days_until <= REVIEW_WINDOW_DAYS
+        else "scheduled"
+    )
+    return {
+        "clause_type": suspension.clause_type,
+        "review_by": suspension.review_by,
+        "days_until_review": days_until,
+        "review_state": state,
+        "suspended_by": suspension.suspended_by,
+        "reason": suspension.reason,
+    }
+
+
+def suspension_review_alerts(suspensions, today: date) -> list[dict]:
+    """The suspensions whose review is due or overdue, soonest
+    first — the headline list the report and the queue surface
+    share, so the two never disagree about what is stale."""
+    alerts = [
+        alert
+        for suspension in suspensions
+        if (alert := suspension_review_state(suspension, today)) is not None
+        and alert["review_state"] in ("due", "overdue")
+    ]
+    alerts.sort(key=lambda a: (a["review_by"], a["clause_type"]))
+    return alerts
 
 
 def _follow_through(result, clause_id: str) -> str:
@@ -78,15 +141,58 @@ def _follow_through(result, clause_id: str) -> str:
     return "sent_by_counsel"
 
 
+def _review_sentence(review: dict | None) -> str:
+    """The review position as a sentence on a suspended row."""
+    if review is None:
+        return ""
+    if review["review_state"] == "overdue":
+        return (
+            f" Its review date ({review['review_by']}) has "
+            "passed — the set-aside is stale until counsel "
+            "re-confirms or lifts it."
+        )
+    if review["review_state"] == "due":
+        return (
+            f" Review falls due on {review['review_by']} "
+            f"(in {review['days_until_review']} day(s)) — "
+            "counsel re-confirms or lifts it."
+        )
+    return f" Review falls due on {review['review_by']}."
+
+
+def _suspension_block(suspension, today: date) -> dict:
+    """A suspension as the report carries it: the act, and its
+    review position when it carries a review date."""
+    block = {
+        "suspended_by": suspension.suspended_by,
+        "suspended_at": suspension.suspended_at,
+        "reason": suspension.reason,
+    }
+    review = suspension_review_state(suspension, today)
+    if review is not None:
+        block.update(
+            {
+                "review_by": review["review_by"],
+                "review_state": review["review_state"],
+                "days_until_review": review["days_until_review"],
+            }
+        )
+    return block
+
+
 def pattern_calibration(
-    records: list[ApprovalRecord], suspensions=()
+    records: list[ApprovalRecord], suspensions=(), today: date | None = None
 ) -> dict:
     """The calibration report over the stored records, per clause
     type the pattern term has ever touched. ``suspensions`` are the
     calibration store's records (``PatternTermSuspension``): an
     actively suspended type is read as suspended — never as a
     candidate — and a type counsel suspended before the term ever
-    landed still gets a row, so the set-aside is visible."""
+    landed still gets a row, so the set-aside is visible. A dated
+    suspension is read against ``today`` (default: today) — due
+    and overdue reviews are named on the row and collected in
+    ``suspensions_due_review``."""
+    today = today or date.today()
     active = {
         s.clause_type: s for s in suspensions if s.status == "active"
     }
@@ -147,7 +253,7 @@ def pattern_calibration(
                 f"{slot['applications']} application(s), "
                 f"{slot['decisive']} decisive. Counsel can lift the "
                 "suspension to restore the term."
-            )
+            ) + _review_sentence(suspension_review_state(suspension, today))
         elif candidate:
             detail = (
                 f"The pattern term has been applied to "
@@ -186,11 +292,7 @@ def pattern_calibration(
                 "calibration_candidate": candidate,
                 "suspended": suspension is not None,
                 "suspension": (
-                    {
-                        "suspended_by": suspension.suspended_by,
-                        "suspended_at": suspension.suspended_at,
-                        "reason": suspension.reason,
-                    }
+                    _suspension_block(suspension, today)
                     if suspension is not None
                     else None
                 ),
@@ -216,11 +318,7 @@ def pattern_calibration(
                 "unmarked": 0,
                 "calibration_candidate": False,
                 "suspended": True,
-                "suspension": {
-                    "suspended_by": suspension.suspended_by,
-                    "suspended_at": suspension.suspended_at,
-                    "reason": suspension.reason,
-                },
+                "suspension": _suspension_block(suspension, today),
                 "detail": (
                     f"The pattern term for {clause_type} is "
                     f"SUSPENDED — set aside by "
@@ -229,10 +327,11 @@ def pattern_calibration(
                     "The term has not been applied to any scored "
                     "option for this type; while the suspension "
                     "stands, the scorer will not apply it."
-                ),
+                ) + _review_sentence(suspension_review_state(suspension, today)),
             }
         )
     rows.sort(key=lambda row: (-row["applications"], row["clause_type"]))
+    alerts = suspension_review_alerts(suspensions, today)
     return {
         "term_cap": PATTERN_TERM_CAP,
         "min_applications": MIN_APPLICATIONS,
@@ -241,4 +340,6 @@ def pattern_calibration(
         "clause_types": rows,
         "calibration_candidates": sorted(candidates),
         "suspended_types": sorted(active),
+        "suspensions_due_review": [a["clause_type"] for a in alerts],
+        "suspension_review_alerts": alerts,
     }

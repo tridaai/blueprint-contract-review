@@ -293,7 +293,8 @@ def suspend_pattern_term(request: PatternSuspensionRequest):
         )
     try:
         suspension = service.suspend_pattern_term(
-            request.clause_type or "", actor=actor, reason=request.note or ""
+            request.clause_type or "", actor=actor, reason=request.note or "",
+            review_by=request.review_by or "",
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -328,9 +329,17 @@ def counsel_queue() -> dict:
     """The counsel worklist: contracts awaiting a decision — SLA
     breaches first, then worst-first (posture severity, worst clause
     position, age) — each with its autonomy flag, queue owner, and
-    SLA state (budget by severity tier, business days waited)."""
+    SLA state (budget by severity tier, business days waited). The
+    payload also carries ``suspension_review_alerts``: pattern-term
+    suspensions whose review date has come due — the queue is where
+    counsel works, so the set-asides reaching their shelf life are
+    surfaced there, beside the contracts."""
     items = service.queue()
-    return {"count": len(items), "queue": items}
+    return {
+        "count": len(items),
+        "queue": items,
+        "suspension_review_alerts": service.suspension_review_alerts(),
+    }
 
 
 @app.post("/queue/sla-sweep", dependencies=_AUTH)

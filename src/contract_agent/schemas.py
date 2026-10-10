@@ -879,6 +879,7 @@ class PatternTermSuspension(BaseModel):
     suspended_by: str = ""
     suspended_at: str = ""
     reason: str = ""  # required at suspension — an unexplained set-aside is how scorers silently rot
+    review_by: str = ""  # ISO date the set-aside falls due for review (round 12) — a suspension is a decision with a shelf life; past it, the calibration report reads the suspension as stale until counsel re-confirms or lifts it
     lifted_by: str = ""
     lifted_at: str = ""
     lift_note: str = ""
@@ -887,8 +888,11 @@ class PatternTermSuspension(BaseModel):
 class PatternSuspensionRequest(BaseModel):
     """Counsel's suspension (or lift) of a pattern term for one
     clause type. The actor is required, and a suspension requires
-    the note as its reason — both go on the record."""
+    the note as its reason — both go on the record. A suspension
+    may carry a review-by date (ISO): the date the set-aside
+    falls due for counsel to re-confirm or lift it."""
 
     clause_type: Optional[str] = None
     actor: Optional[str] = None
     note: Optional[str] = None
+    review_by: Optional[str] = None

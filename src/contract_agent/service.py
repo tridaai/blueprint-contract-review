@@ -1928,7 +1928,8 @@ class ContractService:
         )
 
     def suspend_pattern_term(
-        self, clause_type: str, actor: str, reason: str = ""
+        self, clause_type: str, actor: str, reason: str = "",
+        review_by: str = "",
     ) -> PatternTermSuspension:
         """Counsel acts on a calibration candidate: the pattern
         term for this clause type is set aside. From the next
@@ -1937,7 +1938,11 @@ class ContractService:
         re-flagging it. A reason is required — an unexplained
         set-aside is how scorers silently rot — and the act is
         reversible by ``lift_pattern_suspension``, with both acts
-        kept on the one record."""
+        kept on the one record. ``review_by`` (an ISO date) gives
+        the set-aside a shelf life: past it, the calibration
+        report reads the suspension as stale and the queue carries
+        it as a review alert, until counsel re-confirms (by
+        lifting and re-suspending) or lifts it."""
         clause_type = (clause_type or "").strip()
         if not clause_type:
             raise ValueError("Suspending a pattern term requires a clause type.")
@@ -1946,6 +1951,18 @@ class ContractService:
                 "Suspending a pattern term requires a reason — "
                 "it is recorded on the suspension, beside the actor."
             )
+        review_by = (review_by or "").strip()
+        if review_by:
+            from datetime import date as _date
+
+            try:
+                _date.fromisoformat(review_by)
+            except ValueError:
+                raise ValueError(
+                    f"review_by {review_by!r} is not an ISO date "
+                    "(YYYY-MM-DD) — the review the suspension "
+                    "promises has to be a date the report can read."
+                ) from None
         store = self._get_calibration_store()
         existing = store.get(clause_type)
         if existing is not None and existing.status == "active":
@@ -1962,11 +1979,27 @@ class ContractService:
             timespec="seconds"
         )
         suspension.reason = reason
+        suspension.review_by = review_by
         suspension.lifted_by = ""
         suspension.lifted_at = ""
         suspension.lift_note = ""
         store.save(suspension)
         return suspension
+
+    def suspension_review_alerts(self, today=None) -> list[dict]:
+        """Pattern-term suspensions whose review date is due or
+        overdue (``pattern_calibration.suspension_review_alerts``):
+        the queue's reminder that a set-aside has reached its
+        shelf life. Counsel re-confirms or lifts; the scorer
+        keeps honouring the suspension either way — staleness is
+        a prompt, not an expiry of counsel's act."""
+        from datetime import date as _date
+
+        from .pattern_calibration import suspension_review_alerts
+
+        return suspension_review_alerts(
+            self._get_calibration_store().all(), today or _date.today()
+        )
 
     def lift_pattern_suspension(
         self, clause_type: str, actor: str, note: str = ""
@@ -2048,6 +2081,7 @@ class ContractService:
             "decisive": report["decisive"],
             "calibration_candidates": report["calibration_candidates"],
             "suspended_types": report["suspended_types"],
+            "suspensions_due_review": len(report["suspensions_due_review"]),
         }
 
     def metrics(self) -> dict:
