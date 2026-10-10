@@ -266,7 +266,16 @@ def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdi
 
     # "other" — the rules have no matrix row; a human (or a confident
     # LLM cross-check) must place it. Low rule confidence is deliberate:
-    # it is the case the cross-check adoption path exists for.
+    # it is the case the cross-check adoption path exists for. The one
+    # exception is the unheaded preamble (parties and recitals): it
+    # carries no operative terms for the playbook to place, so it is
+    # recorded as needing no position rather than flagged.
+    if not unit.heading and not unit.ref:
+        return _verdict(unit, extraction, "preferred", 0.6,
+                        "Preamble/recitals: no operative terms for the playbook "
+                        "to place; counsel sees the full text in the packet "
+                        "(PB-GEN-01).",
+                        ["PB-GEN-01"])
     return _verdict(unit, extraction, "review_required", 0.5,
                     "The clause does not match a standard playbook category; it is "
                     "flagged for counsel rather than guessed at (PB-GEN-01).",

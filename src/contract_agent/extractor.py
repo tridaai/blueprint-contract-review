@@ -100,11 +100,13 @@ def classify_clause_type_rules(unit: ClauseUnit) -> tuple[str, float]:
 
 
 def _notice_days(text: str) -> int | None:
+    # Digits may be parenthesised ("(120) days") or follow the spelled
+    # form ("one hundred twenty (120) days") — tolerate both.
     patterns = [
-        r"at least (\d+)\s*days",
-        r"(\d+)\s*days['’]?\s*(?:prior\s+)?(?:written\s+)?notice",
-        r"notice[^.]{0,60}?(\d+)\s*days",
-        r"(\d+)\s*days before",
+        r"at least \(?(\d+)\)?\s*days",
+        r"\(?(\d+)\)?\s*days['’]?\s*(?:prior\s+)?(?:written\s+)?notice",
+        r"notice[^.]{0,80}?\(?(\d+)\)?\s*days",
+        r"\(?(\d+)\)?\s*days before",
     ]
     for pattern in patterns:
         m = re.search(pattern, text)
@@ -184,14 +186,15 @@ def extract_signals_rules(unit: ClauseUnit, clause_type: str) -> dict:
     elif clause_type == "term_termination":
         signals["termination_for_convenience"] = "for convenience" in text
         signals["auto_renewal"] = any(
-            p in text for p in ("auto-renew", "automatically renew", "renew for successive",
+            p in text for p in ("auto-renew", "automatically renew", "renews automatically",
+                                 "renew automatically", "renew for successive",
                                  "successive renewal", "shall renew")
         )
         signals["notice_days"] = _notice_days(text)
     elif clause_type == "payment_terms":
-        m = re.search(r"net\s*(\d+)", text) or re.search(
-            r"within\s+(\d+)\s+days\s+of\s+(?:the\s+)?invoice", text
-        ) or re.search(r"payable\s+within\s+(\d+)\s+days", text)
+        m = re.search(r"net\s*\(?(\d+)", text) or re.search(
+            r"within[^.]{0,24}?\(?(\d+)\)?\s+days\s+of\s+(?:the\s+)?invoice", text
+        ) or re.search(r"payable\s+within\s+\(?(\d+)\)?\s+days", text)
         signals["net_days"] = int(m.group(1)) if m else None
         m = re.search(r"(\d+(?:\.\d+)?)\s*%\s*per\s+month", text) or re.search(
             r"(\d+(?:\.\d+)?)\s*percent\s+per\s+month", text
@@ -233,13 +236,13 @@ def extract_signals_rules(unit: ClauseUnit, clause_type: str) -> dict:
                                  "without prior written consent",
                                  "may not assign", "shall not assign")
         )
+        signals["affiliates_only"] = "affiliate" in text
         signals["free_assignment"] = any(
             p in text for p in ("may freely assign", "freely assign",
                                  "may assign this agreement without",
                                  "without consent")
-        ) and not signals["consent_required"]
+        ) and not signals["consent_required"] and not signals["affiliates_only"]
         signals["change_of_control"] = "change of control" in text
-        signals["affiliates_only"] = "affiliate" in text
     return signals
 
 
