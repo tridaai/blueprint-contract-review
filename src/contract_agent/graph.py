@@ -522,6 +522,9 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
             history_tendencies=(state.get("history") or {}).get(
                 "concession_tendencies"
             ),
+            pattern_types=set(
+                (state.get("history") or {}).get("reflection_pattern_types") or ()
+            ),
         )
         update: dict[str, Any] = {"options": [o.model_dump() for o in options]}
         if notes:

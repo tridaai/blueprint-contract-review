@@ -396,6 +396,17 @@ class ContractService:
         tendencies = self._concession_tendencies(model)
         if tendencies:
             history = {**(history or {}), "concession_tendencies": tendencies}
+        # Reflection patterns already active in THIS contract's
+        # chain (reflection_patterns.py, read off the stored rounds):
+        # the option scorer's pattern term (options.py) reads them,
+        # so the options stop scoring a twice-undelivered clause as
+        # if nothing had happened.
+        pattern_types = self._reflection_pattern_types(model)
+        if pattern_types:
+            history = {
+                **(history or {}),
+                "reflection_pattern_types": sorted(pattern_types),
+            }
         result = run_contract(
             model,
             backend=backend,
@@ -412,6 +423,34 @@ class ContractService:
         )
         self._archive_documents(model, result)
         return result
+
+    def _reflection_pattern_types(self, contract: ContractInput) -> set[str]:
+        """Clause types under an active reflection pattern in the
+        chain this contract continues, computed from the STORED
+        rounds before the run starts (the scorer reads the patterns
+        in force when drafting begins). A pattern that forms only
+        on THIS round's own reflection is attached to this result
+        after the run (``_attach_round_diff``) — it escalates this
+        round's tiers immediately, and joins this set from the
+        next round of the chain onward. Chain-scoped by the
+        supersedes links, like every chain fact: another chain of
+        the same counterparty does not leak in."""
+        if not contract.supersedes or contract.supersedes == contract.contract_id:
+            return set()
+        from .reflection_patterns import find_reflection_patterns
+
+        chain: list[AgentResult] = []
+        seen = {contract.contract_id}
+        supersedes = contract.supersedes
+        while supersedes and supersedes not in seen:
+            seen.add(supersedes)
+            record = self._get_store().get(supersedes)
+            if record is None:
+                break
+            chain.append(record.result)
+            supersedes = (record.contract or {}).get("supersedes") or ""
+        chain.reverse()
+        return {p.clause_type for p in find_reflection_patterns(chain)}
 
     def _chain_rounds(
         self, model: ContractInput, result: AgentResult

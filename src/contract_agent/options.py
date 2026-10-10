@@ -17,7 +17,8 @@ In provider mode the LLM may propose the wording of the options; in
 every mode their *kinds* are validated here and their scores are
 computed by deterministic code (the model never does this arithmetic):
 
-    score = 60 * position_fit + 40 * posture_fit + info_bonus + history_term
+    score = 60 * position_fit + 40 * posture_fit + info_bonus
+            + history_term + pattern_term
 
 where ``position_fit`` ∈ [0, 1] is how well the kind matches the
 clause's verdict, ``posture_fit`` how well it matches the computed
@@ -36,6 +37,18 @@ term is capped at ``HISTORY_TERM_CAP`` points of a 100-point scale,
 so it breaks near-ties and orders close calls; it can never
 outweigh the playbook-driven terms. Every option carries its
 ``breakdown`` — the term is visible wherever the score is.
+
+``pattern_term`` is the sharper sibling (round 8): a clause type
+under an active REFLECTION PATTERN in this negotiation's chain
+(``reflection_patterns.py`` — an agreed edit flagged
+agreed-but-not-reflected in two consecutive follow-ups) adds the
+term to ``escalate_to_senior_counsel`` only. The tiers already
+escalate such a clause to the walk-away line; the options now tell
+the same story instead of scoring the clause as if nothing had
+happened twice. Capped at ``PATTERN_TERM_CAP``, separate from the
+history term in the breakdown — the two signals are cousins, not
+the same fact, and each stays small enough to order close calls
+without ever outweighing the playbook-driven terms.
 """
 
 from __future__ import annotations
@@ -188,11 +201,34 @@ def history_adjustment(kind: str, history_entry: dict | None) -> float:
     return 0.0
 
 
+# The reflection-pattern term, in score points: the same size as
+# the history term, for the same reason — it orders close calls and
+# shows in the breakdown; it never outweighs the playbook terms.
+PATTERN_TERM_CAP = 6.0
+
+
+def pattern_adjustment(
+    kind: str, clause_type: str, pattern_types: set[str] | None
+) -> float:
+    """The pattern term for one option: escalation of a clause type
+    under an active reflection pattern in this chain, and nothing
+    else — proposing softer language to a counterparty who has twice
+    agreed to it and twice not delivered it is exactly the option
+    this term exists to demote."""
+    if kind != "escalate_to_senior_counsel":
+        return 0.0
+    if not pattern_types or clause_type not in pattern_types:
+        return 0.0
+    return PATTERN_TERM_CAP
+
+
 def score_components(
     kind: str,
     position: str,
     facts: ContractFacts,
     history_entry: dict | None = None,
+    clause_type: str = "",
+    pattern_types: set[str] | None = None,
 ) -> dict[str, float]:
     """The deterministic score for one option, decomposed (see the
     module docstring): the components sum to the option's score."""
@@ -203,6 +239,7 @@ def score_components(
         "posture": round(40.0 * posture_fit, 2),
         "info": 8.0 if kind == "request_counterparty_info" and not facts.package_complete else 0.0,
         "history": history_adjustment(kind, history_entry),
+        "pattern": pattern_adjustment(kind, clause_type, pattern_types),
     }
 
 
@@ -211,9 +248,18 @@ def score_option(
     position: str,
     facts: ContractFacts,
     history_entry: dict | None = None,
+    clause_type: str = "",
+    pattern_types: set[str] | None = None,
 ) -> float:
     """The deterministic score for one option (see module docstring)."""
-    return round(sum(score_components(kind, position, facts, history_entry).values()), 2)
+    return round(
+        sum(
+            score_components(
+                kind, position, facts, history_entry, clause_type, pattern_types
+            ).values()
+        ),
+        2,
+    )
 
 
 def score_options(
@@ -221,13 +267,18 @@ def score_options(
     verdicts: list[ClauseVerdict],
     facts: ContractFacts,
     history_tendencies: dict | None = None,
+    pattern_types: set[str] | None = None,
 ) -> list[ClauseOption]:
     """Validate kinds and clause IDs, score every proposal, mark the
     argmax recommended. ``history_tendencies`` maps clause type →
     concession-profile entry; it moves scores only through
-    ``history_adjustment`` (capped, and shown in each breakdown)."""
+    ``history_adjustment`` (capped, and shown in each breakdown).
+    ``pattern_types`` is the set of clause types under an active
+    reflection pattern in this chain; it moves scores only through
+    ``pattern_adjustment`` (likewise capped and shown)."""
     by_id = {v.clause_id: v for v in verdicts}
     tendencies = history_tendencies or {}
+    patterns = set(pattern_types or ())
     scored: list[ClauseOption] = []
     seen: set[tuple[str, str]] = set()
     for proposal in proposals:
@@ -240,7 +291,12 @@ def score_options(
         seen.add((clause_id, kind))
         verdict = by_id[clause_id]
         components = score_components(
-            kind, verdict.position, facts, tendencies.get(verdict.clause_type)
+            kind,
+            verdict.position,
+            facts,
+            tendencies.get(verdict.clause_type),
+            clause_type=verdict.clause_type,
+            pattern_types=patterns,
         )
         scored.append(
             ClauseOption(
@@ -257,7 +313,7 @@ def score_options(
         # back to the template set. When nothing is flagged there is
         # legitimately nothing to propose: an empty list, not a loop.
         scored = score_options(
-            template_proposals(verdicts, facts), verdicts, facts, tendencies
+            template_proposals(verdicts, facts), verdicts, facts, tendencies, patterns
         ) if template_proposals(verdicts, facts) else []
     if scored:
         best = max(scored, key=lambda o: o.score)
@@ -277,6 +333,7 @@ def build_options(
     playbook: list[dict],
     backend,
     history_tendencies: dict | None = None,
+    pattern_types: set[str] | None = None,
 ) -> tuple[list[ClauseOption], str]:
     """Propose + score the next-step options for the flagged clauses.
 
@@ -285,14 +342,20 @@ def build_options(
     template proposal set runs. ``history_tendencies`` is the
     counterparty's concession profile by clause type, supplied by
     the service from the store — it reaches the scores only through
-    the capped history term. Returns (options, note) — the note
-    records a degraded LLM path.
+    the capped history term. ``pattern_types`` is the chain's active
+    reflection-pattern set, likewise supplied by the service — it
+    reaches the scores only through the capped pattern term.
+    Returns (options, note) — the note records a degraded LLM path.
     """
     propose = getattr(backend, "propose_options", None)
     if propose is None:
         return (
             score_options(
-                template_proposals(verdicts, facts), verdicts, facts, history_tendencies
+                template_proposals(verdicts, facts),
+                verdicts,
+                facts,
+                history_tendencies,
+                pattern_types,
             ),
             "",
         )
@@ -323,4 +386,7 @@ def build_options(
         proposals = template_proposals(verdicts, facts)
         if not note:
             note = "LLM option proposals were unusable — template proposals used"
-    return score_options(proposals, verdicts, facts, history_tendencies), note
+    return (
+        score_options(proposals, verdicts, facts, history_tendencies, pattern_types),
+        note,
+    )
