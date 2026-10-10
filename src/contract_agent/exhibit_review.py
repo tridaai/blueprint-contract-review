@@ -56,6 +56,23 @@ A fourth family follows the same discipline (round 8):
   ``insurance_waiver_of_subrogation``). A certificate naming a
   different legal entity, carrying half the required limit, or
   already expired does not become true by being attached.
+
+A fifth family follows the same discipline (round 10):
+
+- **Sub-processor lists.** A DPA's own annex — the list of
+  sub-processors the processor engages — is checked against the
+  data-processing terms that govern it: the notice period the
+  sub-processor clause promises for changes to the list must be
+  carried by the annex that maintains the list
+  (``subprocessor_notice_period``); every processor the list names
+  must be one the clause authorises (``subprocessor_authorised_list``
+  — a processor appearing in the annex but nowhere in the clause's
+  authorisation is undeclared, however tidy the list looks); and
+  where the transfer clause confines processing to a region, no
+  listed processor may sit outside it
+  (``subprocessor_transfer_terms``). The list is the operative
+  document in a DPA — it is where engagements actually change — so
+  it is checked like one.
 """
 
 from __future__ import annotations
@@ -127,18 +144,27 @@ def _breach_window_hours(exhibit_text: str) -> int | None:
     return None
 
 
-def _list_item_count(text: str) -> int:
-    """How many list-shaped items a document carries: bullet lines,
-    plus numbered lines that are single short items — a numbered
-    section paragraph ("3. Breach notification. The Provider shall
+_BULLET_ITEM = re.compile(r"^\s*[-*•]\s+(.+)$", re.M)
+
+
+def _list_items(text: str) -> list[str]:
+    """The list-shaped items a document carries: bullet lines, plus
+    numbered lines that are single short items — a numbered section
+    paragraph ("3. Breach notification. The Provider shall
     notify...") is prose, not a list entry."""
-    bullets = len(_BULLET_LINE.findall(text))
-    items = [
-        entry
+    items = [entry.strip() for entry in _BULLET_ITEM.findall(text)]
+    items += [
+        entry.strip()
         for entry in _NUMBERED_LINE.findall(text)
         if ". " not in entry and len(entry) <= 80
     ]
-    return bullets + len(items)
+    return items
+
+
+def _list_item_count(text: str) -> int:
+    """How many list-shaped items a document carries (see
+    ``_list_items``)."""
+    return len(_list_items(text))
 
 
 def _has_subprocessor_list(exhibit_text: str) -> bool:
@@ -297,6 +323,7 @@ def build_exhibit_checks(
     checks.extend(_order_form_checks(contract, units, extractions))
     checks.extend(_sow_checks(contract, units, extractions))
     checks.extend(_insurance_certificate_checks(contract, units, extractions))
+    checks.extend(_subprocessor_list_checks(contract, units, extractions))
     return checks
 
 
@@ -977,6 +1004,325 @@ def _insurance_certificate_checks(
             expectation=expectation,
             exhibit_document_id=doc_id,
             promised=promised,
+            found=found,
+            status=status,
+            detail=detail,
+        ))
+    return checks
+
+
+# ---------------------------------------------------------------------------
+# Sub-processor lists: the DPA's own annex against the DPA's own terms
+# ---------------------------------------------------------------------------
+
+# The locations a transfer clause confining processing to the EEA/EU
+# permits, by the names a list states: the EU member states plus
+# the EEA EFTA states. The United Kingdom is deliberately absent —
+# it is neither, whatever a list's drafter assumes.
+_EEA_LOCATIONS = {
+    "austria", "belgium", "bulgaria", "croatia", "cyprus",
+    "czech republic", "czechia", "denmark", "estonia", "finland",
+    "france", "germany", "greece", "hungary", "iceland", "ireland",
+    "italy", "latvia", "liechtenstein", "lithuania", "luxembourg",
+    "malta", "netherlands", "norway", "poland", "portugal",
+    "romania", "slovakia", "slovenia", "spain", "sweden",
+}
+
+_DAYS_IN_TEXT = re.compile(r"\(?(\d+)\)?\s*(?:business\s+)?days", re.I)
+
+
+def _find_subprocessor_list_document(contract: ContractInput):
+    """The attached exhibit/schedule that IS a sub-processor list:
+    it talks about sub-processors and names them as list items."""
+    for doc in contract.documents:
+        if doc.doc_type in {"exhibit", "schedule"} and doc.raw_text.strip():
+            if _SUBPROCESSOR.search(doc.raw_text) and _has_subprocessor_list(
+                doc.raw_text
+            ):
+                return doc
+    return None
+
+
+def _item_name(item: str) -> str:
+    """A list item's processor name: the text before its location
+    parenthesis or its function gloss."""
+    return re.split(r"\s+\(|\s+—\s+|\s+-\s+|,", item)[0].strip()
+
+
+def _item_location(item: str) -> str:
+    """A list item's stated location: the parenthesised text, when
+    the item carries one ("Hostline GmbH (Germany) — hosting")."""
+    m = re.search(r"\(([^)]+)\)", item)
+    return m.group(1).strip() if m else ""
+
+
+def _notice_days_in(text: str) -> int | None:
+    """The notice period a text states, in days: a day count in a
+    sentence that talks about giving notice. A day count elsewhere
+    (a breach window, an objection deadline) is not a notice
+    period."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n", text):
+        lower = sentence.lower()
+        if "notice" not in lower and "notify" not in lower:
+            continue
+        m = _DAYS_IN_TEXT.search(sentence)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _promised_notice(clause_text: str) -> tuple[bool, int | None]:
+    """Whether the governing clause promises notice of sub-processor
+    changes, and the period it promises when it states one. Only
+    sentences that tie notice to sub-processor changes count — a
+    breach-notification sentence is a different promise."""
+    promised = False
+    days: int | None = None
+    for sentence in re.split(r"(?<=[.!?])\s+", clause_text):
+        lower = sentence.lower()
+        if "sub-processor" not in lower and "subprocessor" not in lower:
+            continue
+        if "notice" not in lower and "notify" not in lower:
+            continue
+        promised = True
+        m = _DAYS_IN_TEXT.search(sentence)
+        if m and days is None:
+            days = int(m.group(1))
+    return promised, days
+
+
+def _authorised_subprocessors(clause_text: str) -> list[str]:
+    """The sub-processors the governing clause itself authorises by
+    name ("The sub-processors authorised by the Controller are
+    Hostline GmbH and Postmark Systems Ltd"). Empty when the clause
+    authorises a mechanism (notice, consent) rather than a set —
+    then there is no set for the list to be checked against."""
+    for sentence in re.split(r"(?<=[.!?])\s+", clause_text):
+        lower = sentence.lower()
+        if "sub-processor" not in lower and "subprocessor" not in lower:
+            continue
+        if not any(
+            word in lower for word in ("authoris", "authoriz", "approved")
+        ):
+            continue
+        m = re.search(r"(?:\bare\b|:)\s*(.+)$", sentence.strip())
+        if not m:
+            continue
+        names = [
+            part.strip(" .")
+            for part in re.split(r",|\band\b", m.group(1))
+        ]
+        names = [name for name in names if name and name[0].isupper()]
+        if names:
+            return names
+    return []
+
+
+def _transfer_region(transfer_text: str) -> str:
+    """The region the transfer clause confines processing to, in the
+    clause's own words — "" when the clause states no geographic
+    confinement (SCC/adequacy machinery is a mechanism, not a
+    boundary a list can be measured against)."""
+    lower = transfer_text.lower()
+    prohibits = any(
+        phrase in lower
+        for phrase in ("shall not transfer", "must not transfer",
+                       "may not transfer", "no transfer")
+    )
+    confines = any(
+        phrase in lower
+        for phrase in ("only within", "solely within", "takes place within",
+                       "remain within", "stays within")
+    )
+    if not (prohibits or confines):
+        return ""
+    if "european economic area" in lower or "eea" in lower:
+        return "the European Economic Area"
+    if "european union" in lower or re.search(r"\beu\b", lower):
+        return "the European Union"
+    return ""
+
+
+def _subprocessor_list_checks(
+    contract: ContractInput,
+    units,
+    extractions: list[ClauseExtraction],
+) -> list[ExhibitCheck]:
+    """Sub-processor list checks: generated when a sub-processor
+    list annex is attached and the agreement's own data-processing
+    terms govern it — the sub-processor clause (a standalone DPA's
+    own matrix row) or, in an MSA, the data protection clause's
+    sub-processor sentences."""
+    doc = _find_subprocessor_list_document(contract)
+    if doc is None:
+        return []
+    unit_text = {u.clause_id: u.text or "" for u in units}
+    sub = next(
+        (e for e in extractions if e.clause_type == "subprocessor_terms"), None
+    )
+    clause_text = unit_text.get(sub.clause_id, "") if sub is not None else ""
+    if not clause_text:
+        dp = next(
+            (e for e in extractions if e.clause_type == "data_protection"), None
+        )
+        if dp is not None:
+            sentences = [
+                s
+                for s in re.split(
+                    r"(?<=[.!?])\s+", unit_text.get(dp.clause_id, "")
+                )
+                if "sub-processor" in s.lower() or "subprocessor" in s.lower()
+            ]
+            clause_text = " ".join(sentences)
+    if not clause_text:
+        return []
+    transfer = next(
+        (e for e in extractions if e.clause_type == "data_transfer"), None
+    )
+    transfer_text = (
+        unit_text.get(transfer.clause_id, "") if transfer is not None else ""
+    )
+    doc_id = doc.document_id or doc.doc_type
+    items = _list_items(doc.raw_text)
+    names = [_item_name(item) for item in items]
+    checks: list[ExhibitCheck] = []
+
+    notice_promised, promised_days = _promised_notice(clause_text)
+    if notice_promised:
+        found_days = _notice_days_in(doc.raw_text)
+        promised = (
+            f"{promised_days} days' notice of sub-processor changes"
+            if promised_days
+            else "notice of sub-processor changes"
+        )
+        expectation = (
+            "The sub-processor clause promises notice of any change "
+            "to the sub-processors engaged"
+            + (
+                f" at least {promised_days} days ahead"
+                if promised_days
+                else ""
+            )
+            + "; the annex that maintains the list must carry that "
+            "notice period — the list is where changes take effect."
+        )
+        if found_days is None:
+            status, found, detail = (
+                "missing_in_exhibit", "",
+                "The list annex states no notice period for changes "
+                "to the list — "
+                + (
+                    f"the clause's promise of {promised_days} days' "
+                    "notice has no machinery in the document that "
+                    "maintains the list."
+                    if promised_days
+                    else "the notice the clause promises has no "
+                    "period anywhere in the document that maintains "
+                    "the list, so no change date can be checked "
+                    "against it."
+                ),
+            )
+        elif promised_days and found_days < promised_days:
+            status, found, detail = (
+                "mismatch", f"{found_days} days",
+                f"The list annex gives {found_days} days' notice of "
+                f"changes, but the clause promises {promised_days} — "
+                "the annex shortens the notice the clause commits to.",
+            )
+        else:
+            status, found, detail = (
+                "consistent", f"{found_days} days",
+                f"The list annex carries the notice period for "
+                f"changes ({found_days} days), as the clause's "
+                "notice promise requires.",
+            )
+        checks.append(ExhibitCheck(
+            name="subprocessor_notice_period",
+            expectation=expectation,
+            exhibit_document_id=doc_id,
+            promised=promised,
+            found=found,
+            status=status,
+            detail=detail,
+        ))
+
+    authorised = _authorised_subprocessors(clause_text)
+    if authorised:
+        authorised_keys = {_normalise_name(name) for name in authorised}
+        undeclared = [
+            name for name in names if _normalise_name(name) not in authorised_keys
+        ]
+        expectation = (
+            "The sub-processor clause authorises the sub-processors "
+            "it names; every processor the list annex engages must "
+            "be one of them — a processor the clause never authorised "
+            "is undeclared, wherever the list puts it."
+        )
+        if undeclared:
+            status, found, detail = (
+                "mismatch", ", ".join(undeclared),
+                f"The list engages {', '.join(undeclared)}, which "
+                f"the clause's authorisation ({', '.join(authorised)}) "
+                "does not name — undeclared sub-processor(s) in the "
+                "annex the clause governs.",
+            )
+        else:
+            status, found, detail = (
+                "consistent", "every listed sub-processor authorised",
+                "Every processor the list engages is named in the "
+                "clause's authorisation.",
+            )
+        checks.append(ExhibitCheck(
+            name="subprocessor_authorised_list",
+            expectation=expectation,
+            exhibit_document_id=doc_id,
+            promised=", ".join(authorised),
+            found=found,
+            status=status,
+            detail=detail,
+        ))
+
+    region = _transfer_region(transfer_text)
+    if region:
+        located = [(name, _item_location(item)) for name, item in zip(names, items)]
+        outside = [
+            (name, location)
+            for name, location in located
+            if location and _normalise_name(location) not in _EEA_LOCATIONS
+        ]
+        expectation = (
+            f"The transfer clause confines processing to {region}; "
+            "no sub-processor the list engages may sit outside it — "
+            "engaging one is a transfer the clause does not permit."
+        )
+        if outside:
+            listing = ", ".join(
+                f"{name} ({location})" for name, location in outside
+            )
+            status, found, detail = (
+                "mismatch", listing,
+                f"The list engages {listing} — outside {region}, "
+                "which the transfer clause confines processing to.",
+            )
+        elif all(location for _, location in located):
+            status, found, detail = (
+                "consistent", f"every listed sub-processor in {region}",
+                f"Every listed sub-processor states a location in "
+                f"{region}, as the transfer clause confines it.",
+            )
+        else:
+            status, found, detail = (
+                "missing_in_exhibit", "locations not stated for every listed sub-processor",
+                "The list does not state a location for every "
+                f"sub-processor it engages — the transfer clause's "
+                f"confinement to {region} cannot be checked against "
+                "a list that does not say where processing happens.",
+            )
+        checks.append(ExhibitCheck(
+            name="subprocessor_transfer_terms",
+            expectation=expectation,
+            exhibit_document_id=doc_id,
+            promised=f"processing confined to {region}",
             found=found,
             status=status,
             detail=detail,

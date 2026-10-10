@@ -46,6 +46,6 @@ def test_samples_are_valid_and_complete():
     from contract_agent.samples import load_sample_contracts, sample_contract_models
 
     raw = load_sample_contracts()
-    assert len(raw) == 29
+    assert len(raw) == 31
     models = sample_contract_models()  # every sample validates against the schema
     assert {m.doc_type for m in models} == {"msa", "sow", "nda", "amendment", "order_form", "dpa", "employment"}

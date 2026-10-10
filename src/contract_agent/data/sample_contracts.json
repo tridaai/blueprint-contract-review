@@ -575,5 +575,51 @@
         "raw_text": "Exhibit D \u2014 Certificate of Insurance\n\nThis certificate is issued as a matter of information only and confers no rights upon the certificate holder.\n\nNamed insured: Brightpath Managed Services Ltd\n\nCommercial general liability insurance: $2,000,000 per occurrence.\nProfessional liability insurance: $1,000,000 per claim.\n\nThe Customer is named as an additional insured under the general liability policy.\nThe insurer provides a waiver of subrogation in favour of the Customer.\n\nThis certificate expires on December 31, 2026.\n"
       }
     ]
+  },
+  {
+    "contract_id": "CTR-2030",
+    "doc_type": "dpa",
+    "title": "Data Processing Addendum",
+    "counterparty_name": "Cobaltline Processing Ltd",
+    "our_role": "customer",
+    "sender_name": "",
+    "cover_email_text": "Attached is our data processing addendum for review, with Annex 1 setting out the sub-processors we engage.",
+    "notes": "Sub-processor list exhibit sample (adversarial): the DPA's clauses are clean \u2014 authorised sub-processors named, thirty days' notice promised, processing confined to the EEA \u2014 but its own Annex 1 engages a third, unauthorised sub-processor in the United States and states no notice period for changes, so all three sub-processor list checks fail against the DPA's own terms.",
+    "received_at": "2026-10-06T10:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Data Protection and Security\nThe Processor shall implement technical and organisational security measures appropriate to the risk of the processing, and shall protect personal data in accordance with this Data Processing Addendum. The Processor shall notify the Controller within 72 hours of becoming aware of a personal data breach.\n\n2. Sub-processors\nThe sub-processors authorised by the Controller under this Addendum are Hostline GmbH and Postmark Systems Ltd. The Processor shall give the Controller at least thirty (30) days' prior written notice of any intended addition or replacement of a sub-processor, and the Controller may object in writing within thirty (30) days of that notice. The Processor shall not proceed with a change while a reasonable objection remains unresolved.\n\n3. International Transfers\nThe Processor shall not transfer personal data outside the European Economic Area. All processing under this Addendum takes place within the European Economic Area, and the Processor shall notify the Controller before any change to where processing takes place.\n\n4. Audit Rights\nThe Controller, or its designated auditor, may audit the Processor's facilities, systems, and records relevant to the processing on at least thirty (30) days' written notice, no more than once per year absent a personal data breach.\n\n5. Return and Deletion of Data\nOn termination or expiry of this Addendum, the Processor shall, at the Controller's choice, return all personal data to the Controller or securely delete it, and shall certify the deletion in writing; backup copies shall be deleted within thirty (30) days thereafter.\n\n6. Confidentiality\nEach party shall hold the other's Confidential Information in confidence for three (3) years from the date of disclosure.\n"
+      },
+      {
+        "doc_type": "exhibit",
+        "document_id": "ANNEX-1",
+        "raw_text": "Annex 1 \u2014 Sub-processor List\n\nThe Processor engages the following sub-processors in the processing under this Addendum:\n- Hostline GmbH (Germany) \u2014 data hosting\n- Postmark Systems Ltd (Ireland) \u2014 email delivery\n- Cloudmetrics Inc (United States) \u2014 product analytics\nChanges to this list take effect when published on the Processor's website.\n"
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2031",
+    "doc_type": "dpa",
+    "title": "Data Processing Addendum",
+    "counterparty_name": "Aldervik Data Services AB",
+    "our_role": "customer",
+    "sender_name": "",
+    "cover_email_text": "Attached is our data processing addendum for review, with Annex 1 setting out the sub-processors we engage.",
+    "notes": "Sub-processor list exhibit sample (clean): Annex 1 engages exactly the sub-processors the DPA's clause authorises, both located in the EEA the transfer clause confines processing to, and carries the thirty days' change notice the clause promises \u2014 all three sub-processor list checks come back consistent.",
+    "received_at": "2026-10-05T10:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Data Protection and Security\nThe Processor shall implement technical and organisational security measures appropriate to the risk of the processing, and shall protect personal data in accordance with this Data Processing Addendum. The Processor shall notify the Controller within 72 hours of becoming aware of a personal data breach.\n\n2. Sub-processors\nThe sub-processors authorised by the Controller under this Addendum are Hostline GmbH and Postmark Systems Ltd. The Processor shall give the Controller at least thirty (30) days' prior written notice of any intended addition or replacement of a sub-processor, and the Controller may object in writing within thirty (30) days of that notice. The Processor shall not proceed with a change while a reasonable objection remains unresolved.\n\n3. International Transfers\nThe Processor shall not transfer personal data outside the European Economic Area. All processing under this Addendum takes place within the European Economic Area, and the Processor shall notify the Controller before any change to where processing takes place.\n\n4. Audit Rights\nThe Controller, or its designated auditor, may audit the Processor's facilities, systems, and records relevant to the processing on at least thirty (30) days' written notice, no more than once per year absent a personal data breach.\n\n5. Return and Deletion of Data\nOn termination or expiry of this Addendum, the Processor shall, at the Controller's choice, return all personal data to the Controller or securely delete it, and shall certify the deletion in writing; backup copies shall be deleted within thirty (30) days thereafter.\n\n6. Confidentiality\nEach party shall hold the other's Confidential Information in confidence for three (3) years from the date of disclosure.\n"
+      },
+      {
+        "doc_type": "exhibit",
+        "document_id": "ANNEX-1",
+        "raw_text": "Annex 1 \u2014 Sub-processor List\n\nThe Processor engages the following sub-processors in the processing under this Addendum:\n- Hostline GmbH (Germany) \u2014 data hosting\n- Postmark Systems Ltd (Ireland) \u2014 email delivery\nThe Processor shall give the Controller at least thirty (30) days' written notice before any change to this list takes effect.\n"
+      }
+    ]
   }
 ]
