@@ -502,6 +502,53 @@ class ContractService:
             )
         return rows
 
+    def playbook_coverage(self, results: list[AgentResult] | None = None) -> dict:
+        """Playbook coverage analytics over the stored runs.
+
+        Three views legal ops needs to grow the playbook where it is
+        thin: which playbook entries actually fire on verdicts (and
+        which never have), which clause types most often come back
+        flagged with NO fallback language to offer (a playbook gap,
+        not a contract gap), and the position distribution per
+        counterparty (who keeps sending walk-away paper).
+        """
+        from .playbook_data import PLAYBOOK
+
+        if results is None:
+            results = [record.result for record in self._get_store().all_records()]
+        firing: Counter = Counter()
+        flagged: Counter = Counter()
+        without_fallback: Counter = Counter()
+        by_counterparty: dict[str, Counter] = {}
+        for result in results:
+            positions = by_counterparty.setdefault(result.counterparty_name or "", Counter())
+            for verdict in result.clause_verdicts:
+                firing.update(verdict.playbook_refs)
+                positions[verdict.position] += 1
+                if verdict.position != "preferred":
+                    flagged[verdict.clause_type] += 1
+                    if not verdict.fallback_language:
+                        without_fallback[verdict.clause_type] += 1
+        return {
+            "playbook_firing": dict(firing.most_common()),
+            "playbook_never_fired": [
+                entry["id"] for entry in PLAYBOOK if not firing[entry["id"]]
+            ],
+            "clause_types_without_fallback": [
+                {
+                    "clause_type": clause_type,
+                    "flagged": flagged[clause_type],
+                    "without_fallback": count,
+                }
+                for clause_type, count in without_fallback.most_common()
+            ],
+            "positions_by_counterparty": {
+                counterparty: dict(counts)
+                for counterparty, counts in sorted(by_counterparty.items())
+                if counterparty
+            },
+        }
+
     def metrics(self) -> dict:
         """Operational summary over the stored runs (``/metrics``).
 
@@ -535,6 +582,7 @@ class ContractService:
                 "repaired": sum(1 for r in results if r.repaired),
             },
             "reviewer_blocks": sum(1 for r in results if r.reviewer_blocked),
+            "playbook_coverage": self.playbook_coverage(results),
             "telemetry": {
                 "runs_with_telemetry": len(telemetries),
                 "provider_runs": len(provider_runs),

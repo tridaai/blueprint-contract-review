@@ -13,6 +13,7 @@ import pytest
 from contract_agent.model_backends import MockModelBackend
 from contract_agent.objectstore import InMemoryObjectStore
 from contract_agent.retriever import KeywordRetriever
+from contract_agent.samples import sample_contract_models
 from contract_agent.schemas import ContractInput, DocumentInput
 from contract_agent.service import ContractService
 from contract_agent.store import InMemoryStore
@@ -129,6 +130,23 @@ def test_metrics_and_audit_rows():
     assert rows["CTR-1001"]["decided_at"]
     assert rows["CTR-1001"]["validation_passed"] is True
     assert rows["CTR-1002"]["decision"] == ""
+
+
+def test_playbook_coverage_analytics():
+    svc = service()
+    samples = {c.contract_id: c for c in sample_contract_models()}
+    svc.analyze(samples["CTR-2002"])  # uncapped liability -> PB-LIA-03 fires
+    svc.analyze(samples["CTR-2014"])  # Vertex round 1: several walk-aways
+    coverage = svc.metrics()["playbook_coverage"]
+    assert coverage["playbook_firing"]["PB-LIA-03"] == 2
+    assert "PB-LIA-03" not in coverage["playbook_never_fired"]
+    assert "PB-GEN-02" in coverage["playbook_never_fired"]  # absence entry never cites a verdict
+    vertex = coverage["positions_by_counterparty"]["Vertex Analytics Ltd"]
+    assert vertex["walk_away"] == 2
+    assert vertex["review_required"] == 3
+    # every clause type entry carries its flagged denominator
+    for row in coverage["clause_types_without_fallback"]:
+        assert row["without_fallback"] <= row["flagged"]
 
 
 def test_feedback_loop_teaches_later_runs():
