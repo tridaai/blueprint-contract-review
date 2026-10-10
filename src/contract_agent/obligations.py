@@ -16,6 +16,20 @@ renewal date) or derived by date arithmetic in code — renewal date
 minus the notice period is the deadline to give notice — and the
 ``computed`` flag says which, so counsel never mistakes a derived
 deadline for a quoted one.
+
+Employment letters carry dated machinery of their own (round 13):
+the termination notice period, any garden-leave window, and the
+severance promise. The severance entry carries the COMPUTED figure
+— the letter's formula (months or weeks of base salary) multiplied
+in code against the salary basis the package states, the same
+arithmetic the exhibit check (``exhibit_review.py``) verifies —
+flagged ``computed``, never a figure quoted from the letter. The
+clocks these duties run on start at termination, an event in the
+future when the letter is reviewed, so the entries are undated
+unless the letter itself states a termination date: then the
+severance falls due on that date and the notice deadline is
+derived from it, the way a renewal date anchors a notice
+deadline above.
 """
 
 from __future__ import annotations
@@ -77,6 +91,22 @@ def _length_phrase(text: str, start: int = 0) -> str:
         return ""
     n, unit = int(m.group(1)), m.group(2)
     return f"{n} {unit}"
+
+
+def _stated_termination_date(units: list[ClauseUnit]) -> date | None:
+    """An explicit termination date the letter states, if any: a
+    calendar date inside a sentence about termination ("the
+    employment terminates on 30 June 2027", "termination effective
+    2027-06-30"). Only a date in a termination sentence counts —
+    any other date in the letter is not the trigger these duties
+    run from."""
+    for unit in units:
+        for sentence in re.split(r"(?<=[.!?])\s+", unit.text or ""):
+            if "terminat" in sentence.lower():
+                found = _explicit_date(sentence)
+                if found is not None:
+                    return found
+    return None
 
 
 def due_obligations(
@@ -275,5 +305,131 @@ def build_obligations(
                     detail="perpetual",
                     **ref,
                 ))
+
+    # -- Employment machinery (round 13) ------------------------------
+    # An employment letter's duties do not hang off the clause-type
+    # chain above: the notice period and the severance formula ride
+    # on the employment-terms extraction's signals, and the salary
+    # basis the severance multiplies usually sits in a compensation
+    # clause of no particular type. The pass therefore reads the
+    # package's clause texts together, the way the severance
+    # exhibit check does.
+    employment = next(
+        (e for e in extractions if e.clause_type == "employment_terms"),
+        None,
+    )
+    if employment is not None:
+        unit = by_id.get(employment.clause_id)
+        signals = employment.signals or {}
+        text = (unit.text or "") if unit else ""
+        ref = (
+            {"source_clause_id": unit.clause_id, "source_ref": unit.ref}
+            if unit
+            else {"source_clause_id": employment.clause_id, "source_ref": ""}
+        )
+        termination_date = _stated_termination_date(units)
+
+        notice_days = _positive(signals.get("notice_days"))
+        if notice_days:
+            deadline = None
+            computed = False
+            description = (
+                f"Either party may terminate the employment on "
+                f"{notice_days} days' written notice."
+                if "either party" in text.lower()
+                else f"Termination of the employment requires "
+                     f"{notice_days} days' written notice."
+            )
+            if termination_date is not None:
+                deadline = (
+                    termination_date - timedelta(days=notice_days)
+                ).isoformat()
+                computed = True
+                description += (
+                    f" Against the termination date the letter "
+                    f"states ({termination_date.isoformat()}), "
+                    f"notice must be given by {deadline}."
+                )
+            add(Obligation(
+                kind="notice_period",
+                description=description,
+                detail=f"{notice_days} days' written notice",
+                days=notice_days,
+                date=deadline,
+                computed=computed,
+                **ref,
+            ))
+
+        garden_months = _positive(signals.get("garden_leave_months"))
+        if garden_months:
+            add(Obligation(
+                kind="garden_leave",
+                description=(
+                    f"The letter provides for garden leave of "
+                    f"{garden_months} month{'s' if garden_months != 1 else ''} "
+                    "following notice of termination."
+                ),
+                detail=f"{garden_months} months' garden leave",
+                **ref,
+            ))
+
+        from .exhibit_review import (
+            _fmt_money,
+            _salary_basis_monthly,
+            _severance_formula_months,
+        )
+
+        texts = [u.text or "" for u in units]
+        months, formula = _severance_formula_months(texts, extractions)
+        basis_monthly, basis_desc = _salary_basis_monthly(texts)
+        if months is not None and basis_monthly is not None:
+            computed_amount = round(months * basis_monthly, 2)
+            source = next(
+                (u for u in units if "severance" in (u.text or "").lower()),
+                unit,
+            )
+            sentence = next(
+                (
+                    s for s in re.split(
+                        r"(?<=[.!?])\s+", (source.text or "") if source else ""
+                    )
+                    if "severance" in s.lower()
+                ),
+                "",
+            )
+            trigger = (
+                "if the Company terminates the employment without cause"
+                if "without cause" in sentence.lower()
+                else "on termination, under the letter's severance promise"
+            )
+            description = (
+                f"Severance of {formula} is payable {trigger} — "
+                f"computed at {_fmt_money(computed_amount)} from the "
+                f"salary basis the package states ({basis_desc}). "
+                "The figure is computed in code from the letter's "
+                "own numbers, never quoted from it."
+            )
+            if termination_date is not None:
+                description += (
+                    f" The letter states a termination date of "
+                    f"{termination_date.isoformat()}: the severance "
+                    "falls due then."
+                )
+            add(Obligation(
+                kind="severance",
+                description=description,
+                detail=(
+                    f"computed {_fmt_money(computed_amount)} — "
+                    f"{formula} at {basis_desc}"
+                ),
+                date=(
+                    termination_date.isoformat()
+                    if termination_date is not None
+                    else None
+                ),
+                computed=True,
+                source_clause_id=(source.clause_id if source else ref["source_clause_id"]),
+                source_ref=(source.ref if source else ref["source_ref"]),
+            ))
 
     return register

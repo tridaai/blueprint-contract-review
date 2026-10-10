@@ -515,9 +515,12 @@ class Obligation(BaseModel):
     source clause. Built in code from extraction signals + clause
     text (``obligations.py``): day/hour counts are the code-extracted
     signal values, and a ``date`` is either quoted from the clause or
-    derived by date arithmetic (``computed`` says which)."""
+    derived by date arithmetic (``computed`` says which). A
+    ``severance`` entry's figure is always computed — the letter's
+    formula applied to its stated salary basis — so its ``computed``
+    flags the figure, never a quoted amount."""
 
-    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term
+    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term | severance | garden_leave
     description: str = ""
     detail: str = ""  # the operative value as written, e.g. "120 days' written notice"
     days: Optional[int] = None
