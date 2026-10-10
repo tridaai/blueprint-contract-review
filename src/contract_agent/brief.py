@@ -14,9 +14,20 @@ states no legal conclusion, recommends no signature, and is
 exported through the object-store port (``contracts/<id>/
 negotiation-brief.md``) and the download endpoint; like every
 output of this blueprint it is never sent anywhere by the agent.
+
+Exports form a lineage (see ``ContractService.negotiation_brief``):
+each export's source digest is retained, and the next export
+diffs against it — the brief leads with a "Since the last brief"
+section (``brief_delta_lines``) naming the new round, the clauses
+that moved, the edits proposed anew, the obligations opened or
+closed. Both the previous and the new export stay in object
+storage under versioned keys; nothing is overwritten but the
+canonical latest copy.
 """
 
 from __future__ import annotations
+
+import hashlib
 
 from .schemas import AgentResult
 
@@ -29,12 +40,186 @@ def _walk_away_count(result: AgentResult) -> int:
     return sum(1 for v in result.clause_verdicts if v.position == "walk_away")
 
 
-def build_negotiation_brief(chain: list[AgentResult], latest: AgentResult) -> str:
+# ---------------------------------------------------------------------------
+# Brief digests + deltas: what changed since the last export
+# ---------------------------------------------------------------------------
+
+
+def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
+    """The facts a brief is built from, as a comparable digest.
+
+    Stored with every export (in the brief lineage index, see
+    ``ContractService.negotiation_brief``) so the NEXT export can
+    diff its facts against this one's and lead with the delta —
+    the Monday-morning question is never "what does the brief
+    say?" but "what changed since the brief I already read?".
+    Everything here is copied from stored results; an edit is keyed
+    by a hash of its proposed language, so re-proposing the same
+    language is not news and new language is."""
+    edits = []
+    for edit in latest.proposed_edits:
+        digest = hashlib.sha1(edit.replacement_text.encode("utf-8")).hexdigest()[:10]
+        edits.append(
+            {
+                "key": f"{edit.clause_id}|{edit.clause_type}|{edit.kind}|{digest}",
+                "clause_id": edit.clause_id,
+                "clause_type": edit.clause_type,
+                "kind": edit.kind,
+            }
+        )
+    return {
+        "contract_id": latest.contract_id,
+        "chain": [r.contract_id for r in chain],
+        "status": latest.status,
+        "decision": latest.decision or "",
+        "decided_by": latest.decided_by or "",
+        "posture": latest.facts.posture if latest.facts else "",
+        "worst_position": latest.facts.worst_position if latest.facts else "",
+        "clause_positions": {
+            f"{v.clause_type}:{v.clause_id}": v.position for v in latest.clause_verdicts
+        },
+        "proposed_edits": edits,
+        "edit_outcomes": {
+            r.contract_id: {str(o.edit_index): o.outcome for o in r.edit_outcomes}
+            for r in chain
+            if r.edit_outcomes
+        },
+        "obligations": [
+            {"kind": o.kind, "detail": o.detail, "date": o.date or ""}
+            for o in latest.obligations
+        ],
+        "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
+        "reflection_flags": sum(
+            1 for e in latest.edit_reflection if e.status == "agreed_not_reflected"
+        ),
+    }
+
+
+def brief_delta_lines(previous: dict, current: dict) -> list[str]:
+    """What changed between the previous export's digest and this
+    one's, as plain lines for the brief's "Since the last brief"
+    section: a new round, a decision recorded, clauses moved or
+    appearing/disappearing, edits proposed anew, outcomes recorded,
+    obligations opened or closed, reflection flags raised. An empty
+    diff says so — the re-export itself is the only news."""
+    lines: list[str] = []
+    if previous["contract_id"] != current["contract_id"]:
+        lines.append(
+            f"New round since the last brief: {current['contract_id']} — "
+            f"the last brief covered {previous['contract_id']}; the chain "
+            f"now runs {' → '.join(current['chain'])}."
+        )
+    if current["decision"] and current["decision"] != previous["decision"]:
+        lines.append(
+            f"Decision recorded since the last brief: {current['decision']} "
+            f"by {current['decided_by'] or 'counsel'} on {current['contract_id']}."
+        )
+    elif (
+        current["status"] != previous["status"]
+        and current["contract_id"] == previous["contract_id"]
+    ):
+        lines.append(
+            f"Status changed since the last brief: "
+            f"{previous['status']} → {current['status']}."
+        )
+    prev_pos, cur_pos = previous["clause_positions"], current["clause_positions"]
+    for key in sorted(set(prev_pos) & set(cur_pos)):
+        if prev_pos[key] != cur_pos[key]:
+            clause_type, clause_id = key.split(":", 1)
+            lines.append(
+                f"Clause moved: {clause_type} ({clause_id}): "
+                f"{prev_pos[key]} → {cur_pos[key]}."
+            )
+    for key in sorted(set(cur_pos) - set(prev_pos)):
+        clause_type, clause_id = key.split(":", 1)
+        lines.append(
+            f"New clause in the current round: {clause_type} "
+            f"({clause_id}) at {cur_pos[key]}."
+        )
+    for key in sorted(set(prev_pos) - set(cur_pos)):
+        clause_type, clause_id = key.split(":", 1)
+        lines.append(
+            f"Clause no longer in the draft: {clause_type} "
+            f"({clause_id}, was {prev_pos[key]})."
+        )
+    prev_edits = {e["key"]: e for e in previous["proposed_edits"]}
+    cur_edits = {e["key"]: e for e in current["proposed_edits"]}
+    for key in sorted(set(cur_edits) - set(prev_edits)):
+        edit = cur_edits[key]
+        lines.append(
+            f"New proposed edit: {edit['clause_id']} "
+            f"{edit['clause_type']} ({edit['kind']})."
+        )
+    for contract_id in sorted(
+        set(previous["edit_outcomes"]) | set(current["edit_outcomes"])
+    ):
+        prev_outcomes = previous["edit_outcomes"].get(contract_id, {})
+        cur_outcomes = current["edit_outcomes"].get(contract_id, {})
+        changed = {
+            idx
+            for idx in cur_outcomes
+            if prev_outcomes.get(idx) != cur_outcomes[idx]
+        }
+        for idx in sorted(changed, key=int):
+            lines.append(
+                f"Edit outcome recorded: {contract_id} edit {idx} "
+                f"— {cur_outcomes[idx]}."
+            )
+
+    def obligation_key(obligation: dict) -> tuple[str, str, str]:
+        return (obligation["kind"], obligation["detail"], obligation["date"])
+
+    prev_obligations = {obligation_key(o): o for o in previous["obligations"]}
+    cur_obligations = {obligation_key(o): o for o in current["obligations"]}
+    for key in sorted(set(cur_obligations) - set(prev_obligations)):
+        obligation = cur_obligations[key]
+        lines.append(
+            f"New obligation on the register: {obligation['kind']} — "
+            f"{obligation['detail']}"
+            + (f" ({obligation['date']})" if obligation["date"] else "")
+            + "."
+        )
+    for key in sorted(set(prev_obligations) - set(cur_obligations)):
+        obligation = prev_obligations[key]
+        lines.append(
+            f"Obligation closed or no longer on the register: "
+            f"{obligation['kind']} — {obligation['detail']}."
+        )
+    if current["reflection_flags"] and (
+        current["reflection_flags"] != previous["reflection_flags"]
+    ):
+        lines.append(
+            f"{current['reflection_flags']} agreed edit(s) from the "
+            "previous round are flagged agreed-but-not-reflected in "
+            "the current draft (see Edit outcomes and reflection)."
+        )
+    if current["re_trades"] != previous["re_trades"]:
+        lines.append(
+            f"Re-trades across the chain: {previous['re_trades']} "
+            f"→ {current['re_trades']}."
+        )
+    if not lines:
+        lines.append(
+            "Nothing material changed since the last brief — the "
+            "facts below are the same facts, re-exported."
+        )
+    return lines
+
+
+def build_negotiation_brief(
+    chain: list[AgentResult],
+    latest: AgentResult,
+    delta_lines: list[str] | None = None,
+    first_export: bool = False,
+) -> str:
     """Assemble the brief markdown for the chain ending at ``latest``.
 
     ``chain`` is the negotiation's stored rounds, oldest → newest
     (``ContractService._chain_rounds``); ``latest`` is its final
-    element — the current draft under review."""
+    element — the current draft under review. ``delta_lines`` /
+    ``first_export`` carry the since-the-last-brief comparison the
+    service computed from the export lineage; direct callers who
+    pass neither get the brief without that section."""
     lines: list[str] = []
     lines.append(f"# Negotiation brief — {latest.contract_id}")
     lines.append("")
@@ -55,6 +240,22 @@ def build_negotiation_brief(chain: list[AgentResult], latest: AgentResult) -> st
             f"(worst clause position: {latest.facts.worst_position})"
         )
     lines.append("")
+
+    # -- Since the last brief: the delta against the previous export -------
+    if first_export or delta_lines is not None:
+        lines.append("## Since the last brief")
+        lines.append("")
+        if first_export:
+            lines.append(
+                "This is the first brief exported for this negotiation "
+                "— there is no earlier export to compare against. "
+                "Every later export leads with what changed since "
+                "the one before it."
+            )
+        else:
+            for line in delta_lines or []:
+                lines.append(f"- {line}")
+        lines.append("")
 
     # -- The chain: how the negotiation got here -------------------------
     lines.append("## Negotiation chain")

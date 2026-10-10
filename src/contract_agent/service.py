@@ -804,27 +804,90 @@ class ContractService:
         markdown document assembled in code from the stored records
         (chain movement and re-trades, open positions by tier, the
         proposed edits, exhibit findings, obligations — see
-        ``brief.py``), exported through the object-store port under
-        ``contracts/<id>/negotiation-brief.md`` and returned with its
-        key. Counsel downloads it and takes it into the negotiation;
-        the agent sends it nowhere."""
+        ``brief.py``), exported through the object-store port and
+        returned with its key. Counsel downloads it and takes it
+        into the negotiation; the agent sends it nowhere.
+
+        Exports form a LINEAGE, keyed by the chain's root contract
+        in ``contracts/<root>/negotiation-brief-index.json``: every
+        export is retained under a versioned key
+        (``contracts/<id>/negotiation-brief-v<n>.md``) alongside the
+        canonical ``contracts/<id>/negotiation-brief.md``, and its
+        source digest (``brief.brief_source_digest``) is stored in
+        the index. A new export diffs its digest against the
+        previous export's — whichever round that export covered —
+        and the brief leads with a "Since the last brief" section:
+        the new round, decisions and outcomes recorded, clauses
+        moved, edits proposed anew, obligations opened or closed.
+        """
         store = self._get_store()
         record = store.get(contract_id)
         if record is None:
             raise KeyError(f"Unknown contract_id: {contract_id} (analyze it first)")
-        from .brief import build_negotiation_brief
+        from .brief import brief_delta_lines, brief_source_digest, build_negotiation_brief
 
         if record.contract:
             model = ContractInput.model_validate(record.contract)
             chain = self._chain_rounds(model, record.result)
         else:
             chain = [record.result]
-        markdown = build_negotiation_brief(chain, record.result)
-        key = f"contracts/{contract_id}/negotiation-brief.md"
-        self._get_object_store().put(
-            key, markdown.encode("utf-8"), content_type="text/markdown"
+        objects = self._get_object_store()
+        root_id = chain[0].contract_id
+        index_key = f"contracts/{root_id}/negotiation-brief-index.json"
+        exports: list[dict] = []
+        raw_index = objects.get(index_key)
+        if raw_index:
+            try:
+                loaded = json.loads(raw_index.decode("utf-8"))
+                if isinstance(loaded, list):
+                    exports = loaded
+            except (ValueError, UnicodeDecodeError):
+                exports = []  # a corrupt index starts a new lineage, never blocks a brief
+        previous = exports[-1] if exports else None
+        digest = brief_source_digest(chain, record.result)
+        delta = (
+            brief_delta_lines(previous["digest"], digest)
+            if previous is not None
+            else []
         )
-        return {"contract_id": contract_id, "key": key, "markdown": markdown}
+        markdown = build_negotiation_brief(
+            chain,
+            record.result,
+            delta_lines=delta,
+            first_export=previous is None,
+        )
+        seq = len(exports) + 1
+        versioned_key = f"contracts/{contract_id}/negotiation-brief-v{seq}.md"
+        objects.put(versioned_key, markdown.encode("utf-8"), content_type="text/markdown")
+        key = f"contracts/{contract_id}/negotiation-brief.md"
+        objects.put(key, markdown.encode("utf-8"), content_type="text/markdown")
+        exports.append(
+            {
+                "seq": seq,
+                "contract_id": contract_id,
+                "key": versioned_key,
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "digest": digest,
+            }
+        )
+        objects.put(
+            index_key,
+            json.dumps(exports, indent=2).encode("utf-8"),
+            content_type="application/json",
+        )
+        return {
+            "contract_id": contract_id,
+            "key": key,
+            "markdown": markdown,
+            "export_seq": seq,
+            "versioned_key": versioned_key,
+            "previous_export": (
+                {"contract_id": previous["contract_id"], "key": previous["key"]}
+                if previous is not None
+                else None
+            ),
+            "delta_lines": delta,
+        }
 
     def queue(self, today=None) -> list[dict]:
         """The counsel worklist: every contract still awaiting a
