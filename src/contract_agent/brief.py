@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 
-from .schemas import AgentResult
+from .schemas import AgentResult, WalkAwayOutcome
 
 
 def _flagged_count(result: AgentResult) -> int:
@@ -92,6 +92,7 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
             {"status": c.status, "found": c.found}
             for c in latest.subprocessor_drift
         ],
+        "provenance_warnings": line_provenance_warnings(chain, latest),
         "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
         "reflection_flags": sum(
             1 for e in latest.edit_reflection if e.status == "agreed_not_reflected"
@@ -219,6 +220,13 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             f"{drift['found']} ({drift['status']}) — see Exhibit "
             "findings."
         )
+    prev_warnings = set(previous.get("provenance_warnings", []))
+    for warning in current.get("provenance_warnings", []):
+        if warning not in prev_warnings:
+            lines.append(
+                f"New line-provenance warning since the last brief: "
+                f"{warning} — see Line provenance."
+            )
     if current["re_trades"] != previous["re_trades"]:
         lines.append(
             f"Re-trades across the chain: {previous['re_trades']} "
@@ -230,6 +238,122 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             "facts below are the same facts, re-exported."
         )
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Line provenance: who moved the walk-away lines, named before conceding
+# ---------------------------------------------------------------------------
+
+_OUTCOME_PHRASES = {
+    "held": "the follow-up round held it at or above the line",
+    "softened": "the follow-up round softened it — off the line, short of acceptable",
+    "dropped": "the follow-up round still sits beyond it",
+    "clause_removed": "the clause left the draft entirely — the line was neither held nor tested",
+    "pending": "no follow-up round has answered it yet",
+}
+
+
+def line_provenance_warnings(
+    chain: list[AgentResult], latest: AgentResult
+) -> list[str]:
+    """Warnings from the chain's decided walk-away lines, read by
+    ORIGIN (``walkaway.py``'s ``classify_line_origin``): a line can
+    be lost at counsel's own desk — modified or rejected before it
+    ever went out — or at the counterparty's, and the next
+    concession is a different decision depending on which. Counsel
+    sees the provenance here, in the brief, before conceding —
+    not in a profile after the fact.
+
+    Three kinds of line, all straight off the stored outcomes:
+
+    - a line counsel's desk **modified** (or **rejected**) before
+      it went out, with what the follow-up then did with it;
+    - a line that went out **intact** and the counterparty still
+      moved — provenance clean, movement theirs;
+    - the desk's own **pattern**: where most of a clause type's
+      decided lines in this chain were modified at counsel's desk
+      and the current packet again proposes the playbook's line
+      for that type, the brief says so while the choice is still
+      counsel's to make differently.
+    """
+    warnings: list[str] = []
+    decided: list[tuple[AgentResult, WalkAwayOutcome]] = [
+        (result, outcome)
+        for result in chain
+        for outcome in result.walk_away_outcomes
+    ]
+    for result, outcome in decided:
+        phrase = _OUTCOME_PHRASES.get(
+            outcome.status, f"its outcome is {outcome.status or 'unrecorded'}"
+        )
+        if outcome.origin == "modified_by_counsel":
+            warnings.append(
+                f"**{outcome.clause_type}** — decided on "
+                f"{result.contract_id}: counsel's own desk modified "
+                "this walk-away line before it went out. "
+                f"{outcome.origin_detail} Against the follow-up, "
+                f"{phrase}. What was conceded was counsel's settled "
+                "language, not the packet's line."
+            )
+        elif outcome.origin == "rejected_by_counsel":
+            warnings.append(
+                f"**{outcome.clause_type}** — decided on "
+                f"{result.contract_id}: counsel rejected the edit "
+                "carrying this walk-away line at decision time — "
+                "the line as proposed never reached the "
+                f"counterparty. Against the follow-up, {phrase}. "
+                "Read that outcome with its provenance: this line "
+                "was lost at counsel's desk first."
+            )
+        elif outcome.origin == "sent_intact" and outcome.status in (
+            "softened",
+            "dropped",
+        ):
+            warnings.append(
+                f"**{outcome.clause_type}** — decided on "
+                f"{result.contract_id}: this line went out exactly "
+                f"as the packet proposed it, and {phrase}. The "
+                "provenance is clean — the movement is the "
+                "counterparty's."
+            )
+    # The desk's own pattern, per clause type: lines whose origin
+    # is recorded at all (unmarked lines say nothing about the
+    # desk), and how many of them the desk itself modified.
+    by_type: dict[str, dict[str, int]] = {}
+    for _result, outcome in decided:
+        if outcome.origin not in (
+            "sent_intact",
+            "modified_by_counsel",
+            "rejected_by_counsel",
+        ):
+            continue
+        slot = by_type.setdefault(
+            outcome.clause_type, {"decided": 0, "modified": 0}
+        )
+        slot["decided"] += 1
+        if outcome.origin == "modified_by_counsel":
+            slot["modified"] += 1
+    current_lines = {
+        d.clause_type for d in latest.clause_diffs if d.proposed_tier == 2
+    }
+    for clause_type in sorted(by_type):
+        slot = by_type[clause_type]
+        if (
+            slot["modified"] >= 2
+            and slot["modified"] * 2 >= slot["decided"]
+            and clause_type in current_lines
+        ):
+            warnings.append(
+                f"**Pattern at counsel's own desk — {clause_type}**: "
+                f"{slot['modified']} of the {slot['decided']} decided "
+                "walk-away lines for this clause type in this chain "
+                "were modified by counsel before they went out. The "
+                "current packet again proposes the playbook's line "
+                "for it, unmodified. That is counsel's choice to "
+                "make — the record above is what the modified lines "
+                "did."
+            )
+    return warnings
 
 
 def build_negotiation_brief(
@@ -388,6 +512,24 @@ def build_negotiation_brief(
                 if diff.tier_reason:
                     lines.append(f"  - Why this tier: {diff.tier_reason}")
             lines.append("")
+
+    # -- Line provenance: who moved the lines, before counsel concedes ----
+    provenance_warnings = line_provenance_warnings(chain, latest)
+    if provenance_warnings:
+        lines.append("## Line provenance — read before conceding")
+        lines.append("")
+        lines.append(
+            "A walk-away line can be lost in two places: at "
+            "counsel's own desk, before it goes out, or at the "
+            "counterparty's, after. The warnings below read this "
+            "chain's decided lines by their origin — provenance to "
+            "weigh before conceding anything near these clauses "
+            "again."
+        )
+        lines.append("")
+        for warning in provenance_warnings:
+            lines.append(f"- ⚠ {warning}")
+        lines.append("")
 
     # -- Proposed edits ----------------------------------------------------
     lines.append("## Proposed edits (draft for counsel review)")
