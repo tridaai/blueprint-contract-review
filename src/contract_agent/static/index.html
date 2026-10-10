@@ -386,10 +386,12 @@ async function loadCalibration() {
     }
     const candidates = (data.calibration_candidates || []).join(', ');
     const dueReview = data.suspensions_due_review || [];
+    const seriallyRenewed = data.serially_renewed_types || [];
     let html = `Pattern-term calibration: applied ${esc(data.applications)}× · decided ${esc(data.decisive)}×` +
       (candidates ? ` · <span class="flag">calibration candidate(s) for counsel: ${esc(candidates)} — applied repeatedly, never decisive</span>` : ' · no calibration candidates') +
       (suspended.length ? ` · <span class="flag">suspended by counsel: ${esc(suspended.join(', '))} — the scorer no longer applies the term to those types</span>` : '') +
       (dueReview.length ? ` · <span class="flag">suspension review due: ${esc(dueReview.join(', '))} — the set-aside has reached its shelf life; counsel re-confirms or lifts it</span>` : '') +
+      (seriallyRenewed.length ? ` · <span class="flag">serially renewed set-aside(s): ${esc(seriallyRenewed.join(', '))} — renewed repeatedly across months; a standing decision wearing a review date, named in the row below</span>` : '') +
       ' · the report proposes; the term moves only when counsel moves it.';
     const rows = (data.clause_types || []).filter(r => r.calibration_candidate || r.suspended);
     if (rows.length) {

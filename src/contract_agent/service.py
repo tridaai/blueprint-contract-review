@@ -2664,6 +2664,7 @@ class ContractService:
             "calibration_candidates": report["calibration_candidates"],
             "suspended_types": report["suspended_types"],
             "suspensions_due_review": len(report["suspensions_due_review"]),
+            "serially_renewed_types": report["serially_renewed_types"],
         }
 
     def metrics(self) -> dict:

@@ -52,11 +52,25 @@ and the report says so on the row and in the headline list
 too). An overdue suspension still binds the scorer: staleness
 is counsel's prompt to act, not the agent quietly restoring a
 term counsel set aside.
+
+**Serial renewals** (round 15): re-confirmation (round 13) made
+renewing a set-aside one quiet act — and a quiet act can repeat
+forever, one review at a time, until a "temporary" set-aside is
+permanent in everything but name. The report therefore reads
+each suspension's renewals AS A SERIES: the count, the span
+from the original act to the latest renewal, and the full
+history ride on the row, and a suspension renewed at least
+``SERIAL_RENEWAL_THRESHOLD`` times is named in the headline
+list ``serially_renewed_types`` — a permanent set-aside
+wearing a review date is a different fact from a fresh
+suspension, and the report says which one counsel is looking
+at. Naming changes nothing: the scorer honours the suspension
+exactly as before.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from .options import PATTERN_TERM_CAP
 from .store import ApprovalRecord
@@ -71,6 +85,11 @@ MIN_APPLICATIONS = 2
 # expiry: close enough that the next working session should
 # see it.
 REVIEW_WINDOW_DAYS = 30
+
+# Renewed this many times, a set-aside is no longer a decision
+# being revisited — it is a standing arrangement being
+# maintained, and the report names it as a serial renewal.
+SERIAL_RENEWAL_THRESHOLD = 3
 
 
 def suspension_review_state(suspension, today: date) -> dict | None:
@@ -160,22 +179,91 @@ def _review_sentence(review: dict | None) -> str:
     return f" Review falls due on {review['review_by']}."
 
 
-def _reconfirmation_sentence(suspension) -> str:
-    """The set-aside's renewals as a sentence on a suspended
-    row: how often counsel has re-confirmed it, and the latest
-    act — the continuity of the one suspension, in the open."""
+def _stamp(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value or "")
+    except ValueError:
+        return None
+
+
+def renewal_series(suspension) -> dict | None:
+    """A suspension's renewals read AS A SERIES (round 15), or
+    None when it has never been re-confirmed: the count, the
+    span from the original set-aside to the latest renewal, the
+    full history, and whether the series has crossed the
+    serial threshold — a set-aside renewed that often is a
+    standing decision wearing a review date, and the report
+    names it as one instead of letting each quiet renewal pass
+    as a fresh look."""
     reconfirmations = getattr(suspension, "reconfirmations", None) or []
     if not reconfirmations:
+        return None
+    first = _stamp(suspension.suspended_at)
+    last = _stamp(reconfirmations[-1].at)
+    span_days = (
+        max(0, (last - first).days)
+        if first is not None and last is not None
+        else None
+    )
+    return {
+        "renewal_count": len(reconfirmations),
+        "renewal_span_days": span_days,
+        "renewal_span_months": (
+            round(span_days / 30.44, 1) if span_days is not None else None
+        ),
+        "serially_renewed": len(reconfirmations) >= SERIAL_RENEWAL_THRESHOLD,
+        "renewal_history": [
+            {
+                "actor": act.actor,
+                "at": act.at,
+                "note": act.note,
+                "review_by": act.review_by,
+            }
+            for act in reconfirmations
+        ],
+    }
+
+
+def _span_phrase(span_days: int | None) -> str:
+    if span_days is None:
         return ""
-    last = reconfirmations[-1]
-    return (
-        f" Re-confirmed {len(reconfirmations)} time(s), most "
+    if span_days >= 60:
+        months = round(span_days / 30.44, 1)
+        text = f"{months:.1f}".rstrip("0").rstrip(".")
+        return f" across {text} months"
+    if span_days >= 30:
+        return " across 1 month"
+    return f" across {span_days} day(s)"
+
+
+def _reconfirmation_sentence(suspension) -> str:
+    """The set-aside's renewals as a sentence on a suspended
+    row: how often counsel has re-confirmed it, across what
+    span, and the latest act — the continuity of the one
+    suspension, in the open. A series past the serial threshold
+    is named as what it is: a permanent set-aside wearing a
+    review date."""
+    series = renewal_series(suspension)
+    if series is None:
+        return ""
+    last = suspension.reconfirmations[-1]
+    sentence = (
+        f" Re-confirmed {series['renewal_count']} time(s)"
+        f"{_span_phrase(series['renewal_span_days'])}, most "
         f"recently by {last.actor} on {last.at} ({last.note})."
     )
+    if series["serially_renewed"]:
+        sentence += (
+            " Renewed this often, the set-aside reads as a "
+            "standing decision wearing a review date — a serial "
+            "renewal, named here for counsel to weigh as one."
+        )
+    return sentence
 
 
 def _suspension_block(suspension, today: date) -> dict:
-    """A suspension as the report carries it: the act, and its
+    """A suspension as the report carries it: the act, its
+    renewal series when it has been re-confirmed, and its
     review position when it carries a review date."""
     block = {
         "suspended_by": suspension.suspended_by,
@@ -193,6 +281,17 @@ def _suspension_block(suspension, today: date) -> dict:
                 "last_reconfirmation_note": last.note,
             }
         )
+        series = renewal_series(suspension)
+        if series is not None:
+            block.update(
+                {
+                    "renewal_count": series["renewal_count"],
+                    "renewal_span_days": series["renewal_span_days"],
+                    "renewal_span_months": series["renewal_span_months"],
+                    "serially_renewed": series["serially_renewed"],
+                    "renewal_history": series["renewal_history"],
+                }
+            )
     review = suspension_review_state(suspension, today)
     if review is not None:
         block.update(
@@ -361,6 +460,12 @@ def pattern_calibration(
         )
     rows.sort(key=lambda row: (-row["applications"], row["clause_type"]))
     alerts = suspension_review_alerts(suspensions, today)
+    serially_renewed = sorted(
+        clause_type
+        for clause_type, suspension in active.items()
+        if (series := renewal_series(suspension)) is not None
+        and series["serially_renewed"]
+    )
     return {
         "term_cap": PATTERN_TERM_CAP,
         "min_applications": MIN_APPLICATIONS,
@@ -371,4 +476,5 @@ def pattern_calibration(
         "suspended_types": sorted(active),
         "suspensions_due_review": [a["clause_type"] for a in alerts],
         "suspension_review_alerts": alerts,
+        "serially_renewed_types": serially_renewed,
     }
