@@ -232,12 +232,37 @@ termination + duration (calendar months, day clamped) when
 it does — computed in code, flagged `computed`, and flowing
 into `/obligations/due` and the deadline sweep on their dates.
 
+**Commercial covenant clocks** (`obligations.py`, round 18).
+The clocks were scoped to employment letters; services
+agreements carry the same machinery in their own vocabulary.
+A commercial agreement's covenants now register too: a
+`non_compete`-typed clause names its compete and solicit
+clocks on the commercial register, and two kinds the
+employment register never sees — `exclusivity` (an
+appointment of one party as the other's exclusive provider)
+and `non_circumvention` — read straight from the clauses that
+state them. The anchor differs from the letter's: a
+commercial covenant runs from the agreement's own termination
+machinery, so its expiry is computed from the end date the
+agreement states for itself where it states one, and the
+entry is undated with the anchor stated ("termination or
+expiry of the Agreement") while it states none — never a date
+invented for tidiness. The guards are the point: a
+non-exclusive licence and an exclusive-jurisdiction clause
+register nothing (the word is not the covenant), and a clause
+typed `non_compete` whose text names no covenant mints none
+from the signals fallback. The commercial kinds join every
+surface the employment kinds have — the due view, the
+follow-through, the sweep, the lapsed readings, the biography
+below — under one set, `ALL_COVENANT_KINDS`.
+
 **Covenant expiries announced distinctly** (`ContractService.
 dispatch_obligation_sweep`, round 15). In the sweep a
 covenant's date is not a duty falling due — it is the day a
 restriction *lifts*, and the counterparty's counsel watches
-for it for exactly that reason. Due `non_compete` /
-`non_solicit` entries (`COVENANT_KINDS`) therefore draw a
+for it for exactly that reason. Due covenant entries (the
+kinds of `ALL_COVENANT_KINDS`, employment and commercial
+alike) therefore draw a
 `covenant_expiring` event instead of `obligation_due`,
 carrying the kind and `effect: restriction_lapses`, and the
 report counts them separately (`covenant_count`,
@@ -336,6 +361,24 @@ question, for counsel's own read of the register), and neither
 does a letter carrying no fresh covenant of the kind. The
 readings surface in the negotiation brief's exhibit findings
 and its since-the-last-brief delta, beside the drift checks.
+
+**Covenant biography** (`covenant_biography.py`, round 18).
+The annexes and the certificate chain have whole-chain
+biographies; the covenants were the remaining pairwise story.
+The biography rides the annex-history view (`covenants`): one
+row per round — the covenants its stored register carries,
+each with its clock, its lapse state as of today, and its
+follow-through state read with the register's own
+`follow_through_state`, plus the new-bargain readings stored
+on the round — one step per round pair naming each kind's
+movement (introduced, dropped, duration changed, expiry
+moved), with a lapsed prior covenant carried afresh named as
+the new bargain it is, and a summary that names the lapses
+still standing open and the ones closed on the record. It is
+read off the stored registers and records, never reconstructed
+from the paper, so the biography cannot disagree with the
+findings it narrates — and it is absent (null) for a chain
+whose negotiation never carried a covenant.
 
 **Certificate renewal evidence** (`certificate_renewal.py`,
 round 12). A renewal certificate is a cross-round fact too:
@@ -522,6 +565,17 @@ its casualties. It reads back at
 panel, and it is append-only: nothing prunes the prunes, so
 "what delivery history do we no longer hold, and who removed
 it?" always has an answer.
+
+**The ledger, trended** (`prune_ledger_readings`, round 18).
+A readable ledger is not yet a measured one: the readings
+aggregate the prune acts into `/metrics`' webhooks block,
+beside the staleness numbers — total prune acts and
+removed-entry counts, all-time and over the trailing 30 days,
+and the last prune by name, stamp, and retention in force. A
+ledger growing fast is history being retired fast; a last
+prune long ago beside a growing outbox is retention nobody is
+running — both are now numbers legal ops manages to, not
+surprises found in an audit.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -1061,6 +1115,23 @@ watch rows, `GET /contracts/{id}/certificate-watch`, and the
 certificate biography carry. The acts close the question of
 whether anyone acted; they do not close the watch — only an
 evidenced renewal does that.
+
+**The chase ages** (`follow_through_ageing`, round 18). A
+chase is a question asked of the counterparty, and a question
+can go unanswered. `follow_through_ageing` reads each watch's
+acts into an ageing — the chase (by whom, when), its age in
+days, and a stale flag: chased at least
+`CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS` (default 30)
+ago with the state still `renewal_chased`. The watch row
+carrying the reading is itself the proof the chase is
+unanswered: an evidenced renewal would have moved the watch
+off the record the chase stands on. Stale chases resurface on
+the counsel queue (`stale_watch_follow_throughs` on
+`GET /queue`), oldest first, beside the suspension and serial
+alerts — the stale-failure discipline applied to a human wait.
+An accepted risk is a decision, not a question, and never
+reads stale; an open watch has no chase to age; an unstamped
+act has no age and fails closed, like the outbox's readings.
 
 ## Production topology
 

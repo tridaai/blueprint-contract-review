@@ -59,7 +59,16 @@ For each contract, the pipeline:
    their own, each period read from the sentences that state
    that covenant, undated while termination is a future event —
    and expiring at termination + duration, computed and flagged
-   computed, when the letter states its termination date. The same pass also runs **exhibit
+   computed, when the letter states its termination date.
+   Commercial agreements carry the same clocks: an exclusivity
+   appointment, a non-circumvention covenant, and a commercial
+   non-compete / non-solicit clause register as covenant
+   entries on the commercial register, running from the
+   agreement's own termination machinery — dated in code from
+   the end date the agreement states for itself, undated with
+   the anchor stated while it states none — and the word alone
+   is not a covenant: a non-exclusive licence and an
+   exclusive-jurisdiction clause register nothing. The same pass also runs **exhibit
    consistency checks**: when the data protection clause ties its
    promises to an attached DPA exhibit (a 24-hour breach window, a
    sub-processor list), the exhibit's own text is checked against
@@ -148,6 +157,10 @@ For each contract, the pipeline:
    removed — a prune that removed nothing included — so the
    act that removes delivery history leaves a record and the
    ledger's own gaps are auditable; nothing prunes the prunes.
+   The ledger is **trended in `/metrics`** too: prune counts
+   and removed-entry totals, all-time and over the trailing
+   30 days, and the last prune by name — so retention itself
+   is a number legal ops watches, beside the staleness numbers.
    And the renewal check's
    requirement set is **composed across the whole chain**: each
    requirement from the round that last set it — a round sets a
@@ -183,7 +196,15 @@ For each contract, the pipeline:
    promise priced on its own terms, not a continuation of
    the restriction that lapsed; the readings ride the
    negotiation brief's exhibit findings beside the drift
-   checks.
+   checks. The same annex-history view carries the **covenant
+   biography**: the covenants' whole life in one timeline —
+   each round's covenants and clocks, what each step
+   introduced, dropped, lengthened, shortened, or moved, each
+   lapse and the state of its follow-through, and the
+   new-bargain readings riding on the later rounds —
+   employment and commercial covenants alike, read off the
+   stored registers so the biography cannot disagree with the
+   findings it narrates.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -435,8 +456,10 @@ per deadline, and returns a dispatch report. Report-only: the sweep
 sends nothing — delivery belongs to the event consumer.
 Restrictive-covenant expiries are announced **as what they are**:
 a covenant's date is the day a restriction *lifts*, the
-operational opposite of a duty falling due, so a due
-`non_compete`/`non_solicit` entry draws a `covenant_expiring`
+operational opposite of a duty falling due, so a due covenant
+entry — `non_compete`, `non_solicit`, `exclusivity`,
+`non_circumvention`, employment and commercial alike — draws a
+`covenant_expiring`
 event (kind and `effect: restriction_lapses` on the event),
 counted separately in the report and listed under `covenants`
 — consumers route "a former employee may now be hired"
@@ -485,7 +508,14 @@ and the watch rows, the per-contract reading
 biography read the acts back as a state, so a watch nobody
 acted on reads as open. The acts close the question of
 whether anyone acted; only an evidenced renewal closes the
-watch itself.
+watch itself. And the chase **ages**: a renewal chased
+`CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS` (default 30)
+ago with the watch still standing — no evidenced renewal has
+arrived, or the watch would have moved — reads **stale** on
+the watch row, and the quiet chases resurface on the counsel
+queue (`stale_watch_follow_throughs`) beside its other
+attention lists; an accepted risk is a decision, not a
+question, and never goes stale.
 
 **Queue ownership and SLA.** The counsel queue (`GET /queue`) is a
 worklist with an owner and a clock: an operator records an assignee
@@ -554,7 +584,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 527 tests (526 run + 1 Postgres-gated skip)
+make test                  # 559 tests (558 run + 1 Postgres-gated skip)
 make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
