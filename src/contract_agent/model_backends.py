@@ -406,7 +406,7 @@ class _BaseLLMBackend:
 
     def _playbook_block(self, context: DraftContext) -> str:
         return "\n".join(
-            f"- [{g.get("playbook_id") or g.get("policy_id") or g.get("guideline_id")}] {g['title']}: {g['text']}"
+            f"- [{g.get('playbook_id') or g.get('policy_id') or g.get('guideline_id')}] {g['title']}: {g['text']}"
             + (f"\n  Fallback language: {g['fallback_language']}" if g.get("fallback_language") else "")
             + (f"\n  Walk-away line (tier 2): {g['walk_away_line']}" if g.get("walk_away_line") else "")
             for g in context.get("playbook_details", [])
