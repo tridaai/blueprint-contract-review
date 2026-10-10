@@ -33,6 +33,16 @@ Both rounds must carry a certificate and the prior round's
 agreement must state a requirement set; without either, there
 is nothing cross-round to check and the single-round checks
 own the record.
+
+Every requirement the renewal is judged against carries its
+provenance (round 13): the round that set it and the clause
+that states it — "set by CTR-2029 §7 (Insurance)" — named on
+the check's detail, per requirement. On a long chain the
+requirement set a renewal must evidence may have been imposed
+across several rounds (an amendment that raised a limit in
+round 2 is not the root round's bargain), and counsel reading
+a failed renewal should see which round's clause each failed
+requirement came from, not a blended "original terms".
 """
 
 from __future__ import annotations
@@ -49,6 +59,72 @@ from .exhibit_review import (
     _normalise_name,
 )
 from .schemas import ContractInput, ExhibitCheck
+
+
+def _requirement_provenance(
+    prior: ContractInput, required_limits: dict[str, float]
+) -> dict[str, str]:
+    """Where each of the prior round's insurance requirements was
+    set, as a line counsel can follow: ``CTR-2029 §7 (Insurance)``.
+
+    The prior agreement is cut with the pipeline's own segmenter,
+    and each requirement — a coverage limit, an endorsement, the
+    named-insured term — is placed in the clause whose text
+    states it. A limit is placed at the clause stating the amount
+    the requirement actually is: where two clauses state the
+    same cover (the root clause and a later uplift), the
+    requirement is the higher statement, and its provenance is
+    the clause that set it there — an amendment is judged from
+    the amendment, not the root. A requirement no single clause
+    states (carried by the agreement as a whole) is attributed
+    to the round's agreement, plainly, rather than to a clause
+    it does not live in."""
+    from .segmentation import segment_text
+
+    units = segment_text(prior.agreement_text())
+
+    def place(unit) -> str:
+        if unit is None:
+            return f"{prior.contract_id} (agreement)"
+        if unit.ref:
+            label = f"{prior.contract_id} §{unit.ref}"
+            return f"{label} ({unit.heading})" if unit.heading else label
+        if unit.heading:
+            return f"{prior.contract_id} — {unit.heading}"
+        return f"{prior.contract_id} (agreement)"
+
+    provenance: dict[str, str] = {}
+    for key, required in required_limits.items():
+        unit = next(
+            (
+                u for u in units
+                if _coverage_amounts(u.text).get(key) == required
+            ),
+            None,
+        ) or next(
+            (u for u in units if key in _coverage_amounts(u.text)),
+            None,
+        )
+        if unit is not None:
+            provenance[key] = place(unit)
+    for phrase in ("additional insured", "waiver of subrogation"):
+        unit = next(
+            (u for u in units if phrase in (u.text or "").lower()),
+            None,
+        )
+        if unit is not None:
+            provenance[phrase] = place(unit)
+    cert_unit = next(
+        (
+            u for u in units
+            if "certificate of insurance" in (u.text or "").lower()
+            or "named insured" in (u.text or "").lower()
+        ),
+        None,
+    )
+    if cert_unit is not None:
+        provenance["named_insured"] = place(cert_unit)
+    return provenance
 
 
 def build_certificate_renewal(
@@ -78,6 +154,31 @@ def build_certificate_renewal(
         return []  # the original terms required nothing checkable
     labels = {key: label for key, label, _ in _COVERAGE_KEYS}
     counterparty = prior.counterparty_name or current.counterparty_name or ""
+    # Provenance: which round, and which clause in it, set each
+    # requirement — named on the findings below, per requirement,
+    # so a failed renewal shows its evidence chain.
+    provenance = _requirement_provenance(prior, required_limits)
+
+    def set_by(key: str) -> str:
+        return f" (set by {provenance[key]})" if key in provenance else ""
+
+    requirement_lines: list[str] = []
+    if counterparty:
+        requirement_lines.append(
+            f"named insured {counterparty}{set_by('named_insured')}"
+        )
+    for key in sorted(required_limits):
+        requirement_lines.append(
+            f"{labels[key]} at {_fmt_money(required_limits[key])}{set_by(key)}"
+        )
+    for required_flag, phrase in (
+        (additional_required, "additional insured"),
+        (waiver_required, "waiver of subrogation"),
+    ):
+        if required_flag:
+            requirement_lines.append(
+                f"the {phrase} endorsement{set_by(phrase)}"
+            )
 
     cert_text = current_cert.raw_text
     cert_lower = cert_text.lower()
@@ -86,11 +187,16 @@ def build_certificate_renewal(
     if counterparty:
         found_name = _named_insured(cert_text)
         if not found_name:
-            drops.append("it names no insured at all")
+            drops.append(
+                f"it names no insured at all, where the original "
+                f"terms require {counterparty} to be named"
+                f"{set_by('named_insured')}"
+            )
         elif _normalise_name(found_name) != _normalise_name(counterparty):
             drops.append(
                 f"it names {found_name} as the insured, not "
-                f"{counterparty}"
+                f"{counterparty} (the named insured the original "
+                f"terms require{set_by('named_insured')})"
             )
     for key in sorted(required_limits):
         required = required_limits[key]
@@ -98,14 +204,15 @@ def build_certificate_renewal(
         if stated is None:
             drops.append(
                 f"{labels[key]} cover — required at "
-                f"{_fmt_money(required)} under the original terms "
-                "— is not stated on it at all"
+                f"{_fmt_money(required)} under the original terms"
+                f"{set_by(key)} — is not stated on it at all"
             )
         elif stated < required:
             drops.append(
                 f"{labels[key]} cover stands at "
                 f"{_fmt_money(stated)}, below the "
                 f"{_fmt_money(required)} the original terms require"
+                f"{set_by(key)}"
             )
     for required_flag, phrase in (
         (additional_required, "additional insured"),
@@ -114,7 +221,7 @@ def build_certificate_renewal(
         if required_flag and _endorsement_present(cert_lower, phrase) is not True:
             drops.append(
                 f"the {phrase} endorsement the original terms "
-                "require is not shown on it"
+                f"require{set_by(phrase)} is not shown on it"
             )
 
     doc_id = current_cert.document_id or current_cert.doc_type
@@ -168,10 +275,9 @@ def build_certificate_renewal(
             f"The renewal certificate extends cover from "
             f"{prior_expiry.isoformat()} to "
             f"{current_expiry.isoformat()} and evidences every "
-            "requirement the original terms set — the same "
-            "limits, the same endorsements, the same named "
-            "insured. The renewal watch on the earlier expiry "
-            "closes on this evidence: the cover counsel relied "
-            "on is the cover now in force."
+            "requirement the original terms set: "
+            f"{'; '.join(requirement_lines)}. The renewal watch "
+            "on the earlier expiry closes on this evidence: the "
+            "cover counsel relied on is the cover now in force."
         ),
     )]
