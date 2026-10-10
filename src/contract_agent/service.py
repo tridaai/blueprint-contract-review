@@ -452,6 +452,7 @@ class ContractService:
         self._attach_round_diff(model, result)
         self._attach_subprocessor_drift(model, result)
         self._attach_certificate_renewal(model, result)
+        self._attach_prior_invention_drift(model, result)
         self._get_store().save(
             ApprovalRecord(
                 result=result,
@@ -699,6 +700,41 @@ class ContractService:
                 title=(
                     f"Certificate renewal vs {prior_model.contract_id}'s "
                     f"original terms: {check.status}"
+                ),
+                details=[check.detail],
+            )
+        )
+
+    def _attach_prior_invention_drift(
+        self, model: ContractInput, result: AgentResult
+    ) -> None:
+        """Prior-invention schedule drift (``prior_invention_drift.py``):
+        when this round supersedes a stored one, the schedule's
+        movement between the rounds is computed and attached — a
+        removal is the finding, because the assignment excludes
+        what the schedule lists. Attached after the run, like the
+        sub-processor drift: the comparison needs the prior
+        round's stored package."""
+        if not model.supersedes or model.supersedes == model.contract_id:
+            return
+        prior = self._get_store().get(model.supersedes)
+        if prior is None or not prior.contract:
+            return
+        from .prior_invention_drift import build_prior_invention_drift
+        from .schemas import TraceStep
+
+        prior_model = ContractInput.model_validate(prior.contract)
+        drift = build_prior_invention_drift(prior_model, model)
+        if not drift:
+            return
+        result.prior_invention_drift = drift
+        check = drift[0]
+        result.trace.append(
+            TraceStep(
+                name="prior_invention_drift",
+                title=(
+                    f"Prior-invention schedule drift vs "
+                    f"{prior_model.contract_id}: {check.status}"
                 ),
                 details=[check.detail],
             )

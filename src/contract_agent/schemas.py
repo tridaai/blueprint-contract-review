@@ -718,6 +718,7 @@ class AgentResult(BaseModel):
     exhibit_checks: list[ExhibitCheck] = Field(default_factory=list)
     subprocessor_drift: list[ExhibitCheck] = Field(default_factory=list)  # the DPA annex's movement vs the prior round of the chain (subprocessor_drift.py) — cross-round, so attached by the service after the run, like round_diff
     certificate_renewal: list[ExhibitCheck] = Field(default_factory=list)  # a renewal certificate read against the ORIGINAL round's requirement set (certificate_renewal.py) — cross-round, attached by the service after the run; the renewal watch closes on this evidence or not at all
+    prior_invention_drift: list[ExhibitCheck] = Field(default_factory=list)  # the prior-invention schedule's movement vs the prior round of the chain (prior_invention_drift.py) — a removal is a finding: an invention that leaves the schedule falls into the assignment
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""

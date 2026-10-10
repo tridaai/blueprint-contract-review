@@ -493,10 +493,10 @@ function render(result) {
           <td>${esc(o.source_clause_id)}${o.source_ref ? ' (§' + esc(o.source_ref) + ')' : ''}</td></tr>`).join('')}
         </tbody></table>`
       : `<p class="empty">No dated or recurring obligations extracted from this contract.</p>`);
-  const allExhibitChecks = (result.exhibit_checks || []).concat(result.subprocessor_drift || [], result.certificate_renewal || []);
+  const allExhibitChecks = (result.exhibit_checks || []).concat(result.subprocessor_drift || [], result.certificate_renewal || [], result.prior_invention_drift || []);
   if (allExhibitChecks.length) {
     const chkPill = s => s === 'consistent' ? pill('consistent', 'good') : s === 'mismatch' ? pill('mismatch', 'bad') : s === 'exhibit_missing' ? pill('exhibit missing', 'bad') : pill('missing in exhibit', 'warn');
-    html += `<h3>Exhibit consistency <span class="note">(cross-document checks in code — does the exhibit contain what the clause promises? subprocessor_list_drift and insurance_certificate_renewal are cross-round: the annex's movement since the prior round, and the renewal certificate read against the original round's terms)</span></h3>
+    html += `<h3>Exhibit consistency <span class="note">(cross-document checks in code — does the exhibit contain what the clause promises? subprocessor_list_drift, insurance_certificate_renewal and prior_invention_schedule_drift are cross-round: the annex's movement since the prior round, the renewal certificate read against the original round's terms, and the prior-invention schedule's movement — a removal there is a finding)</span></h3>
     <table><thead><tr><th>Check</th><th>Promised</th><th>Exhibit says</th><th>Status</th><th>Detail</th></tr></thead><tbody>
     ${allExhibitChecks.map(c => `<tr>
       <td>${esc(c.name)}</td>

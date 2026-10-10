@@ -96,6 +96,10 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
             {"status": c.status, "found": c.found}
             for c in latest.certificate_renewal
         ],
+        "prior_invention_drift": [
+            {"status": c.status, "found": c.found}
+            for c in latest.prior_invention_drift
+        ],
         "provenance_warnings": line_provenance_warnings(chain, latest),
         "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
         "reflection_flags": sum(
@@ -232,6 +236,15 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             f"Certificate renewal vs the original terms: "
             f"{renewal['found']} ({renewal['status']}) — see "
             "Exhibit findings."
+        )
+    cur_pi = current.get("prior_invention_drift", [])
+    prev_pi = previous.get("prior_invention_drift", [])
+    if cur_pi and cur_pi != prev_pi:
+        pi = cur_pi[0]
+        lines.append(
+            f"Prior-invention schedule drift vs the prior round: "
+            f"{pi['found']} ({pi['status']}) — see Exhibit "
+            "findings."
         )
     prev_warnings = set(previous.get("provenance_warnings", []))
     for warning in current.get("provenance_warnings", []):
@@ -652,6 +665,7 @@ def build_negotiation_brief(
         list(latest.exhibit_checks)
         + list(latest.subprocessor_drift)
         + list(latest.certificate_renewal)
+        + list(latest.prior_invention_drift)
     )
     if not exhibit_rows:
         lines.append(
@@ -682,6 +696,15 @@ def build_negotiation_brief(
                 "the ORIGINAL round's insurance requirement set — "
                 "the renewal watch closes on this evidence, not "
                 "on the certificate's arrival."
+            )
+        if latest.prior_invention_drift:
+            lines.append("")
+            lines.append(
+                "The `prior_invention_schedule_drift` row is "
+                "cross-round: the schedule's movement since the "
+                "previous round of this chain — a removal is a "
+                "finding, because the assignment excludes what "
+                "the schedule lists."
             )
     lines.append("")
 
