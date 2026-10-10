@@ -29,6 +29,17 @@ A clause type whose term has been applied at least
 changes nothing. The cap moves only when a human moves it, with
 this evidence on the table — the same discipline the playbook
 proposals follow, applied to the scorer itself.
+
+**Acted on** (round 11): counsel can close the loop the way the
+proposals close theirs — suspend the term for a flagged type
+(``PatternTermSuspension``: actor + reason, reversible by a
+recorded lift). While a suspension is active the scorer does not
+apply the term to that type, and this report reads the type as
+**suspended** — naming who set it aside, when, and why — instead
+of re-flagging it as a candidate every run. The historical facts
+(applications, decisive count) are reported as they stand: a
+suspension stops future applications, it does not rewrite the
+record the decision was taken on.
 """
 
 from __future__ import annotations
@@ -67,9 +78,18 @@ def _follow_through(result, clause_id: str) -> str:
     return "sent_by_counsel"
 
 
-def pattern_calibration(records: list[ApprovalRecord]) -> dict:
+def pattern_calibration(
+    records: list[ApprovalRecord], suspensions=()
+) -> dict:
     """The calibration report over the stored records, per clause
-    type the pattern term has ever touched."""
+    type the pattern term has ever touched. ``suspensions`` are the
+    calibration store's records (``PatternTermSuspension``): an
+    actively suspended type is read as suspended — never as a
+    candidate — and a type counsel suspended before the term ever
+    landed still gets a row, so the set-aside is visible."""
+    active = {
+        s.clause_type: s for s in suspensions if s.status == "active"
+    }
     per_type: dict[str, dict] = {}
     for record in records:
         result = record.result
@@ -109,11 +129,49 @@ def pattern_calibration(records: list[ApprovalRecord]) -> dict:
     rows: list[dict] = []
     candidates: list[str] = []
     for slot in per_type.values():
+        suspension = active.get(slot["clause_type"])
         candidate = (
-            slot["applications"] >= MIN_APPLICATIONS and slot["decisive"] == 0
+            slot["applications"] >= MIN_APPLICATIONS
+            and slot["decisive"] == 0
+            and suspension is None
         )
         if candidate:
             candidates.append(slot["clause_type"])
+        if suspension is not None:
+            detail = (
+                f"The pattern term for {slot['clause_type']} is "
+                f"SUSPENDED — set aside by {suspension.suspended_by} "
+                f"on {suspension.suspended_at} ({suspension.reason}). "
+                "The scorer no longer applies it to this type; the "
+                f"record it was suspended on stands at "
+                f"{slot['applications']} application(s), "
+                f"{slot['decisive']} decisive. Counsel can lift the "
+                "suspension to restore the term."
+            )
+        elif candidate:
+            detail = (
+                f"The pattern term has been applied to "
+                f"{slot['applications']} scored option(s) for "
+                f"{slot['clause_type']} and has never changed "
+                "which option the packet recommended — counsel "
+                "may want to review whether the term earns its "
+                f"{PATTERN_TERM_CAP:.0f} points for this type. "
+                "This report proposes; it changes nothing."
+            )
+        elif slot["decisive"]:
+            detail = (
+                f"The pattern term decided "
+                f"{slot['decisive']} of its {slot['applications']} "
+                f"application(s) for {slot['clause_type']}."
+            )
+        else:
+            detail = (
+                f"The pattern term has been applied "
+                f"{slot['applications']} time(s) for "
+                f"{slot['clause_type']} — below the "
+                f"{MIN_APPLICATIONS}-application threshold for a "
+                "calibration judgement."
+            )
         rows.append(
             {
                 "clause_type": slot["clause_type"],
@@ -126,24 +184,51 @@ def pattern_calibration(records: list[ApprovalRecord]) -> dict:
                 "rejected_by_counsel": slot["rejected_by_counsel"],
                 "unmarked": slot["unmarked"],
                 "calibration_candidate": candidate,
+                "suspended": suspension is not None,
+                "suspension": (
+                    {
+                        "suspended_by": suspension.suspended_by,
+                        "suspended_at": suspension.suspended_at,
+                        "reason": suspension.reason,
+                    }
+                    if suspension is not None
+                    else None
+                ),
+                "detail": detail,
+            }
+        )
+    # A type counsel suspended before the term ever landed has no
+    # applications to build a row from — it still gets one, so the
+    # set-aside is visible in the report that governs the term.
+    for clause_type, suspension in active.items():
+        if clause_type in per_type:
+            continue
+        rows.append(
+            {
+                "clause_type": clause_type,
+                "applications": 0,
+                "contracts": 0,
+                "decisive": 0,
+                "applied_not_decisive": 0,
+                "decided_applications": 0,
+                "sent_by_counsel": 0,
+                "rejected_by_counsel": 0,
+                "unmarked": 0,
+                "calibration_candidate": False,
+                "suspended": True,
+                "suspension": {
+                    "suspended_by": suspension.suspended_by,
+                    "suspended_at": suspension.suspended_at,
+                    "reason": suspension.reason,
+                },
                 "detail": (
-                    f"The pattern term has been applied to "
-                    f"{slot['applications']} scored option(s) for "
-                    f"{slot['clause_type']} and has never changed "
-                    "which option the packet recommended — counsel "
-                    "may want to review whether the term earns its "
-                    f"{PATTERN_TERM_CAP:.0f} points for this type. "
-                    "This report proposes; it changes nothing."
-                    if candidate
-                    else f"The pattern term decided "
-                    f"{slot['decisive']} of its {slot['applications']} "
-                    f"application(s) for {slot['clause_type']}."
-                    if slot["decisive"]
-                    else f"The pattern term has been applied "
-                    f"{slot['applications']} time(s) for "
-                    f"{slot['clause_type']} — below the "
-                    f"{MIN_APPLICATIONS}-application threshold for a "
-                    "calibration judgement."
+                    f"The pattern term for {clause_type} is "
+                    f"SUSPENDED — set aside by "
+                    f"{suspension.suspended_by} on "
+                    f"{suspension.suspended_at} ({suspension.reason}). "
+                    "The term has not been applied to any scored "
+                    "option for this type; while the suspension "
+                    "stands, the scorer will not apply it."
                 ),
             }
         )
@@ -155,4 +240,5 @@ def pattern_calibration(records: list[ApprovalRecord]) -> dict:
         "decisive": sum(row["decisive"] for row in rows),
         "clause_types": rows,
         "calibration_candidates": sorted(candidates),
+        "suspended_types": sorted(active),
     }

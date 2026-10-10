@@ -51,6 +51,7 @@ from .schemas import (
     ContractInput,
     DecisionRequest,
     EditOutcomesRequest,
+    PatternSuspensionRequest,
     ProposalDecisionRequest,
 )
 from .wiring import build_service_from_env
@@ -254,8 +255,72 @@ def pattern_calibration() -> dict:
     recommendation, and what counsel did with those escalations on
     decided records. Types whose term never decided anything are
     flagged as calibration candidates — the report proposes for
-    counsel; it changes nothing itself."""
+    counsel; it changes nothing itself. A type under an active
+    suspension is read as suspended, with the act on its row."""
     return service.pattern_calibration()
+
+
+@app.get("/options/pattern-calibration/suspensions", dependencies=_AUTH)
+def pattern_suspensions() -> dict:
+    """The pattern-term suspensions on record: clause types whose
+    term counsel has set aside (active), and the ones since lifted
+    — each with the actor, the reason, and both stamps."""
+    suspensions = service.pattern_suspensions()
+    return {
+        "count": len(suspensions),
+        "suspensions": [s.model_dump(mode="json") for s in suspensions],
+    }
+
+
+@app.post("/options/pattern-calibration/suspend", dependencies=_AUTH)
+def suspend_pattern_term(request: PatternSuspensionRequest):
+    """Counsel acts on a calibration candidate: the pattern term
+    for the clause type is suspended — the scorer stops applying
+    it to that type, and the calibration report reads the type as
+    suspended. Requires the actor's name and a reason (the
+    request's 'note') — both go on the record. Reversible via the
+    lift endpoint. The agent never calls this."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the counsel member suspending this term.",
+        )
+    if not (request.note or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'note' — the reason for suspending this term.",
+        )
+    try:
+        suspension = service.suspend_pattern_term(
+            request.clause_type or "", actor=actor, reason=request.note or ""
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return suspension.model_dump(mode="json")
+
+
+@app.post("/options/pattern-calibration/lift", dependencies=_AUTH)
+def lift_pattern_suspension(request: PatternSuspensionRequest):
+    """Counsel lifts a pattern-term suspension: the term applies
+    to the clause type again from the next analysis. Requires the
+    actor's name; the lift is stamped on the suspension record,
+    beside the act it reverses."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the counsel member lifting this suspension.",
+        )
+    try:
+        suspension = service.lift_pattern_suspension(
+            request.clause_type or "", actor=actor, note=request.note or ""
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return suspension.model_dump(mode="json")
 
 
 @app.get("/queue", dependencies=_AUTH)

@@ -847,3 +847,47 @@ class ProposalDecisionRequest(BaseModel):
 
     actor: Optional[str] = None
     note: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Pattern-term suspensions (calibration acted on — counsel owns the cap)
+# ---------------------------------------------------------------------------
+
+class PatternTermSuspension(BaseModel):
+    """Counsel's act on a calibration candidate (round 11): the
+    reflection-pattern score term for one clause type, set aside.
+
+    The calibration report (``pattern_calibration.py``) flags a
+    clause type whose pattern term has been applied repeatedly and
+    never decided anything — and proposes nothing more. This record
+    is what acting on that flag looks like: counsel suspends the
+    term for the type, with their name and reason on the record;
+    from that moment the option scorer does not apply the term to
+    the type (``ContractService._analyze_model`` filters the
+    chain's pattern types through the active suspensions), and the
+    calibration report reads the type as suspended instead of
+    re-flagging it as a candidate every run. The suspension is
+    reversible — counsel lifts it, again with a name — and the
+    record keeps both acts, so why the scorer treats the type the
+    way it does is always answerable from the record. The cap
+    itself never moves; what is suspended is the term's
+    application to one type, nothing wider."""
+
+    clause_type: str
+    status: str = "active"  # active | lifted
+    suspended_by: str = ""
+    suspended_at: str = ""
+    reason: str = ""  # required at suspension — an unexplained set-aside is how scorers silently rot
+    lifted_by: str = ""
+    lifted_at: str = ""
+    lift_note: str = ""
+
+
+class PatternSuspensionRequest(BaseModel):
+    """Counsel's suspension (or lift) of a pattern term for one
+    clause type. The actor is required, and a suspension requires
+    the note as its reason — both go on the record."""
+
+    clause_type: Optional[str] = None
+    actor: Optional[str] = None
+    note: Optional[str] = None

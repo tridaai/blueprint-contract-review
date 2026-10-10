@@ -42,6 +42,7 @@ from .graph import resume_decision, run_contract
 from .model_backends import ModelBackend, get_backend
 from .objectstore import get_object_store
 from .ports import Checkpointer, EventSink, ObjectStore
+from .calibration_store import CalibrationStore, default_calibration_store
 from .proposal_store import PlaybookProposalStore, default_proposal_store
 from .retriever import Retriever, get_retriever
 from .schemas import (
@@ -50,6 +51,7 @@ from .schemas import (
     ContractInput,
     EditOutcome,
     EditOutcomeInput,
+    PatternTermSuspension,
     PlaybookProposal,
 )
 from .store import ApprovalRecord, counterparty_summary, default_store
@@ -248,6 +250,7 @@ class ContractService:
     checkpointer: Checkpointer | bool | None = None
     object_store: ObjectStore | None = None
     proposal_store: PlaybookProposalStore | None = None
+    calibration_store: CalibrationStore | None = None
     _resolved_store: Store | None = field(default=None, repr=False)
     _resolved_checkpointer: Checkpointer | None = field(default=None, repr=False)
     _checkpointer_resolved: bool = field(default=False, repr=False)
@@ -256,6 +259,9 @@ class ContractService:
         default=None, repr=False
     )
     _proposals_registered: bool = field(default=False, repr=False)
+    _resolved_calibration_store: CalibrationStore | None = field(
+        default=None, repr=False
+    )
 
     def _get_store(self) -> Store:
         if self._resolved_store is None:
@@ -281,6 +287,13 @@ class ContractService:
                     )
             self._refresh_retriever()
         return self._resolved_proposal_store
+
+    def _get_calibration_store(self) -> CalibrationStore:
+        if self._resolved_calibration_store is None:
+            self._resolved_calibration_store = (
+                self.calibration_store or default_calibration_store()
+            )
+        return self._resolved_calibration_store
 
     def _refresh_retriever(self) -> None:
         """Push newly registered playbook entries into the held
@@ -414,6 +427,13 @@ class ContractService:
         # so the options stop scoring a twice-undelivered clause as
         # if nothing had happened.
         pattern_types = self._reflection_pattern_types(model)
+        # Calibration acted on: a clause type whose pattern term
+        # counsel has suspended does not get the term, whatever its
+        # chain's patterns say — the set-aside is counsel's, and
+        # the scorer honours it from the moment it is recorded.
+        suspended = self._suspended_pattern_types()
+        if suspended:
+            pattern_types = pattern_types - suspended
         if pattern_types:
             history = {
                 **(history or {}),
@@ -1850,6 +1870,96 @@ class ContractService:
         self._refresh_retriever()
         return proposal
 
+    def _suspended_pattern_types(self) -> set[str]:
+        """Clause types whose pattern term is under an ACTIVE
+        suspension — read from the calibration store on every
+        analysis, so a suspension (or its lift) takes effect on
+        the next run, not the next restart."""
+        return {
+            s.clause_type
+            for s in self._get_calibration_store().all()
+            if s.status == "active"
+        }
+
+    def pattern_suspensions(self) -> list[PatternTermSuspension]:
+        """Every suspension record, active first: the acts counsel
+        has taken on the pattern term, with both stamps."""
+        suspensions = self._get_calibration_store().all()
+        return sorted(
+            suspensions, key=lambda s: (s.status != "active", s.clause_type)
+        )
+
+    def suspend_pattern_term(
+        self, clause_type: str, actor: str, reason: str = ""
+    ) -> PatternTermSuspension:
+        """Counsel acts on a calibration candidate: the pattern
+        term for this clause type is set aside. From the next
+        analysis the scorer does not apply it to the type, and the
+        calibration report reads the type as suspended rather than
+        re-flagging it. A reason is required — an unexplained
+        set-aside is how scorers silently rot — and the act is
+        reversible by ``lift_pattern_suspension``, with both acts
+        kept on the one record."""
+        clause_type = (clause_type or "").strip()
+        if not clause_type:
+            raise ValueError("Suspending a pattern term requires a clause type.")
+        if not (reason or "").strip():
+            raise ValueError(
+                "Suspending a pattern term requires a reason — "
+                "it is recorded on the suspension, beside the actor."
+            )
+        store = self._get_calibration_store()
+        existing = store.get(clause_type)
+        if existing is not None and existing.status == "active":
+            raise ValueError(
+                f"The pattern term for {clause_type} is already "
+                f"suspended (by {existing.suspended_by} on "
+                f"{existing.suspended_at}) — lift that suspension "
+                "before suspending again."
+            )
+        suspension = existing or PatternTermSuspension(clause_type=clause_type)
+        suspension.status = "active"
+        suspension.suspended_by = actor
+        suspension.suspended_at = datetime.now(timezone.utc).isoformat(
+            timespec="seconds"
+        )
+        suspension.reason = reason
+        suspension.lifted_by = ""
+        suspension.lifted_at = ""
+        suspension.lift_note = ""
+        store.save(suspension)
+        return suspension
+
+    def lift_pattern_suspension(
+        self, clause_type: str, actor: str, note: str = ""
+    ) -> PatternTermSuspension:
+        """Counsel reverses a suspension: the pattern term applies
+        to the clause type again from the next analysis. The lift
+        is stamped on the same record — the suspension and its
+        reversal stay readable together, so why the scorer treats
+        the type as it does is always answerable."""
+        clause_type = (clause_type or "").strip()
+        store = self._get_calibration_store()
+        suspension = store.get(clause_type)
+        if suspension is None:
+            raise KeyError(
+                f"No pattern-term suspension on record for {clause_type!r}."
+            )
+        if suspension.status != "active":
+            raise ValueError(
+                f"The pattern term for {clause_type} is not suspended "
+                f"(lifted by {suspension.lifted_by} on "
+                f"{suspension.lifted_at}) — there is nothing to lift."
+            )
+        suspension.status = "lifted"
+        suspension.lifted_by = actor
+        suspension.lifted_at = datetime.now(timezone.utc).isoformat(
+            timespec="seconds"
+        )
+        suspension.lift_note = note or ""
+        store.save(suspension)
+        return suspension
+
     def pattern_calibration(self) -> dict:
         """The pattern-term calibration report (``pattern_calibration.py``):
         per clause type, how often the reflection-pattern score term
@@ -1857,10 +1967,15 @@ class ContractService:
         recommendation, and what counsel did with the escalations
         on decided records. Clause types whose term never decided
         anything are flagged as calibration candidates — for
-        counsel; the report changes nothing itself."""
+        counsel; the report changes nothing itself. A type under an
+        active suspension is read as suspended, with the act on the
+        row, never re-flagged."""
         from .pattern_calibration import pattern_calibration
 
-        return pattern_calibration(self._get_store().all_records())
+        return pattern_calibration(
+            self._get_store().all_records(),
+            suspensions=self._get_calibration_store().all(),
+        )
 
     def proposal_effectiveness(self, proposal_id: str) -> dict:
         """What one playbook proposal has done since counsel decided
@@ -1887,11 +2002,14 @@ class ContractService:
         ``/options/pattern-calibration``."""
         from .pattern_calibration import pattern_calibration
 
-        report = pattern_calibration(records)
+        report = pattern_calibration(
+            records, suspensions=self._get_calibration_store().all()
+        )
         return {
             "applications": report["applications"],
             "decisive": report["decisive"],
             "calibration_candidates": report["calibration_candidates"],
+            "suspended_types": report["suspended_types"],
         }
 
     def metrics(self) -> dict:

@@ -342,14 +342,46 @@ async function loadCalibration() {
     const res = await fetch('/options/pattern-calibration', {headers: headers()});
     if (!res.ok) throw new Error('none');
     const data = await res.json();
-    if (!data.applications) {
+    const suspended = data.suspended_types || [];
+    if (!data.applications && !suspended.length) {
       $('calibration').textContent = 'Pattern-term calibration: the reflection-pattern score term has not been applied to any scored option yet.';
       return;
     }
     const candidates = (data.calibration_candidates || []).join(', ');
-    $('calibration').innerHTML = `Pattern-term calibration: applied ${esc(data.applications)}× · decided ${esc(data.decisive)}×` +
+    let html = `Pattern-term calibration: applied ${esc(data.applications)}× · decided ${esc(data.decisive)}×` +
       (candidates ? ` · <span class="flag">calibration candidate(s) for counsel: ${esc(candidates)} — applied repeatedly, never decisive</span>` : ' · no calibration candidates') +
-      ' · the report proposes; the cap moves only when counsel moves it.';
+      (suspended.length ? ` · <span class="flag">suspended by counsel: ${esc(suspended.join(', '))} — the scorer no longer applies the term to those types</span>` : '') +
+      ' · the report proposes; the term moves only when counsel moves it.';
+    const rows = (data.clause_types || []).filter(r => r.calibration_candidate || r.suspended);
+    if (rows.length) {
+      html += rows.map(r => `<div class="row" style="margin-top:6px"><span class="note">${esc(r.clause_type)}: ${esc(r.detail)}</span>` +
+        (r.calibration_candidate ? `<button data-suspend="${esc(r.clause_type)}" style="padding:3px 9px;font-size:12px">Suspend term (counsel)</button>` : '') +
+        (r.suspended ? `<button data-lift="${esc(r.clause_type)}" style="padding:3px 9px;font-size:12px">Lift suspension (counsel)</button>` : '') +
+        '</div>').join('');
+    }
+    $('calibration').innerHTML = html;
+    $('calibration').querySelectorAll('button[data-suspend]').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        const actor = $('actor').value.trim();
+        if (!actor) { alert('Enter counsel name (section 3) first — a suspension carries a name.'); return; }
+        const reason = prompt('Reason for suspending the pattern term for ' + btn.dataset.suspend + ' (goes on the record):');
+        if (!reason) return;
+        const r = await fetch('/options/pattern-calibration/suspend', {
+          method: 'POST', headers: headers(), body: JSON.stringify({clause_type: btn.dataset.suspend, actor, note: reason})
+        });
+        if (r.ok) loadCalibration();
+        else alert('Suspension failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));
+      }));
+    $('calibration').querySelectorAll('button[data-lift]').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        const actor = $('actor').value.trim();
+        if (!actor) { alert('Enter counsel name (section 3) first — a lift carries a name.'); return; }
+        const r = await fetch('/options/pattern-calibration/lift', {
+          method: 'POST', headers: headers(), body: JSON.stringify({clause_type: btn.dataset.lift, actor})
+        });
+        if (r.ok) loadCalibration();
+        else alert('Lift failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));
+      }));
   } catch (e) {
     $('calibration').textContent = '';
   }
