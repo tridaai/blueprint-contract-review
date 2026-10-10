@@ -2,10 +2,11 @@
 
 Runs the deterministic pipeline (playbook rules, offline fallback
 backend) over ``golden.jsonl`` and reports clause-level accuracy
-(clause type + playbook position) and document-level accuracy
+(clause type + playbook position), document-level accuracy
 (posture, per-type positions, missing-clause detection, injection
-flags, information requests, repairs). All cases are synthetic. Run
-from the repo root:
+flags, information requests, repairs), negotiation-round movement,
+round-chain histories (re-trades, cumulative movement), and exhibit
+consistency checks. All cases are synthetic. Run from the repo root:
 
     python evals/run_evals.py
 
@@ -141,6 +142,72 @@ def _eval_round_diff(case: dict, samples: dict[str, ContractInput]) -> tuple[boo
     return not problems, "; ".join(problems)
 
 
+def _eval_round_chain(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Negotiation chains: analyse the chain in order through the
+    service (the chain lives in the store), then compare the final
+    round's chain report — re-trades, cumulative movement, and the
+    rounds-to-no-walk-away signal."""
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+
+    service = ContractService(store=InMemoryStore(), checkpointer=False)
+    result = None
+    for contract_id in case["chain_ids"]:
+        contract = samples.get(contract_id)
+        if contract is None:
+            return False, f"unknown sample {contract_id}"
+        result = service.analyze(contract)
+    chain = result.round_chain if result is not None else None
+    if chain is None:
+        return False, "no round chain attached to the final round"
+    problems = []
+    if case.get("expected_rounds") is not None and chain.rounds != case["expected_rounds"]:
+        problems.append(f"rounds: expected {case['expected_rounds']}, got {chain.rounds}")
+    if case.get("expected_re_trades") is not None and chain.re_trades != case["expected_re_trades"]:
+        problems.append(
+            f"re_trades: expected {case['expected_re_trades']}, got {chain.re_trades}"
+        )
+    if case.get("expected_re_traded_types") is not None:
+        if sorted(chain.re_traded_clause_types) != sorted(case["expected_re_traded_types"]):
+            problems.append(
+                f"re_traded types: expected {case['expected_re_traded_types']}, "
+                f"got {chain.re_traded_clause_types}"
+            )
+    cumulative = case.get("expected_cumulative") or {}
+    for field, attr in (
+        ("improved", "cumulative_improved"),
+        ("worsened", "cumulative_worsened"),
+        ("unchanged", "cumulative_unchanged"),
+    ):
+        if field in cumulative and getattr(chain, attr) != cumulative[field]:
+            problems.append(
+                f"cumulative {field}: expected {cumulative[field]}, got {getattr(chain, attr)}"
+            )
+    if case.get("expected_rounds_to_no_walk_away") is not None:
+        if chain.rounds_to_no_walk_away != case["expected_rounds_to_no_walk_away"]:
+            problems.append(
+                f"rounds_to_no_walk_away: expected {case['expected_rounds_to_no_walk_away']}, "
+                f"got {chain.rounds_to_no_walk_away}"
+            )
+    by_type = {h.clause_type: h for h in chain.histories}
+    for clause_type, expected in (case.get("expected_histories") or {}).items():
+        history = by_type.get(clause_type)
+        if history is None:
+            problems.append(f"{clause_type}: no history tracked")
+            continue
+        if "cumulative" in expected and history.cumulative_movement != expected["cumulative"]:
+            problems.append(
+                f"{clause_type} cumulative: expected {expected['cumulative']}, "
+                f"got {history.cumulative_movement}"
+            )
+        if "re_traded" in expected and history.re_traded != expected["re_traded"]:
+            problems.append(
+                f"{clause_type} re_traded: expected {expected['re_traded']}, "
+                f"got {history.re_traded}"
+            )
+    return not problems, "; ".join(problems)
+
+
 def evaluate(cases: list[dict]) -> dict:
     samples = {c.contract_id: c for c in sample_contract_models()}
     correct = 0
@@ -154,6 +221,8 @@ def evaluate(cases: list[dict]) -> dict:
             ok, detail = _eval_clause(case)
         elif kind == "round_diff":
             ok, detail = _eval_round_diff(case, samples)
+        elif kind == "round_chain":
+            ok, detail = _eval_round_chain(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:

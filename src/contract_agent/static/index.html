@@ -244,6 +244,18 @@ function render(result) {
       <td>${mvPill(m.movement)}</td></tr>`).join('')}
     </tbody></table>`;
   }
+  if (result.round_chain) {
+    const rc = result.round_chain;
+    html += `<h3>Negotiation chain <span class="note">(${esc(rc.rounds)} rounds: ${rc.contract_ids.map(esc).join(' → ')} — movement history per clause)</span></h3>
+    <div class="row">${pill(rc.re_trades + ' re-traded', rc.re_trades ? 'bad' : 'good')} ${pill(rc.cumulative_improved + ' improved overall', 'good')} ${pill(rc.cumulative_worsened + ' worsened overall', rc.cumulative_worsened ? 'bad' : '')} ${pill(rc.cumulative_unchanged + ' unchanged overall')} ${pill(rc.rounds_to_no_walk_away ? 'no walk-away by round ' + rc.rounds_to_no_walk_away : 'walk-away still present', rc.rounds_to_no_walk_away ? 'good' : 'bad')}</div>
+    <table><thead><tr><th>Clause</th><th>History (round by round)</th><th>Cumulative</th><th></th></tr></thead><tbody>
+    ${rc.histories.map(h => `<tr>
+      <td>${esc(h.heading || h.clause_type)}<br><span class="note">${esc(h.clause_type)}</span></td>
+      <td>${h.track.map(p => p.position ? posPill(p.position) : '<span class="note">absent</span>').join(' → ')}</td>
+      <td>${pill(h.cumulative_movement, h.cumulative_movement === 'improved' ? 'good' : h.cumulative_movement === 'worsened' ? 'bad' : '')}</td>
+      <td>${h.re_traded ? pill('RE-TRADED', 'bad') + '<br><span class="note">' + esc(h.re_trade_detail) + '</span>' : ''}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
   const diffsByClause = {};
   (result.clause_diffs || []).forEach(d => { diffsByClause[d.clause_id] = d; });
   html += `<h3>Clause-by-clause review</h3><table><thead><tr><th>Clause</th><th>Type</th><th>Verdict</th><th>Playbook</th><th>Rationale</th></tr></thead><tbody>

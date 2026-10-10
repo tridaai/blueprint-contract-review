@@ -93,6 +93,9 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
         "round_diff": (
             result.round_diff.model_dump(mode="json") if result.round_diff else None
         ),
+        "round_chain": (
+            result.round_chain.model_dump(mode="json") if result.round_chain else None
+        ),
         "obligations": [o.model_dump(mode="json") for o in result.obligations],
         "drafts": {
             "subject": result.drafts.subject if result.drafts else "",
@@ -265,18 +268,45 @@ class ContractService:
         self._archive_documents(model, result)
         return result
 
+    def _chain_rounds(
+        self, model: ContractInput, result: AgentResult
+    ) -> list[AgentResult]:
+        """The negotiation chain this result belongs to, oldest →
+        newest: follow the ``supersedes`` links through the store's
+        records. A link that was never analysed here ends the walk —
+        the chain is what the store actually holds, nothing invented.
+        Cycles (bad intake naming a loop) terminate on the seen set."""
+        chain = [result]
+        seen = {model.contract_id}
+        supersedes = model.supersedes
+        while supersedes and supersedes not in seen:
+            seen.add(supersedes)
+            record = self._get_store().get(supersedes)
+            if record is None:
+                break
+            chain.append(record.result)
+            supersedes = (record.contract or {}).get("supersedes") or ""
+        chain.reverse()
+        return chain
+
     def _attach_round_diff(self, model: ContractInput, result: AgentResult) -> None:
         """Negotiation-round diffing: when intake names the round this
         draft supersedes and that round is in the store, align the two
         rounds' clauses and attach the verdict movement (see
         ``round_diff.py``). A superseded round that was never analysed
-        here simply means no diff — the review stands on its own."""
+        here simply means no diff — the review stands on its own.
+
+        With three or more rounds in the store the whole chain is
+        walked as well (``build_round_chain``): per-clause movement
+        history, cumulative movement, and re-trade detection — a
+        clause that improved in an earlier round and worsens again
+        later is flagged as re-traded, not merely "worsened"."""
         if not model.supersedes or model.supersedes == model.contract_id:
             return
         prior = self._get_store().get(model.supersedes)
         if prior is None:
             return
-        from .round_diff import build_round_diff
+        from .round_diff import build_round_chain, build_round_diff
         from .schemas import TraceStep
 
         diff = build_round_diff(prior.result, result)
@@ -293,6 +323,20 @@ class ContractService:
                 ],
             )
         )
+        rounds = self._chain_rounds(model, result)
+        if len(rounds) >= 3:
+            chain = build_round_chain(rounds)
+            result.round_chain = chain
+            result.trace.append(
+                TraceStep(
+                    name="round_chain",
+                    title=(
+                        f"Negotiation chain: {chain.rounds} rounds · "
+                        f"{chain.re_trades} re-trade(s)"
+                    ),
+                    details=list(chain.summary),
+                )
+            )
 
     def analyze_batch(
         self,

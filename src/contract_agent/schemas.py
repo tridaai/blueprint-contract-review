@@ -269,6 +269,51 @@ class RoundDiff(BaseModel):
     summary: list[str] = Field(default_factory=list)
 
 
+class RoundPosition(BaseModel):
+    """One round's seat in a clause's movement history: the position
+    the clause held in that round (``""`` when the clause was absent
+    from that round's draft)."""
+
+    contract_id: str = ""
+    clause_id: str = ""
+    position: str = ""
+
+
+class ClauseHistory(BaseModel):
+    """One clause tracked across a whole negotiation chain
+    (``round_diff.build_round_chain``): its position in every round,
+    the movement at each step, and whether it was RE-TRADED — it
+    improved in an earlier round and worsened again later. A re-trade
+    is a finding, not a footnote: counsel settled that ground once
+    and the counterparty took it back."""
+
+    clause_type: str = "other"
+    heading: str = ""
+    track: list[RoundPosition] = Field(default_factory=list)
+    movements: list[str] = Field(default_factory=list)  # one per round-to-round step
+    cumulative_movement: str = ""  # improved | worsened | unchanged | new | removed
+    re_traded: bool = False
+    re_trade_detail: str = ""
+
+
+class RoundChain(BaseModel):
+    """Verdict movement across an entire negotiation chain — every
+    round from the first draft to this one, not just the last step.
+    Attached when the chain has three or more rounds (with two, the
+    pairwise ``RoundDiff`` already says everything)."""
+
+    contract_ids: list[str] = Field(default_factory=list)  # oldest → newest
+    rounds: int = 0
+    histories: list[ClauseHistory] = Field(default_factory=list)
+    re_trades: int = 0
+    re_traded_clause_types: list[str] = Field(default_factory=list)
+    cumulative_improved: int = 0
+    cumulative_worsened: int = 0
+    cumulative_unchanged: int = 0
+    rounds_to_no_walk_away: Optional[int] = None  # 1-based; None = never reached
+    summary: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Obligations register (extracted in code — dates validated/derived)
 # ---------------------------------------------------------------------------
@@ -441,6 +486,7 @@ class AgentResult(BaseModel):
     clause_verdicts: list[ClauseVerdict] = Field(default_factory=list)
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
+    round_chain: Optional[RoundChain] = None  # set when the chain has 3+ rounds
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""
