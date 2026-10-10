@@ -9,6 +9,7 @@ Usage:
     contract-agent --all --concurrency 4 # the batch, four at a time
     contract-agent --sweep-obligations 30  # deadline dispatch sweep (report-only)
     contract-agent --sweep-sla             # announce queue SLA breaches (once per contract)
+    contract-agent --sweep-stale-failures  # announce stale webhook failures (once per stale period)
 
 The default data source is the sample set bundled inside the package, so
 this works identically from a source checkout and a pip install.
@@ -192,6 +193,33 @@ def _run_sla_sweep(contracts: list[ContractInput]) -> None:
     print(report["note"])
 
 
+def _run_stale_sweep(contracts: list[ContractInput]) -> None:
+    """The stale-failure announcement sweep, CLI form: analyse the
+    loaded contracts into a throwaway store (the CLI persists
+    nothing, so the outbox starts empty and the sweep ordinarily
+    announces nothing — the form exists for parity with the API
+    and console sweeps; against a live deployment the endpoint is
+    the surface), then announce every outbox failure that has sat
+    unrepaired past the stale threshold. Events print live via the
+    printing sink; entries are announced once per stale period."""
+    service = build_service_from_env(store=InMemoryStore(), checkpointer=False)
+    for contract in contracts:
+        service.analyze(contract)
+    report = service.dispatch_stale_failure_sweep(event_sink=PrintingSink())
+    print("=" * 72)
+    print(
+        f"Stale-failure sweep: {report['stale_failed']} stale failure(s) · "
+        f"{report['newly_announced']} newly announced · "
+        f"{report['already_announced']} already announced"
+    )
+    for row in report["failures"]:
+        print(
+            f"  {row['outbox_id']} ({row['contract_id']}): {row['family']} — "
+            f"failed {row['age_days']} day(s) ago, {row['attempts']} attempt(s)"
+        )
+    print(report["note"])
+
+
 def _print_batch_summary(items: list[BatchItem], concurrency: int, wall_clock: float) -> None:
     print("=" * 72)
     print(
@@ -239,6 +267,11 @@ def main() -> None:
         action="store_true",
         help="SLA breach sweep: analyse the loaded contracts, then announce every queued contract past its SLA budget — one sla_breach event per contract, the first time it is observed in breach (plus a signed webhook per breach when ACTION_WEBHOOK_URL is configured).",
     )
+    parser.add_argument(
+        "--sweep-stale-failures",
+        action="store_true",
+        help="Stale-failure sweep: announce every webhook outbox failure that has sat unrepaired past the stale threshold (WEBHOOK_OUTBOX_STALE_FAILURE_DAYS, default 7) — one webhook_stale_failure event per entry and one signed announcement webhook per sweep when ACTION_WEBHOOK_URL is configured; each entry is announced once per stale period.",
+    )
     args = parser.parse_args()
 
     # Backend + retriever come from the environment (.env loaded by the
@@ -255,6 +288,9 @@ def main() -> None:
             return
         if args.sweep_sla:
             _run_sla_sweep(contracts)
+            return
+        if args.sweep_stale_failures:
+            _run_stale_sweep(contracts)
             return
         selected = contracts if args.all else [contracts[args.index]]
         started = time.perf_counter()

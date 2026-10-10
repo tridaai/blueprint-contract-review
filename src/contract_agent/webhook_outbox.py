@@ -34,6 +34,18 @@ sits unrepaired past ``WEBHOOK_OUTBOX_STALE_FAILURE_DAYS``
 on the outbox view, in ``/metrics``, and on the counsel queue,
 so "a delivery died last week and nobody noticed" is a number
 legal ops manages to, in the queue-SLA spirit.
+
+**Announcement** (round 16): surfacing is not announcing — a
+stale failure waited for someone to open a surface. The stale
+sweep (``ContractService.dispatch_stale_failure_sweep``) now
+ANNOUNCES the crossings: one signed webhook per sweep naming
+every stale failure not yet announced, each entry stamped
+(``stale_announced_at``) so it is announced once per stale
+period, the SLA breach sweep's dedupe discipline. A re-send
+attempt clears the stamp: a delivery that was touched and
+failed again re-arms, and if it sits for another stale period
+it is announced again — announced once is a property of a
+stale period, not of an entry's whole life.
 """
 
 from __future__ import annotations
@@ -304,10 +316,41 @@ def stale_failure_rows(
                 "age_days": round(age, 1),
                 "attempts": len(entry.attempts),
                 "last_attempt_at": entry.updated_at,
+                "announced": bool(entry.stale_announced_at),
+                "stale_announced_at": entry.stale_announced_at,
             }
         )
     rows.sort(key=lambda row: (-row["age_days"], row["outbox_id"]))
     return rows
+
+
+def unannounced_stale_failures(
+    entries: list[WebhookOutboxEntry],
+    now: datetime | None = None,
+    threshold_days: int | None = None,
+) -> list[WebhookOutboxEntry]:
+    """The stale failures the announcement sweep has not yet
+    announced: FAILED, past the stale threshold, and carrying
+    no announcement stamp — oldest first. An entry leaves this
+    list by being announced (the sweep stamps it) and returns
+    to it only by being touched (a re-send attempt clears the
+    stamp) and then sitting unrepaired for another stale
+    period: announced once per stale period, never announced
+    forever."""
+    threshold = (
+        outbox_stale_failure_days() if threshold_days is None else threshold_days
+    )
+    now = now or datetime.now(timezone.utc)
+    due: list[WebhookOutboxEntry] = []
+    for entry in entries:
+        if entry.status != "failed" or entry.stale_announced_at:
+            continue
+        age = entry_age_days(entry, now)
+        if age is None or age < threshold:
+            continue
+        due.append(entry)
+    due.sort(key=lambda e: (e.updated_at, e.outbox_id))
+    return due
 
 
 def prunable_sent_entries(

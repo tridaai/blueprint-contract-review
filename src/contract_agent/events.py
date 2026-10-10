@@ -18,7 +18,12 @@ default 90 — carries kind, date, days_until, overdue), ``sla_breach``
 (a queued contract's wait crossed its SLA budget — emitted by the
 breach sweep, once per contract; carries the tier, budget vs
 waited, and the queue owner, with ``unassigned`` called out),
-``certificate_expiring`` (a relied-upon certificate of insurance —
+``webhook_stale_failure`` (a signed webhook delivery in the
+outbox failed and sat unrepaired past the stale threshold —
+emitted by the stale-failure sweep, once per stale period per
+entry; carries the outbox id, family, age, and attempt count,
+and the sweep's one signed announcement webhook names them
+all), ``certificate_expiring`` (a relied-upon certificate of insurance —
 its stored expiry check came back consistent — expires within the
 watch window, ``CERTIFICATE_EXPIRY_WATCH_DAYS``, default 90;
 emitted by the deadline sweep, carrying the expiry date,

@@ -752,6 +752,7 @@ class WebhookOutboxEntry(BaseModel):
     attempts: list[WebhookAttempt] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    stale_announced_at: str = ""  # when the stale-failure sweep last announced this entry (round 16): a failed entry is announced once per stale period — the stamp is the dedupe — and any re-send attempt clears it, so a delivery that was touched and failed again re-arms its announcement instead of staying announced forever
 
 
 class WebhookResendRequest(BaseModel):

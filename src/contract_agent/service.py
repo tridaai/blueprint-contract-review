@@ -257,6 +257,52 @@ def build_drift_finding_payload(
     }
 
 
+def build_stale_failure_payload(rows: list[dict], announced_at: str) -> dict:
+    """One stale-failure sweep announcement as a webhook payload:
+    every stale failure the sweep is announcing, named — the
+    operator's system of record learns which deliveries died,
+    for which contracts, and how long ago, in one event per
+    sweep rather than one per entry. The rows are the outbox's
+    own stale-failure rows (``webhook_outbox.stale_failure_rows``):
+    identifiers and delivery facts, never payload contents —
+    the announcement says a delivery is dead, not what it
+    carried."""
+    return {
+        "event": "webhook_stale_failure",
+        "announced_at": announced_at,
+        "stale_count": len(rows),
+        "failures": [
+            {
+                "outbox_id": row["outbox_id"],
+                "family": row["family"],
+                "contract_id": row["contract_id"],
+                "label": row["label"],
+                "age_days": row["age_days"],
+                "attempts": row["attempts"],
+                "last_attempt_at": row["last_attempt_at"],
+            }
+            for row in rows
+        ],
+    }
+
+
+def dispatch_stale_failure_webhook(rows: list[dict], announced_at: str) -> str | None:
+    """POST one stale-failure announcement to ``ACTION_WEBHOOK_URL``
+    (off by default), on the approval channel's signing scheme.
+    Returns ``None`` when no URL is configured (the announcement
+    is then the event stream and the entries' stamps alone),
+    ``"sent"`` / ``"failed"`` otherwise. The announcement is NOT
+    itself recorded in the outbox: it is an ops meta-event about
+    the ledger, and a failed announcement recorded as a failed
+    entry would go stale and announce itself forever — the
+    entries' announcement stamps are its record."""
+    load_dotenv()
+    url = env_str("ACTION_WEBHOOK_URL")
+    if not url:
+        return None
+    return _post_signed_webhook(url, build_stale_failure_payload(rows, announced_at))
+
+
 # ---------------------------------------------------------------------------
 # Queue SLA: how long a contract may wait for counsel, by severity
 # ---------------------------------------------------------------------------
@@ -2063,6 +2109,7 @@ class ContractService:
             outbox_retention_days,
             outbox_stale_failure_days,
             stale_failure_rows,
+            unannounced_stale_failures,
         )
 
         entries = self._get_outbox_store().all()
@@ -2085,6 +2132,9 @@ class ContractService:
                 "retention_days": outbox_retention_days(),
                 "stale_failed": len(stale),
                 "stale_failures": stale,
+                "unannounced_stale_failed": len(
+                    unannounced_stale_failures(entries)
+                ),
             },
             "entries": [
                 {
@@ -2096,6 +2146,7 @@ class ContractService:
                     "attempts": [a.model_dump(mode="json") for a in e.attempts],
                     "created_at": e.created_at,
                     "updated_at": e.updated_at,
+                    "stale_announced_at": e.stale_announced_at,
                     "age_days": (
                         round(age, 1)
                         if (age := entry_age_days(e)) is not None
@@ -2114,7 +2165,10 @@ class ContractService:
                 "age may be pruned by a named operator (POST "
                 "/webhooks/outbox/prune); failed entries are never "
                 "pruned, and one left unrepaired past the stale "
-                "threshold is named in the staleness block."
+                "threshold is named in the staleness block and "
+                "announced by the stale-failure sweep (POST "
+                "/webhooks/outbox/announce-stale) once per stale "
+                "period — the stamp is on the entry."
             ),
         }
 
@@ -2129,6 +2183,104 @@ class ContractService:
         from .webhook_outbox import stale_failure_rows
 
         return stale_failure_rows(self._get_outbox_store().all())
+
+    def dispatch_stale_failure_sweep(
+        self, event_sink: EventSink | None = None
+    ) -> dict:
+        """The stale-failure announcement sweep (round 16): walk
+        the outbox, and for every failed entry that has crossed
+        the stale threshold unannounced, ANNOUNCE it — one
+        ``webhook_stale_failure`` event per entry on the event
+        stream, and one signed webhook per sweep naming them
+        all when ``ACTION_WEBHOOK_URL`` is configured — then
+        stamp each entry (``stale_announced_at``) so it is
+        announced once per stale period, the SLA breach sweep's
+        dedupe discipline.
+
+        Round 15 surfaced stale failures on reads; a surface
+        waits for someone to open it. The sweep is what a
+        nightly job (or an operator, from the console) runs so a
+        dead delivery reaches the operator's system of record
+        instead. A re-send attempt clears an entry's stamp, so
+        a delivery that was touched and failed again re-arms:
+        if it sits for another stale period it is announced
+        again. The announcement dispatch is not recorded in the
+        outbox (see ``dispatch_stale_failure_webhook``) — the
+        stamps are its record. Report-only in the same sense as
+        the other sweeps: nothing here repairs a delivery; it
+        makes sure somebody knows."""
+        from datetime import date as _date
+
+        from .events import NullSink, RunEvent
+        from .webhook_outbox import (
+            outbox_stale_failure_days,
+            stale_failure_rows,
+            unannounced_stale_failures,
+        )
+
+        sink = event_sink if event_sink is not None else NullSink()
+        store = self._get_outbox_store()
+        entries = store.all()
+        stale_rows = stale_failure_rows(entries)
+        rows_by_id = {row["outbox_id"]: row for row in stale_rows}
+        due = [
+            entry
+            for entry in unannounced_stale_failures(entries)
+            if entry.outbox_id in rows_by_id
+        ]
+        announced_at = datetime.now(timezone.utc).isoformat()
+        announced: list[dict] = []
+        for entry in due:
+            row = rows_by_id[entry.outbox_id]
+            sink.emit(
+                RunEvent(
+                    type="webhook_stale_failure",
+                    contract_id=entry.contract_id,
+                    detail={
+                        "via": "stale_failure_sweep",
+                        "outbox_id": entry.outbox_id,
+                        "family": entry.family,
+                        "label": entry.label,
+                        "age_days": row["age_days"],
+                        "attempts": row["attempts"],
+                        "last_attempt_at": row["last_attempt_at"],
+                        "announced_at": announced_at,
+                    },
+                )
+            )
+            entry.stale_announced_at = announced_at
+            store.save(entry)
+            announced.append({**row, "announced": True,
+                              "stale_announced_at": announced_at})
+        dispatch = None
+        if announced:
+            dispatch = dispatch_stale_failure_webhook(announced, announced_at)
+        return {
+            "as_of": _date.today().isoformat(),
+            "announced_at": announced_at,
+            "stale_threshold_days": outbox_stale_failure_days(),
+            "stale_failed": len(stale_rows),
+            "newly_announced": len(announced),
+            "already_announced": len(stale_rows) - len(announced),
+            "events_emitted": len(announced),
+            "webhooks": {
+                "configured": bool(env_str("ACTION_WEBHOOK_URL")),
+                "sent": 1 if dispatch == "sent" else 0,
+                "failed": 1 if dispatch == "failed" else 0,
+            },
+            "failures": announced,
+            "note": (
+                "One announcement per stale failure per stale "
+                "period: entries are stamped as announced, and a "
+                "re-send attempt clears the stamp, so a delivery "
+                "touched and failed again is announced again when "
+                "it crosses the threshold anew. The signed webhook "
+                "fires once per sweep naming every newly stale "
+                "failure, only when ACTION_WEBHOOK_URL is "
+                "configured — otherwise the announcement is the "
+                "event stream and the stamps."
+            ),
+        }
 
     def prune_webhook_outbox(self, actor: str) -> dict:
         """Prune the outbox under the retention rule: SENT
@@ -2240,6 +2392,13 @@ class ContractService:
         )
         entry.status = outcome
         entry.updated_at = entry.attempts[-1].at
+        # The touch re-arms the stale announcement (round 16):
+        # this stale period has been acted on, so if the entry
+        # fails again and sits for another stale period, the
+        # sweep announces it anew rather than treating the old
+        # announcement as covering a delivery state nobody has
+        # seen since.
+        entry.stale_announced_at = ""
         store.save(entry)
         return {
             "outbox_id": entry.outbox_id,
@@ -2784,6 +2943,9 @@ class ContractService:
             "webhooks": {
                 **outbox_view["counts"],
                 "stale_failed": outbox_view["staleness"]["stale_failed"],
+                "unannounced_stale_failed": outbox_view["staleness"][
+                    "unannounced_stale_failed"
+                ],
                 "stale_threshold_days": outbox_view["staleness"][
                     "stale_threshold_days"
                 ],

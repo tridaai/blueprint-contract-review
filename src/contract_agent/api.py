@@ -588,6 +588,18 @@ def webhook_outbox(status: str | None = None) -> dict:
     return service.webhook_outbox(status=status)
 
 
+@app.post("/webhooks/outbox/announce-stale", dependencies=_AUTH)
+def announce_stale_webhook_failures() -> dict:
+    """The stale-failure announcement sweep: every failed outbox
+    entry that has sat unrepaired past the stale threshold is
+    announced — one ``webhook_stale_failure`` event per entry,
+    one signed webhook naming them all when ACTION_WEBHOOK_URL
+    is configured — and stamped, so each is announced once per
+    stale period. A re-send attempt re-arms an entry. Returns
+    the sweep report."""
+    return service.dispatch_stale_failure_sweep()
+
+
 @app.post("/webhooks/outbox/prune", dependencies=_AUTH)
 def prune_webhook_outbox(body: WebhookResendRequest) -> dict:
     """Prune the outbox under the retention rule: SENT entries
