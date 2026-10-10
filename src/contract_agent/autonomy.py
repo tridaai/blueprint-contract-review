@@ -14,6 +14,8 @@ Eligibility is deliberately narrow — ALL of:
   ``walk_away`` anywhere;
 - no missing standard clauses (nothing absent to not-see);
 - the package is complete (no exhibits or signature pages missing);
+- no exhibit consistency check failed (the agreement and its
+  exhibits do not contradict each other);
 - guardrails passed on the first draft (no repair was needed);
 - no clause verdict was escalated by a rules/LLM disagreement;
 - the independent reviewer did not block.
@@ -62,6 +64,13 @@ def recommend_autonomy(
         reasons.append("the package is complete")
     else:
         blockers.append("the package is incomplete (exhibits or signature pages missing)")
+
+    if facts.exhibit_mismatches:
+        blockers.append(
+            "exhibit consistency checks failed: "
+            + ", ".join(facts.exhibit_mismatches)
+            + " (the agreement and its exhibit disagree, or the exhibit is silent)"
+        )
 
     if validation.passed:
         reasons.append("guardrails passed")

@@ -337,6 +337,26 @@ class Obligation(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Exhibit consistency (cross-document checks, in code)
+# ---------------------------------------------------------------------------
+
+class ExhibitCheck(BaseModel):
+    """One promise the agreement makes about an attached exhibit,
+    checked against the exhibit's own text (``exhibit_review.py``).
+    ``status``: consistent | mismatch (the exhibit says something
+    different) | missing_in_exhibit (the exhibit is silent on it) |
+    exhibit_missing (the promised exhibit is not in the package)."""
+
+    name: str  # breach_notice_window | subprocessor_list
+    expectation: str = ""
+    exhibit_document_id: str = ""  # "" when no DPA exhibit is attached
+    promised: str = ""  # the value as the clause states it
+    found: str = ""  # the value as the exhibit states it ("" when silent)
+    status: str = ""
+    detail: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Computed document facts (code only — never the model)
 # ---------------------------------------------------------------------------
 
@@ -353,6 +373,8 @@ class ContractFacts(BaseModel):
     discrepancies: list[str] = Field(default_factory=list)
     exhibits_referenced: list[str] = Field(default_factory=list)
     exhibits_missing: list[str] = Field(default_factory=list)
+    exhibit_mismatches: list[str] = Field(default_factory=list)  # failed exhibit-check names
+    exhibit_absent: bool = False  # a promised exhibit is not in the package at all
     signature_pages_present: bool = False
     package_complete: bool = True
     contract_age_days: int = 0
@@ -487,6 +509,7 @@ class AgentResult(BaseModel):
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
     round_chain: Optional[RoundChain] = None  # set when the chain has 3+ rounds
+    exhibit_checks: list[ExhibitCheck] = Field(default_factory=list)
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""

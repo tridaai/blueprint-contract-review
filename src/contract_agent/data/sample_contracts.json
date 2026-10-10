@@ -288,5 +288,51 @@
     "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nThe Provider shall indemnify and hold harmless the Customer from and against all third-party claims arising out of the Services or the Provider's performance of them.\n\n3. Intellectual Property\nThe Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n4. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n5. Term and Termination\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n6. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 60 from the invoice date.\n\n7. Data Protection\nEach party shall process personal data in accordance with the Data Processing Addendum entered into by the parties, and shall maintain appropriate technical and organisational security measures. A party becoming aware of a personal data breach shall inform the other party without undue delay.\n\n8. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware."
    }
   ]
+ },
+ {
+  "contract_id": "CTR-2017",
+  "doc_type": "msa",
+  "title": "Master Services Agreement",
+  "counterparty_name": "Solstice Retail Group",
+  "our_role": "vendor",
+  "sender_name": "Contracts \u2014 Solstice Retail Group",
+  "cover_email_text": "Our standard agreement is attached, together with the data processing addendum as Exhibit B.",
+  "notes": "The agreement's data protection clause promises breach notice within 24 hours and a sub-processor list in the attached DPA \u2014 but the exhibit commits to 72 hours and never lists a sub-processor. The exhibit consistency review is what catches that.",
+  "received_at": "2026-10-03T10:20:00",
+  "documents": [
+   {
+    "doc_type": "agreement",
+    "document_id": "AGR-1",
+    "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Intellectual Property\nThe Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n4. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n5. Term and Termination\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n6. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n7. Data Protection\nEach party shall process personal data in accordance with the Data Processing Addendum attached as Exhibit B. The Provider shall notify the Customer of a personal data breach within 24 hours of discovery and shall maintain appropriate technical and organisational security measures. The Data Processing Addendum attached as Exhibit B sets out the list of sub-processors engaged in the processing.\n\n8. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\n9. Assignment\nNeither party may assign this Agreement without the prior written consent of the other party, and any attempted assignment without consent is void.\n\nIn witness whereof, the parties have executed this Agreement."
+   },
+   {
+    "doc_type": "exhibit",
+    "document_id": "Exhibit B",
+    "raw_text": "Exhibit B \u2014 Data Processing Addendum\n\nThis Data Processing Addendum forms part of the Master Services Agreement between the parties.\n\n1. Processing. The Provider processes personal data only on the Customer's documented instructions.\n2. Security. The Provider maintains technical and organisational security measures appropriate to the processing.\n3. Breach notification. The Provider shall notify the Customer without undue delay and in any event within 72 hours of becoming aware of a personal data breach.\n4. Assistance. The Provider shall reasonably assist the Customer with data subject requests.\n\nThe Provider engages hosting and email providers as needed for the services."
+   }
+  ]
+ },
+ {
+  "contract_id": "CTR-2018",
+  "doc_type": "msa",
+  "title": "Master Services Agreement",
+  "counterparty_name": "Meridian Outfitters Inc",
+  "our_role": "vendor",
+  "sender_name": "Contracts \u2014 Meridian Outfitters Inc",
+  "cover_email_text": "Our standard agreement is attached, together with the data processing addendum as Exhibit B.",
+  "notes": "The consistent pair for CTR-2017: the clause promises breach notice within 72 hours and a sub-processor list in Exhibit B, and the exhibit delivers exactly that.",
+  "received_at": "2026-10-04T14:05:00",
+  "documents": [
+   {
+    "doc_type": "agreement",
+    "document_id": "AGR-1",
+    "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Intellectual Property\nThe Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n4. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n5. Term and Termination\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n6. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n7. Data Protection\nEach party shall process personal data in accordance with the Data Processing Addendum attached as Exhibit B. The Provider shall notify the Customer of a personal data breach within 72 hours of discovery and shall maintain appropriate technical and organisational security measures. The Data Processing Addendum attached as Exhibit B sets out the list of sub-processors engaged in the processing.\n\n8. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\n9. Assignment\nNeither party may assign this Agreement without the prior written consent of the other party, and any attempted assignment without consent is void.\n\nIn witness whereof, the parties have executed this Agreement."
+   },
+   {
+    "doc_type": "exhibit",
+    "document_id": "Exhibit B",
+    "raw_text": "Exhibit B \u2014 Data Processing Addendum\n\nThis Data Processing Addendum forms part of the Master Services Agreement between the parties.\n\n1. Processing. The Provider processes personal data only on the Customer's documented instructions.\n2. Security. The Provider maintains technical and organisational security measures appropriate to the processing.\n3. Breach notification. The Provider shall notify the Customer without undue delay and in any event within 72 hours of becoming aware of a personal data breach.\n4. Sub-processors. The Provider engages the following sub-processors in the processing:\n- Cloudhaven Hosting Ltd \u2014 data hosting\n- Postmark Relay Inc \u2014 email delivery\n- Fern Analytics Oy \u2014 usage analytics\nThe Provider shall give written notice of any change to this list."
+   }
+  ]
  }
 ]

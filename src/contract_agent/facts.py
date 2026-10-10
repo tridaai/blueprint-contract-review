@@ -10,7 +10,10 @@ Absence detection matters: a services agreement with no liability cap
 is not "silent", it is unprotected. The standard-clause expectations
 per contract type live in ``STANDARD_CLAUSES``; liability-cap and
 data-protection absences are critical — they escalate the posture on
-their own.
+their own. Failed exhibit consistency checks (``exhibit_review.py``)
+land here the same way: a contradiction between the agreement and
+its own exhibit floors the posture at negotiable, and a promised
+exhibit that never arrived makes the package incomplete.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from .schemas import (
     ClauseVerdict,
     ContractFacts,
     ContractInput,
+    ExhibitCheck,
 )
 
 # Standard clauses expected per contract type. Absence of any of these
@@ -67,6 +71,7 @@ def compute_facts(
     extractions: list[ClauseExtraction],
     verdicts: list[ClauseVerdict],
     today: date | None = None,
+    exhibit_checks: list[ExhibitCheck] | None = None,
 ) -> ContractFacts:
     by_type: dict[str, int] = {}
     for extraction in extractions:
@@ -109,6 +114,19 @@ def compute_facts(
         doc.doc_type == "signature_page" for doc in contract.documents
     ) or "in witness whereof" in full_text.lower()
 
+    # Exhibit consistency feeds the facts like an absence does: a
+    # failed cross-document check means the package does not hang
+    # together, so an otherwise-aligned draft is at best negotiable,
+    # and a promised-but-absent exhibit makes the package incomplete
+    # (the information request then asks for it by name).
+    failed_checks = [
+        c for c in (exhibit_checks or []) if c.status != "consistent"
+    ]
+    exhibit_mismatches = sorted({c.name for c in failed_checks})
+    exhibit_absent = any(c.status == "exhibit_missing" for c in failed_checks)
+    if exhibit_mismatches and posture == "aligned":
+        posture = "negotiable"
+
     received = _parse_date(contract.received_at)
     age = ((today or date.today()) - received).days if received else 0
 
@@ -125,7 +143,9 @@ def compute_facts(
         discrepancies=discrepancies,
         exhibits_referenced=referenced,
         exhibits_missing=exhibits_missing,
+        exhibit_mismatches=exhibit_mismatches,
+        exhibit_absent=exhibit_absent,
         signature_pages_present=signature_present,
-        package_complete=not exhibits_missing,
+        package_complete=not exhibits_missing and not exhibit_absent,
         contract_age_days=max(0, age),
     )

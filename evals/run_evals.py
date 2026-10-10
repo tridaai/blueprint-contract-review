@@ -208,6 +208,40 @@ def _eval_round_chain(case: dict, samples: dict[str, ContractInput]) -> tuple[bo
     return not problems, "; ".join(problems)
 
 
+def _eval_exhibit(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Exhibit consistency: analyse the sample and compare its
+    cross-document checks — which checks failed with which status —
+    plus the posture those failures produce."""
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+
+    contract = samples.get(case["contract_id"])
+    if contract is None:
+        return False, f"unknown sample {case['contract_id']}"
+    service = ContractService(store=InMemoryStore(), checkpointer=False)
+    result = service.analyze(contract)
+    failed = {
+        c.name: c.status for c in result.exhibit_checks if c.status != "consistent"
+    }
+    problems = []
+    expected_failed = case.get("expected_failed") or {}
+    if failed != expected_failed:
+        problems.append(f"failed checks: expected {expected_failed}, got {failed}")
+    if case.get("expected_posture") is not None:
+        if result.facts.posture != case["expected_posture"]:
+            problems.append(
+                f"posture: expected {case['expected_posture']}, "
+                f"got {result.facts.posture}"
+            )
+    if case.get("expected_checks") is not None:
+        if len(result.exhibit_checks) != case["expected_checks"]:
+            problems.append(
+                f"checks: expected {case['expected_checks']}, "
+                f"got {len(result.exhibit_checks)}"
+            )
+    return not problems, "; ".join(problems)
+
+
 def evaluate(cases: list[dict]) -> dict:
     samples = {c.contract_id: c for c in sample_contract_models()}
     correct = 0
@@ -223,6 +257,8 @@ def evaluate(cases: list[dict]) -> dict:
             ok, detail = _eval_round_diff(case, samples)
         elif kind == "round_chain":
             ok, detail = _eval_round_chain(case, samples)
+        elif kind == "exhibit":
+            ok, detail = _eval_exhibit(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:

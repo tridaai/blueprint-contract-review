@@ -96,6 +96,7 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
         "round_chain": (
             result.round_chain.model_dump(mode="json") if result.round_chain else None
         ),
+        "exhibit_checks": [c.model_dump(mode="json") for c in result.exhibit_checks],
         "obligations": [o.model_dump(mode="json") for o in result.obligations],
         "drafts": {
             "subject": result.drafts.subject if result.drafts else "",

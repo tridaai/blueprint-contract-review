@@ -23,6 +23,12 @@ def missing_items(facts: ContractFacts) -> list[str]:
     items: list[str] = []
     for exhibit in facts.exhibits_missing:
         items.append(f"Exhibit {exhibit}, which the agreement references but the package does not include")
+    if facts.exhibit_absent:
+        items.append(
+            "the Data Processing Addendum exhibit the agreement's data "
+            "protection clause relies on for its breach-notification "
+            "window and sub-processor list"
+        )
     if not facts.signature_pages_present:
         items.append("the signature pages for the agreement")
     return items

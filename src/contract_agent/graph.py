@@ -61,6 +61,7 @@ from .config import env_int, env_str, load_dotenv
 from .crosscheck import resolve_clause_verdict
 from .errors import ProviderError
 from .events import NullSink, RunEvent
+from .exhibit_review import build_exhibit_checks
 from .extractor import extract_clauses, extraction_discrepancies
 from .facts import compute_facts
 from .guardrails import validate_drafts
@@ -84,6 +85,7 @@ from .schemas import (
     ContractFacts,
     ContractInput,
     Drafts,
+    ExhibitCheck,
     InformationRequest,
     RetrievedPlaybook,
     ReviewResult,
@@ -210,6 +212,7 @@ class AgentState(TypedDict, total=False):
     injection_flags: list[str]
     verdicts: list[dict[str, Any]]
     clause_diffs: list[dict[str, Any]]
+    exhibit_checks: list[dict[str, Any]]
     obligations: list[dict[str, Any]]
     facts: dict[str, Any]
     playbook: list[dict[str, Any]]
@@ -413,13 +416,17 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
         units = [ClauseUnit.model_validate(u) for u in state["clauses"]]
         extractions = [ClauseExtraction.model_validate(e) for e in state["extractions"]]
         verdicts = [ClauseVerdict.model_validate(v) for v in state["verdicts"]]
-        facts = compute_facts(contract, units, extractions, verdicts)
+        exhibit_checks = build_exhibit_checks(contract, units, extractions)
+        facts = compute_facts(
+            contract, units, extractions, verdicts, exhibit_checks=exhibit_checks
+        )
         return {
             "facts": facts.model_dump(),
             "clause_rows": _rows(state),
             "clause_diffs": [
                 d.model_dump() for d in build_clause_diffs(units, verdicts)
             ],
+            "exhibit_checks": [c.model_dump() for c in exhibit_checks],
             "obligations": [
                 o.model_dump() for o in build_obligations(units, extractions)
             ],
@@ -794,6 +801,22 @@ def _build_trace(state: AgentState) -> list[TraceStep]:
                     if facts.critical_absences
                     else []
                 ),
+                *(
+                    [
+                        f"exhibit consistency: {c['name']} — {c['status']}"
+                        for c in state.get("exhibit_checks", [])
+                    ]
+                    if state.get("exhibit_checks")
+                    else []
+                ),
+                *(
+                    [
+                        f"EXHIBIT findings: {', '.join(facts.exhibit_mismatches)} "
+                        "(the agreement and its exhibit disagree, or it never arrived)"
+                    ]
+                    if facts.exhibit_mismatches
+                    else []
+                ),
                 f"obligations register: {len(state.get('obligations', []))} "
                 "dated/recurring duties extracted in code",
             ],
@@ -1009,6 +1032,9 @@ def run_contract(
         clause_verdicts=[ClauseVerdict.model_validate(v) for v in state.get("verdicts", [])],
         clause_diffs=[
             ClauseDiff.model_validate(d) for d in state.get("clause_diffs", [])
+        ],
+        exhibit_checks=[
+            ExhibitCheck.model_validate(c) for c in state.get("exhibit_checks", [])
         ],
         obligations=[
             Obligation.model_validate(o) for o in state.get("obligations", [])
