@@ -19,6 +19,21 @@ system of record** (``webhook_outbox`` table, migration
 ``0005_webhook_outbox.sql``; the full entry as JSONB), and
 ``InMemoryOutboxStore`` is the test double for the hermetic
 suite and the offline demo.
+
+**Retention** (round 15): a ledger that only grows becomes a
+ledger nobody reads. Delivered entries are history once they
+are old: past ``WEBHOOK_OUTBOX_RETENTION_DAYS`` (default 90) a
+SENT entry may be pruned — by a named operator's deliberate act
+(``ContractService.prune_webhook_outbox``), never on a timer
+and never as a side effect of a read. FAILED entries are never
+pruned, by the prune or anything else: a failure leaves the
+ledger only by being repaired (a re-send that lands) and then
+ageing out as a sent entry like any other. And a failure that
+sits unrepaired past ``WEBHOOK_OUTBOX_STALE_FAILURE_DAYS``
+(default 7) is **stale** — surfaced as a count and a worklist
+on the outbox view, in ``/metrics``, and on the counsel queue,
+so "a delivery died last week and nobody noticed" is a number
+legal ops manages to, in the queue-SLA spirit.
 """
 
 from __future__ import annotations
@@ -29,14 +44,33 @@ import threading
 from datetime import datetime, timezone
 from typing import Protocol
 
-from .config import env_str, load_dotenv
+from .config import env_int, env_str, load_dotenv
 from .schemas import WebhookAttempt, WebhookOutboxEntry
+
+RETENTION_ENV = "WEBHOOK_OUTBOX_RETENTION_DAYS"
+DEFAULT_RETENTION_DAYS = 90
+STALE_FAILURE_ENV = "WEBHOOK_OUTBOX_STALE_FAILURE_DAYS"
+DEFAULT_STALE_FAILURE_DAYS = 7
+
+
+def outbox_retention_days() -> int:
+    """How old a SENT entry must be before the prune may take
+    it, in days. Env-tunable; a negative value disables pruning
+    of sent entries too (nothing ages out)."""
+    return env_int(RETENTION_ENV, DEFAULT_RETENTION_DAYS)
+
+
+def outbox_stale_failure_days() -> int:
+    """How long a FAILED entry may sit unrepaired before it
+    reads as stale, in days."""
+    return env_int(STALE_FAILURE_ENV, DEFAULT_STALE_FAILURE_DAYS)
 
 
 class OutboxStore(Protocol):
     def save(self, entry: WebhookOutboxEntry) -> None: ...
     def get(self, outbox_id: str) -> WebhookOutboxEntry | None: ...
     def all(self) -> list[WebhookOutboxEntry]: ...
+    def delete(self, outbox_id: str) -> bool: ...
 
 
 class InMemoryOutboxStore:
@@ -57,6 +91,10 @@ class InMemoryOutboxStore:
     def all(self) -> list[WebhookOutboxEntry]:
         with self._lock:
             return list(self._entries.values())
+
+    def delete(self, outbox_id: str) -> bool:
+        with self._lock:
+            return self._entries.pop(outbox_id, None) is not None
 
 
 class PostgresOutboxStore:
@@ -128,6 +166,17 @@ class PostgresOutboxStore:
             for row in rows
         ]
 
+    def delete(self, outbox_id: str) -> bool:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM webhook_outbox WHERE outbox_id = %s",
+                    (outbox_id,),
+                )
+                removed = cur.rowcount
+            conn.commit()
+        return removed > 0
+
 
 def default_outbox_store() -> InMemoryOutboxStore | PostgresOutboxStore:
     """PostgreSQL when ``DATABASE_URL`` is set (the production
@@ -190,3 +239,98 @@ def record_dispatch(
     )
     store.save(entry)
     return entry
+
+
+# ---------------------------------------------------------------------------
+# Retention + staleness (round 15): the governed ageing of the ledger
+# ---------------------------------------------------------------------------
+
+
+def _stamp(value: str) -> datetime | None:
+    """An entry's ISO stamp as a datetime, or None when it does
+    not parse — an unstamped entry has no age, and no age means
+    never prunable and never stale: the policy fails closed."""
+    try:
+        parsed = datetime.fromisoformat(value or "")
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def entry_age_days(
+    entry: WebhookOutboxEntry, now: datetime | None = None
+) -> float | None:
+    """The entry's age in days, measured from its LAST attempt
+    (``updated_at`` — a re-send refreshes the entry, so its age
+    is the age of its current state, not of the original
+    dispatch). None when the stamp does not parse."""
+    stamp = _stamp(entry.updated_at) or _stamp(entry.created_at)
+    if stamp is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return max(0.0, (now - stamp).total_seconds() / 86400.0)
+
+
+def stale_failure_rows(
+    entries: list[WebhookOutboxEntry],
+    now: datetime | None = None,
+    threshold_days: int | None = None,
+) -> list[dict]:
+    """The failed entries that have sat unrepaired past the
+    stale threshold, oldest first — the worklist behind the
+    stale counts on the outbox view, ``/metrics``, and the
+    counsel queue. A failure younger than the threshold is a
+    delivery in trouble; an older one is a delivery nobody is
+    minding, and the surfaces say which."""
+    threshold = (
+        outbox_stale_failure_days() if threshold_days is None else threshold_days
+    )
+    now = now or datetime.now(timezone.utc)
+    rows: list[dict] = []
+    for entry in entries:
+        if entry.status != "failed":
+            continue
+        age = entry_age_days(entry, now)
+        if age is None or age < threshold:
+            continue
+        rows.append(
+            {
+                "outbox_id": entry.outbox_id,
+                "family": entry.family,
+                "contract_id": entry.contract_id,
+                "label": entry.label,
+                "age_days": round(age, 1),
+                "attempts": len(entry.attempts),
+                "last_attempt_at": entry.updated_at,
+            }
+        )
+    rows.sort(key=lambda row: (-row["age_days"], row["outbox_id"]))
+    return rows
+
+
+def prunable_sent_entries(
+    entries: list[WebhookOutboxEntry],
+    now: datetime | None = None,
+    retention_days: int | None = None,
+) -> list[WebhookOutboxEntry]:
+    """The entries the retention rule may take: SENT, and older
+    than the retention age. Failed entries are never in this
+    list — the prune cannot spend a failure, however old; a
+    negative retention age disables the rule entirely."""
+    retention = (
+        outbox_retention_days() if retention_days is None else retention_days
+    )
+    if retention < 0:
+        return []
+    now = now or datetime.now(timezone.utc)
+    prunable: list[WebhookOutboxEntry] = []
+    for entry in entries:
+        if entry.status != "sent":
+            continue
+        age = entry_age_days(entry, now)
+        if age is not None and age >= retention:
+            prunable.append(entry)
+    prunable.sort(key=lambda e: (e.created_at, e.outbox_id))
+    return prunable

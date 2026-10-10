@@ -366,12 +366,16 @@ def counsel_queue() -> dict:
     payload also carries ``suspension_review_alerts``: pattern-term
     suspensions whose review date has come due — the queue is where
     counsel works, so the set-asides reaching their shelf life are
-    surfaced there, beside the contracts."""
+    surfaced there, beside the contracts — and
+    ``stale_webhook_failures``: signed deliveries that failed and
+    have sat unrepaired past the stale threshold, the same
+    attention reading in delivery form."""
     items = service.queue()
     return {
         "count": len(items),
         "queue": items,
         "suspension_review_alerts": service.suspension_review_alerts(),
+        "stale_webhook_failures": service.stale_webhook_failures(),
     }
 
 
@@ -579,6 +583,19 @@ def webhook_outbox(status: str | None = None) -> dict:
     (payloads are not listed; they carry drafts). ``?status=failed``
     is the repair worklist."""
     return service.webhook_outbox(status=status)
+
+
+@app.post("/webhooks/outbox/prune", dependencies=_AUTH)
+def prune_webhook_outbox(body: WebhookResendRequest) -> dict:
+    """Prune the outbox under the retention rule: SENT entries
+    older than ``WEBHOOK_OUTBOX_RETENTION_DAYS`` (default 90)
+    are removed, under a named operator; FAILED entries are
+    never pruned, and the report names the failures kept —
+    stale ones flagged. 422 when the actor is missing."""
+    try:
+        return service.prune_webhook_outbox(actor=body.actor or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/webhooks/outbox/{outbox_id}/resend", dependencies=_AUTH)

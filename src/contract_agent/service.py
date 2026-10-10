@@ -1949,7 +1949,18 @@ class ContractService:
         the view answers the operational questions: what left,
         what landed, what is still failed and waiting on a
         re-send. ``status`` filters to one outcome (``failed``
-        is the worklist)."""
+        is the worklist). The ``staleness`` block reads the
+        ledger's ageing (round 15): which failures have sat
+        unrepaired past the stale threshold, and the retention
+        rule the prune enforces — the same reading ``/metrics``
+        and the counsel queue carry."""
+        from .webhook_outbox import (
+            entry_age_days,
+            outbox_retention_days,
+            outbox_stale_failure_days,
+            stale_failure_rows,
+        )
+
         entries = self._get_outbox_store().all()
         entries.sort(key=lambda e: (e.created_at, e.outbox_id))
         counts = {
@@ -1959,11 +1970,18 @@ class ContractService:
             "resends": sum(max(0, len(e.attempts) - 1) for e in entries),
             "by_family": dict(Counter(e.family for e in entries)),
         }
+        stale = stale_failure_rows(entries)
         shown = [
             e for e in entries if status is None or e.status == status
         ]
         return {
             "counts": counts,
+            "staleness": {
+                "stale_threshold_days": outbox_stale_failure_days(),
+                "retention_days": outbox_retention_days(),
+                "stale_failed": len(stale),
+                "stale_failures": stale,
+            },
             "entries": [
                 {
                     "outbox_id": e.outbox_id,
@@ -1974,6 +1992,11 @@ class ContractService:
                     "attempts": [a.model_dump(mode="json") for a in e.attempts],
                     "created_at": e.created_at,
                     "updated_at": e.updated_at,
+                    "age_days": (
+                        round(age, 1)
+                        if (age := entry_age_days(e)) is not None
+                        else None
+                    ),
                 }
                 for e in shown
             ],
@@ -1983,7 +2006,77 @@ class ContractService:
                 "entry is re-sent deliberately (POST "
                 "/webhooks/outbox/{id}/resend, actor required) — "
                 "the event is never regenerated to recover a "
-                "delivery."
+                "delivery. Sent entries older than the retention "
+                "age may be pruned by a named operator (POST "
+                "/webhooks/outbox/prune); failed entries are never "
+                "pruned, and one left unrepaired past the stale "
+                "threshold is named in the staleness block."
+            ),
+        }
+
+    def stale_webhook_failures(self) -> list[dict]:
+        """The stale-failure worklist: failed outbox entries
+        that have sat unrepaired past the stale threshold
+        (``WEBHOOK_OUTBOX_STALE_FAILURE_DAYS``, default 7),
+        oldest first. This is the reading the counsel queue
+        carries beside its suspension alerts — a delivery that
+        died is operational attention of the same kind as a
+        contract nobody has picked up."""
+        from .webhook_outbox import stale_failure_rows
+
+        return stale_failure_rows(self._get_outbox_store().all())
+
+    def prune_webhook_outbox(self, actor: str) -> dict:
+        """Prune the outbox under the retention rule: SENT
+        entries older than ``WEBHOOK_OUTBOX_RETENTION_DAYS``
+        (default 90) are removed; everything else stays.
+
+        The prune is a governed act, not housekeeping on a
+        timer: it takes a named operator, it runs only when
+        called, and its report names what it took. FAILED
+        entries are never pruned — a failure leaves the ledger
+        only by being repaired and then ageing out as a sent
+        entry — so the report also names the failures it kept,
+        stale ones flagged: pruning the history must never be
+        how a dead delivery gets forgotten."""
+        from .webhook_outbox import (
+            outbox_retention_days,
+            outbox_stale_failure_days,
+            prunable_sent_entries,
+            stale_failure_rows,
+        )
+
+        actor = (actor or "").strip()
+        if not actor:
+            raise ValueError(
+                "A prune needs a named actor: it removes delivery "
+                "history, and the report carries the name."
+            )
+        store = self._get_outbox_store()
+        entries = store.all()
+        retention = outbox_retention_days()
+        prunable = prunable_sent_entries(entries, retention_days=retention)
+        pruned = []
+        for entry in prunable:
+            if store.delete(entry.outbox_id):
+                pruned.append(entry.outbox_id)
+        kept = store.all()
+        return {
+            "actor": actor,
+            "pruned_at": datetime.now(timezone.utc).isoformat(),
+            "retention_days": retention,
+            "stale_threshold_days": outbox_stale_failure_days(),
+            "pruned": pruned,
+            "pruned_count": len(pruned),
+            "kept_sent": sum(1 for e in kept if e.status == "sent"),
+            "kept_failed": sum(1 for e in kept if e.status == "failed"),
+            "stale_failures_kept": stale_failure_rows(kept),
+            "note": (
+                "Only sent entries past the retention age were "
+                "removed. Failed entries are never pruned: a "
+                "failure leaves the ledger by being repaired (a "
+                "re-send that lands) and then ageing out as a "
+                "sent entry."
             ),
         }
 
@@ -2543,6 +2636,7 @@ class ContractService:
         records = self._get_store().all_records()
         results = [record.result for record in records]
         queue_items = self.queue()
+        outbox_view = self.webhook_outbox()
         telemetries = [r.telemetry for r in results if r.telemetry is not None]
         provider_runs = [t for t in telemetries if t.input_tokens is not None]
         latencies = [t.latency_seconds for t in telemetries]
@@ -2582,7 +2676,14 @@ class ContractService:
                     tier: sla_budget_business_days(tier) for tier in _SLA_DEFAULTS
                 },
             },
-            "webhooks": self.webhook_outbox()["counts"],
+            "webhooks": {
+                **outbox_view["counts"],
+                "stale_failed": outbox_view["staleness"]["stale_failed"],
+                "stale_threshold_days": outbox_view["staleness"][
+                    "stale_threshold_days"
+                ],
+                "retention_days": outbox_view["staleness"]["retention_days"],
+            },
             "playbook_coverage": self.playbook_coverage(results),
             "proposal_effectiveness": [
                 self.proposal_effectiveness(proposal.proposal_id)
