@@ -934,6 +934,29 @@ class ContractService:
                 )
             )
 
+    def annex_history(self, contract_id: str) -> dict:
+        """The annex history for the chain ending at
+        ``contract_id`` (``annex_history.py``): the sub-processor
+        list's and the prior-invention schedule's whole timelines
+        — each round's annex, each step's movement, the notice
+        clock read on every addition, the transfer reading on
+        every removal — in one view, where the drift checks give
+        only the latest step. Computed from the stored intake
+        packages with the drift modules' own readings, so the
+        biography and the findings cannot disagree. Raises
+        ``KeyError`` for a contract the store does not hold."""
+        store = self._get_store()
+        record = store.get(contract_id)
+        if record is None or not record.contract:
+            raise KeyError(
+                f"Unknown contract_id: {contract_id} (analyze it first)"
+            )
+        from .annex_history import build_annex_history
+
+        model = ContractInput.model_validate(record.contract)
+        chain = [*self._chain_contracts(model), model]
+        return build_annex_history(chain)
+
     def analyze_batch(
         self,
         contracts: list[ContractInput | dict],

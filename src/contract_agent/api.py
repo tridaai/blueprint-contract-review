@@ -734,6 +734,20 @@ def get_result(contract_id: str) -> AgentResult:
     return result
 
 
+@app.get("/contracts/{contract_id}/annex-history", dependencies=_AUTH)
+def annex_history(contract_id: str) -> dict:
+    """The annex history for the chain ending at this contract:
+    the sub-processor list's and the prior-invention schedule's
+    whole timelines — each round's annex, each step's movement,
+    the notice clock on every addition, the transfer reading on
+    every removal — where the drift checks on the result give
+    only the latest step. 404 for a contract not yet analyzed."""
+    try:
+        return service.annex_history(contract_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/contracts/{contract_id}/brief", dependencies=_AUTH)
 def negotiation_brief(contract_id: str):
     """The negotiation brief as a markdown download: chain history,

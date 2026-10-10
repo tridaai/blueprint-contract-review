@@ -449,7 +449,7 @@ function render(result) {
   const units = {};
   (result.clauses || []).forEach(u => { units[u.clause_id] = u; });
   let html = '';
-  html += `<div class="row" style="margin-bottom:10px"><button id="brief-btn">Download negotiation brief (.md)</button><span class="note">one document for the negotiation: chain history, open positions by tier, proposed edits, exhibit findings, obligations — assembled from the stored records</span></div>`;
+  html += `<div class="row" style="margin-bottom:10px"><button id="brief-btn">Download negotiation brief (.md)</button><button id="annex-btn">Annex history</button><span class="note">one document for the negotiation: chain history, open positions by tier, proposed edits, exhibit findings, obligations — assembled from the stored records. Annex history: the sub-processor list's and prior-invention schedule's whole timeline across the chain, not just the latest drift step.</span></div><div id="annex-history"></div>`;
   html += `<div class="row">${pill(result.status, result.status === 'awaiting_counsel' ? 'warn' : 'good')}
     ${pill('posture: ' + f.posture, f.posture === 'aligned' ? 'good' : f.posture === 'negotiable' ? 'warn' : 'bad')}
     ${pill('worst: ' + f.worst_position)} ${result.reviewer_blocked ? pill('REVIEWER BLOCKED', 'bad') : ''}</div>
@@ -608,6 +608,23 @@ function render(result) {
     a.download = currentId + '-negotiation-brief.md';
     a.click();
     URL.revokeObjectURL(url);
+  });
+  $('annex-btn').addEventListener('click', async () => {
+    const host = $('annex-history');
+    const res = await fetch('/contracts/' + currentId + '/annex-history', {headers: headers()});
+    if (!res.ok) { host.innerHTML = '<p class="note">Annex history unavailable: ' + res.status + '</p>'; return; }
+    const data = await res.json();
+    const family = (title, fam) => {
+      if (!fam) return `<p class="note" style="margin-top:8px">${title}: no round of this chain carries this annex.</p>`;
+      const rounds = fam.rounds.map(r => `${esc(r.contract_id)}: ${r.count !== undefined && (r.present === false || r.schedule_present === false) ? 'annex absent' : esc(r.entries.map(e => e.name + (e.location ? ' (' + e.location + ')' : '')).join(', ') || 'lists none')}`).join('<br>');
+      const steps = fam.steps.map(s => `<li>${esc(s.from_contract_id)} → ${esc(s.to_contract_id)}: ${esc(s.summary)}</li>`).join('');
+      const summary = fam.summary.map(line => `<div>${esc(line)}</div>`).join('');
+      return `<div style="margin-top:8px"><strong>${title}</strong><p class="note">${rounds}</p><ul>${steps}</ul>${summary}</div>`;
+    };
+    host.innerHTML = `<div style="border-top:1px solid #e5e5e0;padding-top:8px;margin-top:8px"><strong>Annex history — chain ${data.chain.map(esc).join(' → ')}</strong>` +
+      family('Sub-processor list', data.subprocessor) +
+      family('Schedule of prior inventions', data.prior_inventions) +
+      `<p class="note">${esc(data.note)}</p></div>`;
   });
   $('gate-section').style.display = '';
   $('approve').disabled = !currentValid;
