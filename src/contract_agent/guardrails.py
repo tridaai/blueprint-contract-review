@@ -7,12 +7,21 @@ approval and the API returns 422).
 
 The rules encode the blueprint's core promise: **the agent flags and
 explains; it never states a legal conclusion, never agrees to or
-accepts any term, and never promises an outcome.** A counterparty's
-own words can violate them — a cover email pressing "confirm you
-accept all terms today" is reported pressure, not an instruction, so
-the injection screen leaves it flagged-but-present in the source; when
+accepts any term, never promises an outcome, and never characterises
+how material the requested changes are.** A counterparty's own words
+can violate them — a cover email pressing "confirm you accept all
+terms today" is reported pressure, not an instruction, so the
+injection screen leaves it flagged-but-present in the source; when
 a drafter pastes it into the response draft, these checks are what
 stop it. The adversarial samples demonstrate exactly that path.
+
+Every check here is pattern-based — deterministic families of
+phrasings, not semantic understanding — and each says so. The
+materiality check is the clearest example: it catches a minimising
+adjective tied to a change noun, in either order; a drafter determined
+to minimise in other words would still be caught by counsel, the
+verify step, and the reviewer — the guardrail is one layer, honestly
+labelled.
 """
 
 from __future__ import annotations
@@ -51,6 +60,38 @@ _AGREEMENT_PATTERNS = [
 ]
 
 _NEGATION = re.compile(r"\b(not|never|no|n't|nor|nothing)\b", re.IGNORECASE)
+
+# Materiality characterisations of the requested changes. Counsel
+# judges whether a change is material; the drafter lists the changes
+# factually. An LLM judge caught live drafts calling requested changes
+# "technical and routine" — language that quietly pre-decides the
+# negotiation. The family below binds a minimising adjective to a
+# change noun, in either order ("minor changes", "the changes are
+# technical and routine"), plus bare minimisers ("only a minor ...").
+# The noun list deliberately excludes clause nouns: quoted playbook
+# fallback language stays safe ("the standard clause", "standard
+# position") — the characterisation is the violation, not the word.
+_MINIMISER = (
+    r"(?:routine|minor|technical|simple|small|standard|administrative|"
+    r"clerical|trivial|cosmetic)"
+)
+_CHANGE_NOUN = r"(?:changes?|amendments?|revisions?|requests?|edits?|modifications?)"
+_MATERIALITY_PATTERNS = [
+    rf"\b{_MINIMISER}\b[^.]{{0,40}}?\b{_CHANGE_NOUN}\b",
+    rf"\b{_CHANGE_NOUN}\b[^.]{{0,40}}?\b{_MINIMISER}\b",
+    r"\b(?:only|just|merely)\s+(?:a\s+)?(?:minor|technical|routine|small|simple|administrative)\b",
+]
+
+
+def find_materiality_hit(text: str) -> str | None:
+    """First affirmative materiality characterisation of the requested
+    changes in ``text`` (the matched phrase), or None. Pattern-based:
+    a phrasing family, not a semantic detector."""
+    for pattern in _MATERIALITY_PATTERNS:
+        hit = _affirmative(pattern, text or "")
+        if hit:
+            return hit
+    return None
 
 
 def _affirmative(pattern: str, text: str) -> str | None:
@@ -157,6 +198,20 @@ def validate_drafts(
                 "the counterparty draft agrees to nothing"
                 if agreement_hit is None
                 else f"agreement language found in the counterparty draft: '{agreement_hit}' — the draft proposes changes only"
+            ),
+        )
+    )
+
+    materiality_hit = find_materiality_hit(combined)
+    checks.append(
+        GuardrailCheck(
+            name="no_materiality_minimising",
+            passed=materiality_hit is None,
+            detail=(
+                "neither draft characterises the requested changes' materiality"
+                if materiality_hit is None
+                else f"materiality characterisation found: '{materiality_hit}' — "
+                "list the changes factually; whether they are material is counsel's call"
             ),
         )
     )

@@ -58,8 +58,10 @@ For each contract, the pipeline:
 9. **Verifies** the drafts (self-check), sends them to an
    **independent reviewer**, then runs **guardrails as code**:
    `no_legal_conclusion`, `no_agreement_language`,
-   `no_prohibited_promises`, `no_pii_in_draft`, a playbook citation
-   per flagged clause, the contract id present. A bounded repair loop
+   `no_materiality_minimising` (the drafts never call the requested
+   changes "routine", "minor", "technical" — materiality is counsel's
+   call), `no_prohibited_promises`, `no_pii_in_draft`, a playbook
+   citation per flagged clause, the contract id present. A bounded repair loop
    redrafts once or twice; failures stand and block approval.
 10. **Pauses at counsel's gate** (LangGraph checkpoint + interrupt).
     Approval records counsel's decision; an optional webhook routes

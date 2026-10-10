@@ -47,7 +47,11 @@ ingest → extract → screen → classify → facts
 
 `no_legal_conclusion` (no "legally binding / safe to sign /
 approved"), `no_agreement_language` (no "we agree / we accept these
-terms" in the counterparty draft), `no_prohibited_promises`,
+terms" in the counterparty draft), `no_materiality_minimising` (no
+"technical and routine" / "minor changes" characterisations of the
+requested changes — a pattern family added after an LLM judge caught
+live drafts minimising; materiality is counsel's judgement),
+`no_prohibited_promises`,
 `no_pii_in_draft` (SSN / Luhn-checked card / passport patterns),
 `playbook_citations_present`, `flagged_clauses_cited` (every flagged
 clause's playbook ref must appear in the packet),

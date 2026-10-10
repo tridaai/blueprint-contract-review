@@ -40,3 +40,4 @@
 {"case_id": "D10", "kind": "document", "sample_id": "CTR-2010", "expected_posture": "escalation_required", "expected_positions": {"ip_ownership": "walk_away", "governing_law": "review_required"}}
 {"case_id": "D11", "kind": "document", "sample_id": "CTR-2011", "expected_posture": "negotiable", "expected_positions": {"limitation_of_warranty": "review_required", "assignment": "review_required"}}
 {"case_id": "D12", "kind": "document", "sample_id": "CTR-2012", "expected_posture": "aligned", "expected_positions": {"confidentiality": "preferred"}, "expected_missing": []}
+{"case_id": "D13", "kind": "document", "sample_id": "CTR-2013", "expected_posture": "aligned", "expected_positions": {"liability_cap": "preferred", "confidentiality": "preferred"}, "expected_missing": [], "expected_flags": false, "expected_repaired": true}

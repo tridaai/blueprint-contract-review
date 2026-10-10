@@ -12,7 +12,9 @@ Two paths, one contract (``VerifyResult``):
   the retrieved playbook entries; no dollar figure may appear in the
   counterparty response prose (figures are clause facts for the
   packet, not things the response asserts); agreement/conclusion
-  language is flagged; a foreign contract id is flagged.
+  language is flagged; a materiality characterisation of the
+  requested changes ("technical and routine") is flagged; a foreign
+  contract id is flagged.
 
 Verification never blocks a run by itself — it is evidence for
 counsel and an input to the autonomy recommendation. The hard stop
@@ -23,7 +25,12 @@ from __future__ import annotations
 
 import re
 
-from .guardrails import _AGREEMENT_PATTERNS, _CONCLUSION_PATTERNS, _affirmative
+from .guardrails import (
+    _AGREEMENT_PATTERNS,
+    _CONCLUSION_PATTERNS,
+    _affirmative,
+    find_materiality_hit,
+)
 from .model_backends import DraftContext, clause_rows_text
 from .schemas import ContractFacts, ContractInput, Drafts, VerifyResult
 
@@ -59,6 +66,12 @@ def checklist_grounding(
     )
     if hit:
         issues.append(f"counterparty draft contains agreement language: '{hit}'")
+    materiality = find_materiality_hit(combined)
+    if materiality:
+        issues.append(
+            f"draft characterises the requested changes' materiality: '{materiality}' — "
+            "materiality is counsel's call; list the changes factually"
+        )
     for token in sorted(set(_ID_TOKEN.findall(combined))):
         if token != contract_id:
             issues.append(f"draft references a different contract id ({token})")
