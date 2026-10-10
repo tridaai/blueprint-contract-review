@@ -96,6 +96,19 @@
         <button id="due-refresh">Refresh</button>
         <span class="note">dated register entries due within 90 days, across all analyzed contracts</span>
       </div>
+      <div id="certificates" class="empty" style="margin-top:14px">Loading…</div>
+      <div class="row" style="margin-top:10px">
+        <span class="note">certificate renewal watch: relied-upon certificates of insurance (their review raised no finding) expiring within the watch window — the deadline sweep announces them as certificate_expiring events</span>
+      </div>
+    </section>
+    <section>
+      <h2>Matter brief</h2>
+      <div class="row">
+        <input type="text" id="matter-counterparty" placeholder="Counterparty (e.g. Vertex Analytics Ltd)">
+        <input type="text" id="matter-tag" placeholder="Matter tag (e.g. Vertex platform renewal)">
+        <button id="matter-brief-btn">Download matter brief (.md)</button>
+      </div>
+      <p class="note" id="matter-brief-status">one document across every chain sharing the counterparty + matter tag: combined open positions, exhibit findings across the documents, and all obligations sorted by deadline — assembled from the stored records</p>
     </section>
     <section>
       <h2>How it works</h2>
@@ -241,6 +254,26 @@ async function loadDue() {
   }
 }
 
+async function loadCertificates() {
+  try {
+    const res = await fetch('/certificates/expiring', {headers: headers()});
+    if (!res.ok) throw new Error('none');
+    const data = await res.json();
+    if (!data.certificates.length) {
+      $('certificates').innerHTML = '<span class="empty">No relied-upon certificates expire within the watch window (' + esc(data.window_days) + ' days).</span>';
+      return;
+    }
+    $('certificates').innerHTML = `<table><thead><tr><th>Certificate expiry</th><th>Contract</th><th>Watch</th></tr></thead><tbody>
+      ${data.certificates.map(c => `<tr>
+        <td>${c.overdue ? '<span class="flag">expired ' + esc(-c.days_until) + 'd ago</span>' : esc(c.expiry_date) + '<br><span class="note">in ' + esc(c.days_until) + 'd</span>'}</td>
+        <td>${esc(c.contract_id)}<br><span class="note">${esc(c.counterparty_name || '')}</span></td>
+        <td>${pill('certificate of insurance')} <span class="note">passed review — renewal is the open item</span></td></tr>`).join('')}
+      </tbody></table>`;
+  } catch (e) {
+    $('certificates').innerHTML = '<span class="empty">Certificate watch unavailable.</span>';
+  }
+}
+
 async function loadProposals() {
   try {
     const res = await fetch('/playbook/proposals', {headers: headers()});
@@ -264,7 +297,8 @@ async function loadProposals() {
         ${p.status === 'proposed' ? `<div class="row" style="margin-top:8px">
           <button data-activate="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Activate (counsel)</button>
           <button data-dismiss="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Dismiss</button>
-        </div>` : `<p class="note" style="margin:6px 0">${esc(p.status)} by ${esc(p.decided_by || '—')}${p.decided_at ? ' · ' + esc(p.decided_at) : ''}${p.decision_note ? ' — ' + esc(p.decision_note) : ''}</p>`}
+        </div>` : `<p class="note" style="margin:6px 0">${esc(p.status)} by ${esc(p.decided_by || '—')}${p.decided_at ? ' · ' + esc(p.decided_at) : ''}${p.decision_note ? ' — ' + esc(p.decision_note) : ''}</p>
+        ${p.effectiveness ? `<p class="note" style="margin:6px 0">since activation: ${esc(p.effectiveness.runs_since_activation)} run(s) · verdicts citing its entries: ${esc(p.effectiveness.verdicts_citing_entries)} · flagged without fallback since: ${esc(p.effectiveness.flagged_without_fallback_since)} ${p.effectiveness.gap_recurring ? '<span class="flag">— the gap recurred</span>' : '<span class="check-pass">— the gap has not recurred</span>'}</p>` : ''}`}
       </div>`).join('');
     const decide = async (id, action) => {
       const actor = $('actor').value.trim();
@@ -422,6 +456,11 @@ function render(result) {
   if (result.needs_information && result.information_request) {
     html += `<h3>Information request (composed, not sent)</h3><pre>${esc(result.information_request.message)}</pre>`;
   }
+  if (result.walk_away_outcomes && result.walk_away_outcomes.length) {
+    html += `<h3>Walk-away lines in this packet</h3><p class="note">captured when counsel decided this packet; each resolves against the follow-up round's text — held = the final text sits at or above the line.</p><table><thead><tr><th>Clause</th><th>Position at decision</th><th>Outcome</th><th>Evidence</th></tr></thead><tbody>
+      ${result.walk_away_outcomes.map(o => `<tr><td>${esc(o.clause_type)}<br><span class="note">${esc(o.clause_id)}</span></td><td>${pill(o.position_at_decision)}</td><td>${pill(o.status, o.status === 'held' ? 'good' : o.status === 'dropped' ? 'bad' : 'warn')}</td><td>${esc(o.detail)}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
   html += `<h3>Autonomy recommendation</h3><p>${result.autonomy.eligible_for_auto_triage ? pill('eligible for auto-triage', 'good') : pill('counsel decision required', 'warn')} <span class="note">recommendation only — never acted on</span></p>
     <ul>${result.autonomy.reasons.map(x => `<li>${esc(x)}</li>`).join('')}${(result.autonomy.blockers || []).map(x => `<li>blocker: ${esc(x)}</li>`).join('')}</ul>`;
   if (result.telemetry) {
@@ -468,6 +507,7 @@ async function loadConcessionProfile(counterparty) {
       <span class="note">computed from ${esc(p.contracts)} stored contract(s) in ${esc(p.chains)} chain(s) · re-trades ${esc(p.re_trades)}${p.best_rounds_to_no_walk_away ? ' · walk-away cleared by round ' + esc(p.best_rounds_to_no_walk_away) : ''} · counsel decisions: ${esc(p.decisions.approved)} approved / ${esc(p.decisions.rejected)} rejected</span>
       <div class="row" style="margin-top:6px"><span class="note">Concedes:</span> ${p.concedes.length ? p.concedes.map(t => chip(t, 'good')).join(' ') : '<span class="note">none observed</span>'}</div>
       <div class="row" style="margin-top:4px"><span class="note">Holds:</span> ${p.holds.length ? p.holds.map(t => chip(t, 'bad')).join(' ') : '<span class="note">none observed</span>'}${p.mixed.length ? '<span class="note">Mixed:</span> ' + p.mixed.map(t => chip(t, 'warn')).join(' ') : ''}</div>
+      ${p.walk_away_lines && p.walk_away_lines.proposed ? `<div class="row" style="margin-top:4px"><span class="note">Walk-away lines decided:</span> ${pill('held ' + p.walk_away_lines.held, 'good')} ${pill('softened ' + p.walk_away_lines.softened, 'warn')} ${pill('dropped ' + p.walk_away_lines.dropped, 'bad')}${p.walk_away_lines.pending ? ' ' + pill('pending ' + p.walk_away_lines.pending) : ''} <span class="note">of ${esc(p.walk_away_lines.proposed)} proposed — resolved against the follow-up round's text</span></div>` : ''}
     </div>`;
   } catch (e) {
     host.innerHTML = '';
@@ -534,7 +574,20 @@ async function slaSweep() {
   loadQueue();
 }
 
-$('due-refresh').addEventListener('click', loadDue);
+$('matter-brief-btn').addEventListener('click', async () => {
+  const counterparty = $('matter-counterparty').value.trim();
+  const matter = $('matter-tag').value.trim();
+  if (!counterparty || !matter) { $('matter-brief-status').textContent = 'Enter both a counterparty and a matter tag — the brief covers the chains that share them.'; return; }
+  const res = await fetch('/matters/brief?counterparty=' + encodeURIComponent(counterparty) + '&matter=' + encodeURIComponent(matter), {headers: headers()});
+  if (!res.ok) { $('matter-brief-status').textContent = 'No matter brief for that pair (' + res.status + ') — the tag is read off the stored contracts\' intake, exactly as submitted.'; return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'matter-brief.md'; a.click();
+  URL.revokeObjectURL(url);
+  $('matter-brief-status').textContent = 'Matter brief downloaded — also exported to object storage at ' + (res.headers.get('X-Object-Key') || 'matters/…') + '.';
+});
+$('due-refresh').addEventListener('click', () => { loadDue(); loadCertificates(); });
 $('queue-refresh').addEventListener('click', loadQueue);
 $('sla-sweep').addEventListener('click', slaSweep);
 $('proposals-refresh').addEventListener('click', loadProposals);
@@ -549,6 +602,7 @@ $('proposals-generate').addEventListener('click', async () => {
 loadSamples();
 loadEvals();
 loadDue();
+loadCertificates();
 loadQueue();
 loadProposals();
 </script>

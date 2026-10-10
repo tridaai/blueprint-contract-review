@@ -172,6 +172,19 @@ only, in its own breakdown component: the tiers already escalate
 such a clause to the walk-away line, and the options now tell the
 same story instead of scoring it as if nothing had happened twice.
 
+**Walk-away line outcomes.** The profile also counts decision
+evidence, not just verdict movement: when counsel decides a
+packet that proposed walk-away lines, each line is captured on
+the decision record — its language, the clause's position at
+decision time — and resolved against the follow-up round's text.
+**Held**: the final text sits at or above the line (preferred or
+acceptable fallback). **Softened**: off the walk-away text, short
+of an acceptable position. **Dropped**: the text still sits
+beyond the line. The profile tallies held / softened / dropped /
+pending per clause type and speaks them as an evidence line, so
+the next review knows not only how this counterparty moves, but
+whether the lines counsel drew actually survived contact.
+
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
 with **no fallback language** to offer. Those gaps now become a
@@ -185,6 +198,19 @@ and only then do its entries join the active playbook — verdicts
 may cite them, tiers may propose their lines. A dismissed
 proposal is never re-drafted. The playbook stays human-owned; the
 agent drafts the paperwork.
+
+**Proposal effectiveness.** Activation is no longer where the
+record goes quiet. Every analysis is timestamped, and an activated
+proposal reports what its entries actually did since activation:
+the verdicts issued under each entry (citations read off the
+verdicts themselves), the clause type's positions over the same
+window, and whether flagged verdicts with no fallback language
+recurred — the gap the activation was meant to close, still open.
+The view rides on the proposal record, at
+`GET /playbook/proposals/{id}/effectiveness`, and in `/metrics`
+beside the coverage analytics. It is honest in both directions: a
+structure-only activation whose entries carry no language yet
+reports the gap still recurring, not a success.
 
 **Standalone DPA reviews.** A data processing addendum sent as
 the primary document (`doc_type: "dpa"`) is reviewed on its own
@@ -224,7 +250,17 @@ weeks later, so `POST /obligations/sweep` (or the CLI's
 `--sweep-obligations DAYS`) sweeps every stored contract for
 obligations due within the window, emits one `obligation_due` event
 per deadline, and returns a dispatch report. Report-only: the sweep
-sends nothing — delivery belongs to the event consumer.
+sends nothing — delivery belongs to the event consumer. The same
+sweep runs the **certificate renewal watch**: a certificate of
+insurance that passed its review (the cover the agreement relies
+on) still expires mid-term, so relied-upon certificates expiring
+within `CERTIFICATE_EXPIRY_WATCH_DAYS` (default 90, overdue
+included) draw a `certificate_expiring` event and a report section
+— `GET /certificates/expiring` serves the view on its own.
+Certificates that failed review are findings already, not watches;
+the watch exists for the cover nobody had a reason to doubt
+(sample CTR-2029: consistent at review, expiring 2026-12-31,
+flagged by an autumn sweep).
 
 **Queue ownership and SLA.** The counsel queue (`GET /queue`) is a
 worklist with an owner and a clock: an operator records an assignee
@@ -263,6 +299,21 @@ against the previous export — the new round, clauses moved, edits
 proposed anew, outcomes and decisions recorded, obligations
 opened or closed. A re-export with no changes says exactly that.
 
+**The matter brief.** A negotiation is one chain; a matter is
+several — the platform MSA and its SOW, the renewal and the
+amendment — sharing a counterparty and a `matter` tag on intake.
+`GET /matters/brief?counterparty=…&matter=…` downloads one
+markdown document across the matter's chains: a chain table with
+each negotiation's current state, the open positions of every
+chain combined and grouped by tier, the exhibit findings across
+all the documents, the reflection patterns, and every obligation
+in the matter sorted by deadline. It exports through the same
+object-store lineage as the chain brief (`matters/<slug>/`,
+versioned keys, a retained digest per export), so each new matter
+brief also leads with what changed since the last one — chains
+advanced, decisions recorded, obligations opened or closed,
+exhibit failures appearing or clearing.
+
 ## Quickstart
 
 Runs the **production topology locally** — a stateless API backed by
@@ -278,7 +329,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 251 tests (250 run + 1 Postgres-gated skip)
+make test                  # 276 tests (275 run + 1 Postgres-gated skip)
 make evals                 # golden set: 76/76 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
@@ -337,7 +388,7 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 76 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 77 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
 DPA family and 8 for the employment family), 19 document-level
 (posture, per-type positions, absence detection, injection flags,
@@ -345,13 +396,14 @@ information requests, repair behaviour — the clean and
 adversarial DPAs and employment drafts among them), 1
 negotiation-round case (verdict movement between the CTR-2014/
 CTR-2015 round pair), 1 round-chain case (re-trades and cumulative
-movement across CTR-2014 → 2016), and 9 exhibit-consistency cases
+movement across CTR-2014 → 2016), and 10 exhibit-consistency cases
 (the CTR-2017 DPA mismatch pair, the CTR-2018 consistent pair,
 the no-exhibit-promises case, the CTR-2019/2020 order-form pair,
-the CTR-2021/2022 SOW pair, and the CTR-2027/2028
-insurance-certificate pair).
+the CTR-2021/2022 SOW pair, the CTR-2027/2028
+insurance-certificate pair, and CTR-2029 — the certificate that
+passes review and is then caught by the renewal watch).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 76/76).
+gate is ≥ 95% (currently 77/77).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.

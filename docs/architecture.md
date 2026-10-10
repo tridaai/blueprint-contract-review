@@ -238,6 +238,29 @@ history dict as `concession_lines`, which
 review of that counterparty is informed by how they have actually
 moved, as priors beside the posture memory and counsel feedback.
 
+**Walk-away line acceptance tracking** (`walkaway.py`). The
+profile's verdict movement says how drafts moved; it does not say
+whether the positions counsel actually authorised as final — the
+walk-away lines — survived. So counsel's decision now captures
+them: deciding a contract whose clause diffs propose tier 2
+records a `WalkAwayOutcome` per line on the decision record (the
+line's language, the clause's position at decision time, the
+decision itself), and each outcome resolves against the **follow-up
+round** — the counterparty's next draft is the evidence. At an
+acceptable position (preferred / acceptable_fallback) the final
+text is at or above the line: `held`. At `review_required` it came
+off the walk-away text but stopped short of acceptable:
+`softened`. Still at `walk_away`: `dropped`. Absent from the
+follow-up: `clause_removed`. With no follow-up in the store the
+outcome stays `pending`; resolution is a pure function of the
+stored chain, re-run for the whole chain whenever a new round is
+analysed, so late arrivals resolve old records without counsel
+touching them. The concession profile counts the outcomes —
+proposed / held / softened / dropped / pending, overall and per
+clause type — as `walk_away_lines`, speaks them as an evidence
+line, and the console shows both the profile tallies and each
+decided packet's lines with their resolutions.
+
 **Negotiation brief** (`brief.py`). One markdown document per
 chain, assembled in code from the stored results — never
 model-composed, so every figure traces to a record: the
@@ -260,6 +283,29 @@ last brief" (`brief_delta_lines`): new round, decision recorded,
 clauses moved / appeared / disappeared, edits proposed anew,
 outcomes recorded, obligations opened or closed — or, honestly,
 that nothing material changed.
+
+**Matter brief** (`matter_brief.py`). A matter is wider than a
+chain: several chains sharing one counterparty and one matter tag
+(intake metadata, `ContractInput.matter`). The matter brief
+assembles across them, reading each chain's latest round for the
+current state: a chain table (rounds, latest status and decision,
+worst position, open walk-away lines), the open positions of every
+chain combined and grouped by proposed tier, the reflection
+patterns anywhere in the matter, the exhibit findings across all
+the documents, and every obligation in the matter sorted by
+deadline — dated first, in due order, undated duties after. The
+export keeps the chain brief's lineage discipline under
+`matters/<counterparty>--<matter>/`: versioned keys, the canonical
+latest copy, and a retained source digest per export
+(`matter_source_digest` — chains keyed by root with their latest
+rounds, decisions, open walk-away counts, exhibit failures,
+obligations), so the next export leads with "Since the last matter
+brief" (`matter_delta_lines`): chains added or advanced, decisions
+recorded, walk-away lines opened or closed, obligations opened or
+closed, exhibit failures appearing or clearing. Served by
+`ContractService.matter_brief` and `GET /matters/brief`; an
+untagged contract is in no matter, and an unknown pair is a 404,
+not an empty document.
 
 **History-aware option scoring** (`options.py`). The concession
 profile also feeds the options node as a scoring term — small,
@@ -327,6 +373,25 @@ counsel activates at 9:00 answers queries at 9:01. A retriever
 built over an explicitly pinned corpus keeps that corpus;
 refresh is a no-op there.
 
+**Proposal effectiveness** (`proposal_effectiveness.py`).
+Activation was where the record went quiet; now it is measured.
+Every analysis stamps its record (`ApprovalRecord.analyzed_at`),
+and an activated proposal's effectiveness is computed from the
+stored verdicts issued at or after its activation stamp: per
+entry, the verdicts citing it (off `playbook_refs`) and their
+positions; per clause type, all verdicts in the window, how many
+cited the new entries, how many arrived flagged, and how many
+still carried **no fallback language** — the gap recurring, which
+is the activation failing in the only way that matters. The view
+rides on the proposal record (`GET /playbook/proposals`), at
+`GET /playbook/proposals/{id}/effectiveness`, and in `/metrics`
+beside the coverage analytics that started the loop. It is honest
+in both directions: a structure-only activation (the "other"
+scaffold, whose entries carry no language for counsel to have
+written yet) reports the gap still recurring rather than dressing
+the decision up, and records saved before the stamp existed are
+counted as unstamped, never silently backdated into a window.
+
 **Standalone DPA family** (`doc_type: "dpa"`). A data processing
 addendum arriving as the primary document is normalised from its
 names (data processing addendum/agreement, data protection
@@ -387,6 +452,25 @@ stored contract against an explicit clock, emits one
 by design — delivery is the event consumer's job. Exposed as a
 service method, `POST /obligations/sweep`, and the CLI's
 `--sweep-obligations` flag.
+
+**Certificate renewal watch** (`certificates.py`). The exhibit
+checks judge a certificate of insurance at review time; the cover
+then expires mid-term and nothing notices. The watch reads the
+stored checks: a contract **relies** on a certificate when its
+`insurance_certificate_expiry` check came back `consistent` (one
+per chain, from the chain's latest round — a renewal certificate
+arriving as a later round supersedes the earlier one), and the
+recorded expiry is compared against the sweep clock. Relied-upon
+certificates expiring within the watch window
+(`CERTIFICATE_EXPIRY_WATCH_DAYS`, default 90 — the watch's own
+window, not the obligations window; overdue included) draw one
+`certificate_expiring` event per sweep and a section of the
+dispatch report; `GET /certificates/expiring` serves the same view
+on its own. Certificates whose checks failed are deliberately
+**not** watched: they are already findings on the record, and the
+watch exists for the cover nobody had a reason to doubt. The
+sample CTR-2029 is the demonstration — fully consistent at
+review, expiring 2026-12-31, flagged by an autumn sweep.
 
 ## Production topology
 
