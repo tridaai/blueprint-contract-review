@@ -239,6 +239,15 @@ def metrics() -> dict:
     return service.metrics()
 
 
+@app.get("/queue", dependencies=_AUTH)
+def counsel_queue() -> dict:
+    """The counsel worklist: contracts awaiting a decision, sorted
+    worst-first (posture severity, worst clause position, age), each
+    with its autonomy recommendation flag."""
+    items = service.queue()
+    return {"count": len(items), "queue": items}
+
+
 @app.get("/obligations/due", dependencies=_AUTH)
 def obligations_due(days: int = 90) -> dict:
     """Obligation deadlines across all stored contracts: register

@@ -72,6 +72,14 @@
       <div id="evals" class="empty">Loading…</div>
     </section>
     <section>
+      <h2>Counsel queue</h2>
+      <div id="queue" class="empty">Loading…</div>
+      <div class="row" style="margin-top:10px">
+        <button id="queue-refresh">Refresh</button>
+        <span class="note">awaiting contracts, worst first — click a row to open it</span>
+      </div>
+    </section>
+    <section>
       <h2>Obligations due soon</h2>
       <div id="due" class="empty">Loading…</div>
       <div class="row" style="margin-top:10px">
@@ -154,6 +162,34 @@ async function loadEvals() {
       <p class="note">From evals/run_evals.py (deterministic runner over the golden set).</p>`;
   } catch (e) {
     $('evals').innerHTML = '<span class="empty">No eval results yet — run <code>python evals/run_evals.py</code>.</span>';
+  }
+}
+
+async function loadQueue() {
+  try {
+    const res = await fetch('/queue', {headers: headers()});
+    if (!res.ok) throw new Error('none');
+    const data = await res.json();
+    if (!data.queue.length) {
+      $('queue').innerHTML = '<span class="empty">Queue is clear — nothing awaiting counsel.</span>';
+      return;
+    }
+    $('queue').innerHTML = `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th></th></tr></thead><tbody>
+      ${data.queue.map(q => `<tr data-contract="${esc(q.contract_id)}" style="cursor:pointer">
+        <td>${esc(q.contract_id)}<br><span class="note">${esc(q.counterparty_name || '')}</span></td>
+        <td>${pill(q.posture, q.posture === 'aligned' ? 'good' : q.posture === 'negotiable' ? 'warn' : 'bad')}</td>
+        <td>${posPill(q.worst_position)}</td>
+        <td>${esc(q.age_days)}d</td>
+        <td>${q.reviewer_blocked ? pill('BLOCKED', 'bad') : q.autonomy_eligible ? pill('auto-triage ok', 'good') : q.needs_information ? pill('needs info', 'warn') : ''}</td></tr>`).join('')}
+      </tbody></table>`;
+    $('queue').querySelectorAll('tr[data-contract]').forEach(row => {
+      row.addEventListener('click', async () => {
+        const res = await fetch('/contracts/' + row.dataset.contract, {headers: headers()});
+        if (res.ok) render(await res.json());
+      });
+    });
+  } catch (e) {
+    $('queue').innerHTML = '<span class="empty">Queue unavailable.</span>';
   }
 }
 
@@ -291,6 +327,7 @@ async function analyze() {
   $('run-status').textContent = 'Done — awaiting counsel.';
   render(result);
   loadDue();
+  loadQueue();
 }
 
 async function decide(path) {
@@ -304,6 +341,7 @@ async function decide(path) {
   if (!res.ok) { $('gate-status').textContent = 'Error ' + res.status + ': ' + (body.detail || ''); return; }
   $('gate-status').textContent = `Recorded: ${body.status} by ${body.decided_by}` + (body.dispatch_status ? ` · webhook ${body.dispatch_status}` : '') + '.';
   render(body);
+  loadQueue();
   $('gate-section').style.display = 'none';
 }
 
@@ -311,9 +349,11 @@ $('analyze').addEventListener('click', analyze);
 $('approve').addEventListener('click', () => decide('approve'));
 $('reject').addEventListener('click', () => decide('reject'));
 $('due-refresh').addEventListener('click', loadDue);
+$('queue-refresh').addEventListener('click', loadQueue);
 loadSamples();
 loadEvals();
 loadDue();
+loadQueue();
 </script>
 </body>
 </html>

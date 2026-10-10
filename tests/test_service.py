@@ -132,6 +132,33 @@ def test_metrics_and_audit_rows():
     assert rows["CTR-1002"]["decision"] == ""
 
 
+def test_queue_orders_worst_first_and_drops_decided():
+    svc = service()
+    samples = {c.contract_id: c for c in sample_contract_models()}
+    svc.analyze(samples["CTR-2001"])  # aligned
+    svc.analyze(samples["CTR-2011"])  # negotiable
+    svc.analyze(samples["CTR-2002"])  # escalation_required (uncapped liability)
+    queue = svc.queue()
+    assert [item["contract_id"] for item in queue] == ["CTR-2002", "CTR-2011", "CTR-2001"]
+    worst = queue[0]
+    assert worst["posture"] == "escalation_required"
+    assert worst["worst_position"] == "walk_away"
+    assert worst["flagged_clauses"] >= 1
+    assert all(item["autonomy_eligible"] is False or item["posture"] == "aligned" for item in queue)
+    svc.approve("CTR-2002", approver="counsel@example.com", reason="Escalated and cleared.")
+    assert [item["contract_id"] for item in svc.queue()] == ["CTR-2011", "CTR-2001"]
+
+
+def test_queue_tie_breaks_on_age():
+    svc = service()
+    samples = {c.contract_id: c for c in sample_contract_models()}
+    # Both escalation_required with a walk_away: CTR-2014 arrived later.
+    svc.analyze(samples["CTR-2014"])
+    svc.analyze(samples["CTR-2002"])
+    ids = [item["contract_id"] for item in svc.queue()]
+    assert ids.index("CTR-2002") < ids.index("CTR-2014")
+
+
 def test_playbook_coverage_analytics():
     svc = service()
     samples = {c.contract_id: c for c in sample_contract_models()}

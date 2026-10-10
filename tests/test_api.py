@@ -122,6 +122,15 @@ def test_audit_export_json_and_csv():
     assert client.get("/audit/export?format=yaml").status_code == 422
 
 
+def test_queue_endpoint():
+    res = client.get("/queue")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["count"] == len(payload["queue"])
+    for item in payload["queue"]:
+        assert {"contract_id", "posture", "worst_position", "autonomy_eligible"} <= set(item)
+
+
 def test_obligations_due_endpoint():
     res = client.get("/obligations/due?days=90")
     assert res.status_code == 200

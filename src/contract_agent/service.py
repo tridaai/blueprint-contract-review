@@ -469,6 +469,49 @@ class ContractService:
         record = self._get_store().get(contract_id)
         return record.result if record else None
 
+    def queue(self) -> list[dict]:
+        """The counsel worklist: every contract still awaiting a
+        decision, worst first — posture severity, then worst clause
+        position, then age (oldest first). This is the order counsel
+        should work the queue in, so it is computed here, once, from
+        the stored facts rather than re-derived per surface."""
+        from .schemas import POSITION_SEVERITY
+
+        posture_rank = {"escalation_required": 0, "negotiable": 1, "aligned": 2}
+        items: list[dict] = []
+        for record in self._get_store().all_records():
+            result = record.result
+            if result.status != "awaiting_counsel":
+                continue
+            items.append(
+                {
+                    "contract_id": result.contract_id,
+                    "counterparty_name": result.counterparty_name,
+                    "doc_type": result.doc_type,
+                    "posture": result.facts.posture if result.facts else "",
+                    "worst_position": result.facts.worst_position if result.facts else "",
+                    "received_at": (record.contract or {}).get("received_at", ""),
+                    "age_days": result.facts.contract_age_days if result.facts else 0,
+                    "flagged_clauses": sum(
+                        1 for v in result.clause_verdicts if v.position != "preferred"
+                    ),
+                    "needs_information": result.needs_information,
+                    "reviewer_blocked": result.reviewer_blocked,
+                    "autonomy_eligible": bool(
+                        result.autonomy and result.autonomy.eligible_for_auto_triage
+                    ),
+                }
+            )
+        items.sort(
+            key=lambda item: (
+                posture_rank.get(item["posture"], 1),
+                -POSITION_SEVERITY.get(item["worst_position"], 0),
+                item["received_at"] or "9999",
+                item["contract_id"],
+            )
+        )
+        return items
+
     def obligations_due(self, days: int = 90, today=None) -> dict:
         """Obligation deadlines across every stored contract: the
         register entries carrying a date that fall due within
