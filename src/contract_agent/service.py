@@ -1219,6 +1219,32 @@ class ContractService:
             "obligations": rows,
         }
 
+    def certificate_watches(self, window_days: int | None = None, today=None) -> dict:
+        """The certificate renewal watch (``certificates.py``):
+        relied-upon certificates of insurance — the ones whose
+        stored expiry check came back consistent — expiring within
+        the watch window (``CERTIFICATE_EXPIRY_WATCH_DAYS``, default
+        90, or ``window_days`` when given), soonest first, overdue
+        included. A certificate that failed its review is a finding
+        on the record, not a watch; this surface exists for the
+        certificates nobody had a reason to doubt, expiring
+        mid-term while the agreement runs on."""
+        from datetime import date as _date
+
+        from .certificates import certificate_watch_window_days, certificate_watches
+
+        today = today or _date.today()
+        window = (
+            certificate_watch_window_days() if window_days is None else window_days
+        )
+        rows = certificate_watches(self._get_store().all_records(), today, window)
+        return {
+            "as_of": today.isoformat(),
+            "window_days": window,
+            "count": len(rows),
+            "certificates": rows,
+        }
+
     def dispatch_obligation_sweep(
         self, days: int = 90, today=None, event_sink: EventSink | None = None
     ) -> dict:
@@ -1231,7 +1257,14 @@ class ContractService:
         events the pipeline emits at analysis time: analysis computes
         the deadlines; the sweep is what a nightly job (or counsel,
         from the console) runs so a deadline computed weeks ago still
-        surfaces on the day it matters. **Report-only by design**: the
+        surfaces on the day it matters. The sweep also runs the
+        certificate renewal watch (``certificates.py``): every
+        relied-upon certificate of insurance expiring within the
+        watch window (``CERTIFICATE_EXPIRY_WATCH_DAYS``, default 90 —
+        its own window, not the obligations ``days``) draws one
+        ``certificate_expiring`` event, so cover that passed review
+        and lapses mid-term is announced by the same machinery.
+        **Report-only by design**: the
         sweep emits events to the configured sink and returns a
         report — it sends nothing to any counterparty or counsel
         address itself. Delivery (email, ticket, queue) is the
@@ -1264,6 +1297,23 @@ class ContractService:
                     },
                 )
             )
+        watches = self.certificate_watches(today=today)
+        for row in watches["certificates"]:
+            sink.emit(
+                RunEvent(
+                    type="certificate_expiring",
+                    contract_id=row["contract_id"],
+                    detail={
+                        "via": "deadline_sweep",
+                        "expiry_date": row["expiry_date"],
+                        "days_until": row["days_until"],
+                        "overdue": row["overdue"],
+                        "counterparty_name": row["counterparty_name"],
+                        "contract_status": row["status"],
+                        "exhibit_document_id": row["exhibit_document_id"],
+                    },
+                )
+            )
         swept = len(self._get_store().all_records())
         return {
             "as_of": today.isoformat(),
@@ -1271,14 +1321,19 @@ class ContractService:
             "contracts_swept": swept,
             "due_count": due["count"],
             "events_emitted": due["count"],
+            "certificate_watch_window_days": watches["window_days"],
+            "certificate_expiring_count": watches["count"],
+            "certificate_events_emitted": watches["count"],
             "report_only": True,
             "note": (
                 "Report-only sweep: one obligation_due event per due "
-                "deadline was emitted to the event sink and this report "
-                "was produced. Nothing was sent to any counterparty or "
-                "counsel address by this operation."
+                "deadline and one certificate_expiring event per "
+                "watched certificate were emitted to the event sink "
+                "and this report was produced. Nothing was sent to "
+                "any counterparty or counsel address by this operation."
             ),
             "obligations": due["obligations"],
+            "certificates": watches["certificates"],
         }
 
     def dispatch_sla_breach_sweep(

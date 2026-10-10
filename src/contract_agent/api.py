@@ -287,6 +287,19 @@ def obligations_sweep(days: int = 90) -> dict:
     return service.dispatch_obligation_sweep(days=days)
 
 
+@app.get("/certificates/expiring", dependencies=_AUTH)
+def certificates_expiring(window_days: int | None = None) -> dict:
+    """The certificate renewal watch: relied-upon certificates of
+    insurance (their stored expiry check came back consistent)
+    expiring within the watch window — ``CERTIFICATE_EXPIRY_WATCH_DAYS``,
+    default 90, or ``window_days`` when given — soonest first,
+    overdue included. The deadline sweep announces the same watches
+    as ``certificate_expiring`` events; this is the read surface."""
+    if window_days is not None and window_days < 0:
+        raise HTTPException(status_code=422, detail="window_days must be >= 0.")
+    return service.certificate_watches(window_days=window_days)
+
+
 @app.get("/audit/export", dependencies=_AUTH)
 def audit_export(format: str = "json"):
     """The audit trail — one row per analysed contract with counsel's

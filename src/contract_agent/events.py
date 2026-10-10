@@ -18,7 +18,11 @@ default 90 — carries kind, date, days_until, overdue), ``sla_breach``
 (a queued contract's wait crossed its SLA budget — emitted by the
 breach sweep, once per contract; carries the tier, budget vs
 waited, and the queue owner, with ``unassigned`` called out),
-``run_completed``
+``certificate_expiring`` (a relied-upon certificate of insurance —
+its stored expiry check came back consistent — expires within the
+watch window, ``CERTIFICATE_EXPIRY_WATCH_DAYS``, default 90;
+emitted by the deadline sweep, carrying the expiry date,
+days_until, and overdue flag), ``run_completed``
 (carries the final status), ``run_failed`` (carries the clean error
 message). Events fire in the offline fallback exactly as in provider
 mode — durations are real wall-clock measurements either way.
@@ -109,6 +113,12 @@ class PrintingSink:
             parts.append(
                 f"{event.detail.get('kind', '')} due {event.detail.get('date', '')} "
                 f"({event.detail.get('days_until')}d)"
+            )
+        elif event.type == "certificate_expiring":
+            parts.append(
+                f"certificate expires {event.detail.get('expiry_date', '')} "
+                f"({event.detail.get('days_until')}d) · "
+                f"{event.detail.get('counterparty_name', '')}"
             )
         elif event.type == "sla_breach":
             parts.append(

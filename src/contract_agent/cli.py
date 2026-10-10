@@ -140,6 +140,17 @@ def _run_sweep(contracts: list[ContractInput], days: int) -> None:
             f"  {row['date']} [{state}] {row['contract_id']} "
             f"({row['counterparty_name']}): {row['kind']} — {row['description']}"
         )
+    print(
+        f"Certificate watch: {report['certificate_expiring_count']} "
+        f"relied-upon certificate(s) expire within "
+        f"{report['certificate_watch_window_days']} day(s)"
+    )
+    for row in report["certificates"]:
+        state = "EXPIRED" if row["overdue"] else f"in {row['days_until']}d"
+        print(
+            f"  {row['expiry_date']} [{state}] {row['contract_id']} "
+            f"({row['counterparty_name']}): certificate of insurance"
+        )
     print(f"Report-only: {report['note']}")
 
 
