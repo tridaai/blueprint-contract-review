@@ -1061,7 +1061,15 @@ class ContractService:
         the watch's own rule over an unbounded window: the
         biography names which expiry the watch stands on
         whatever its distance, because the window is the watch's
-        concern, not the timeline's."""
+        concern, not the timeline's.
+
+        And the covenants' biography (``covenant_biography.py``,
+        round 18): each round's restrictive covenants with their
+        clocks, lapse states as of today, and follow-through
+        states — employment and commercial alike — each step's
+        movement per covenant, and the new-bargain readings the
+        later rounds carry: the register's whole story in the
+        order it happened."""
         store = self._get_store()
         record = store.get(contract_id)
         if record is None or not record.contract:
@@ -1073,15 +1081,20 @@ class ContractService:
         from .annex_history import build_annex_history
         from .certificate_history import build_certificate_history
         from .certificates import certificate_watches
+        from .covenant_biography import build_covenant_biography
 
         model = ContractInput.model_validate(record.contract)
         chain = [*self._chain_contracts(model), model]
         history = build_annex_history(chain)
         results = {}
+        follow_throughs = {}
         for link in chain:
             link_record = store.get(link.contract_id)
             if link_record is not None:
                 results[link.contract_id] = link_record.result
+                follow_throughs[link.contract_id] = list(
+                    link_record.covenant_follow_throughs
+                )
         certificates = build_certificate_history(chain, results)
         if certificates is not None:
             chain_ids = {c.contract_id for c in chain}
@@ -1120,6 +1133,19 @@ class ContractService:
                 "the follow-through acts recorded against it."
             )
         history["certificates"] = certificates
+        covenants = build_covenant_biography(
+            chain, results, follow_throughs, _date.today()
+        )
+        if covenants is not None:
+            history["note"] += (
+                " The covenants' biography rides under "
+                "'covenants', computed from the stored registers "
+                "and follow-through records: each round's "
+                "covenants and clocks, each lapse and its "
+                "closing acts, each later round's new-bargain "
+                "reading."
+            )
+        history["covenants"] = covenants
         return history
 
     def analyze_batch(

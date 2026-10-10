@@ -856,7 +856,10 @@ def annex_history(contract_id: str) -> dict:
     ``certificates``: the certificate chain's biography — each
     round's requirement set and certificate, each renewal's
     verdict and drops, and the watch's operative reading for
-    the chain. 404 for a contract not yet analyzed."""
+    the chain — and ``covenants``: the restrictive covenants'
+    biography — each round's covenants and clocks, each lapse
+    and its follow-through, each later round's new-bargain
+    reading. 404 for a contract not yet analyzed."""
     try:
         return service.annex_history(contract_id)
     except KeyError as exc:
