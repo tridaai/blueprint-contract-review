@@ -39,6 +39,19 @@ endorsement fails that check, and the watch does not close on
 its arrival: it stays open on the last relied-upon expiry, with
 the failed renewal named on the row. Arrival is not evidence;
 the check is.
+
+**The watch has a follow-through** (round 17): the covenant
+lapse got its closing acts in round 16, and the watch is the
+same shape of open loop — it announces, and until now nothing
+recorded that anyone acted. A named act on the watch's record
+(``CertificateWatchFollowThrough``, on the approval record the
+watch stands on) records ``renewal_chased`` — counsel chased
+the renewal — or ``risk_accepted`` — counsel recorded, with a
+note, that the lapsing cover is an accepted risk.
+:func:`watch_follow_through_state` reads the acts into the one
+state the watch surfaces. The acts close the question of
+whether anyone acted; they do not close the watch — only
+evidenced renewal does that.
 """
 
 from __future__ import annotations
@@ -51,10 +64,36 @@ from .store import ApprovalRecord
 WATCH_WINDOW_ENV = "CERTIFICATE_EXPIRY_WATCH_DAYS"
 DEFAULT_WATCH_WINDOW_DAYS = 90
 
+# The follow-through states a watch can be in, in the order
+# the loop closes (round 17): the renewal is chased, or the
+# risk of the lapsing cover is accepted on the record. An act
+# is recorded under one of these names; the watch's reading is
+# the furthest state its acts have reached, or ``open`` with
+# no acts — the watch announced and nobody has acted yet.
+CERTIFICATE_WATCH_FOLLOW_THROUGH_STATES = (
+    "renewal_chased",
+    "risk_accepted",
+)
+
 
 def certificate_watch_window_days() -> int:
     """The configured watch window, in days."""
     return env_int(WATCH_WINDOW_ENV, DEFAULT_WATCH_WINDOW_DAYS)
+
+
+def watch_follow_through_state(acts: list[dict]) -> str:
+    """One watch's follow-through state, read from the acts
+    recorded against it: the furthest closing state reached,
+    or ``open`` with no acts. The state names what is true of
+    the record, so a watch nobody acted on is never read as
+    handled, and a chased renewal is never read as accepted
+    risk — the two acts answer different questions."""
+    states = [a.get("state", "") for a in acts]
+    if "risk_accepted" in states:
+        return "risk_accepted"
+    if "renewal_chased" in states:
+        return "renewal_chased"
+    return "open"
 
 
 def _relied_upon_expiry(record: ApprovalRecord):

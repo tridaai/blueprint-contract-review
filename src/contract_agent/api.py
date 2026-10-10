@@ -53,6 +53,7 @@ from .schemas import (
     EditOutcomesRequest,
     PatternSuspensionRequest,
     ProposalDecisionRequest,
+    CertificateWatchFollowThroughRequest,
     CovenantFollowThroughRequest,
     WebhookResendRequest,
 )
@@ -463,10 +464,54 @@ def certificates_expiring(window_days: int | None = None) -> dict:
     expiring within the watch window — ``CERTIFICATE_EXPIRY_WATCH_DAYS``,
     default 90, or ``window_days`` when given — soonest first,
     overdue included. The deadline sweep announces the same watches
-    as ``certificate_expiring`` events; this is the read surface."""
+    as ``certificate_expiring`` events; this is the read surface.
+    Each row carries its follow-through: the acts recorded
+    against the watch and their state."""
     if window_days is not None and window_days < 0:
         raise HTTPException(status_code=422, detail="window_days must be >= 0.")
     return service.certificate_watches(window_days=window_days)
+
+
+@app.get("/contracts/{contract_id}/certificate-watch", dependencies=_AUTH)
+def certificate_watch(contract_id: str) -> dict:
+    """One contract's certificate renewal watch read back with
+    its follow-through: watched or not (with the reason), the
+    expiry the watch stands on, the acts recorded against it,
+    and its state — a watch nobody acted on reads ``open``.
+    404 for a contract not yet analyzed."""
+    try:
+        return service.certificate_watch(contract_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post(
+    "/contracts/{contract_id}/certificate-watch/follow-through",
+    dependencies=_AUTH,
+)
+def record_certificate_watch_follow_through(
+    contract_id: str, body: CertificateWatchFollowThroughRequest
+) -> dict:
+    """Record one follow-through act on a certificate renewal
+    watch: the renewal was chased, or counsel accepted the risk
+    of the lapsing cover (the note carries the reason) — a named
+    act on the record the watch stands on, closing the question
+    of whether anyone acted on the announcement. 404 on an
+    unknown contract; 422 when the actor is missing, the state
+    is not the watch's, the contract carries no running watch,
+    a risk acceptance has no note, or that state is already
+    recorded. Returns the contract's watch reading."""
+    try:
+        return service.record_certificate_watch_follow_through(
+            contract_id,
+            state=body.state or "",
+            actor=body.actor or "",
+            note=body.note or "",
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/audit/export", dependencies=_AUTH)

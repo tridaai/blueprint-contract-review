@@ -1032,12 +1032,31 @@ class ContractService:
                 None,
             )
             if watch is not None:
+                # The watch's follow-through rides on the
+                # biography too (round 17): the acts recorded
+                # against the record the watch stands on, so the
+                # timeline shows not only that the watch is open
+                # but whether anyone acted on it.
+                from .certificates import watch_follow_through_state
+
+                source = store.get(watch["contract_id"])
+                acts = (
+                    list(source.certificate_watch_follow_throughs)
+                    if source is not None
+                    else []
+                )
+                watch = {
+                    **watch,
+                    "follow_through": acts,
+                    "follow_through_state": watch_follow_through_state(acts),
+                }
                 certificates["watch"] = watch
             history["note"] += (
                 " The certificate chain's biography rides under "
                 "'certificates', computed with the renewal "
                 "check's own readings; its 'watch' is the renewal "
-                "watch's operative reading for this chain."
+                "watch's operative reading for this chain, with "
+                "the follow-through acts recorded against it."
             )
         history["certificates"] = certificates
         return history
@@ -2019,22 +2038,199 @@ class ContractService:
         included. A certificate that failed its review is a finding
         on the record, not a watch; this surface exists for the
         certificates nobody had a reason to doubt, expiring
-        mid-term while the agreement runs on."""
+        mid-term while the agreement runs on.
+
+        Each row carries its follow-through (round 17): the acts
+        recorded against the watch on the record it stands on,
+        and their state — so the watch never reads as handled
+        when nobody has acted, and a chased renewal is named as
+        chased, not as renewed."""
         from datetime import date as _date
 
-        from .certificates import certificate_watch_window_days, certificate_watches
+        from .certificates import (
+            certificate_watch_window_days,
+            certificate_watches,
+            watch_follow_through_state,
+        )
 
         today = today or _date.today()
         window = (
             certificate_watch_window_days() if window_days is None else window_days
         )
-        rows = certificate_watches(self._get_store().all_records(), today, window)
+        records = self._get_store().all_records()
+        rows = certificate_watches(records, today, window)
+        by_id = {r.result.contract_id: r for r in records}
+        for row in rows:
+            record = by_id.get(row["contract_id"])
+            acts = (
+                list(record.certificate_watch_follow_throughs)
+                if record is not None
+                else []
+            )
+            row["follow_through"] = acts
+            row["follow_through_state"] = watch_follow_through_state(acts)
         return {
             "as_of": today.isoformat(),
             "window_days": window,
             "count": len(rows),
             "certificates": rows,
         }
+
+    def certificate_watch(self, contract_id: str, today=None) -> dict:
+        """One contract's certificate renewal watch, read back
+        with its follow-through (round 17): whether the contract
+        the watch stands on is being watched at all, the expiry
+        it stands on, the acts recorded against it, and its
+        state. A contract whose certificate is not relied upon,
+        or whose expiry sits outside the watch window, reads
+        ``watched: False`` with the reason — the watch's silence
+        about a contract is itself a reading, not an absence.
+        Raises ``KeyError`` for a contract the store does not
+        hold."""
+        from datetime import date as _date
+
+        today = today or _date.today()
+        record = self._get_store().get(contract_id)
+        if record is None:
+            raise KeyError(
+                f"Unknown contract_id: {contract_id} (analyze it first)"
+            )
+        view = self.certificate_watches(today=today)
+        row = next(
+            (r for r in view["certificates"] if r["contract_id"] == contract_id),
+            None,
+        )
+        if row is None:
+            return {
+                "contract_id": contract_id,
+                "counterparty_name": record.result.counterparty_name,
+                "as_of": today.isoformat(),
+                "watched": False,
+                "follow_through": list(
+                    record.certificate_watch_follow_throughs
+                ),
+                "note": (
+                    "This contract carries no certificate on the "
+                    "renewal watch: either its certificate was not "
+                    "relied upon at review (a finding on the record, "
+                    "not a watch), its chain's operative certificate "
+                    "sits outside the watch window, a renewal "
+                    "evidenced the requirement set and moved the "
+                    "watch to a later round's record, or the watch "
+                    "stands on an earlier round of its chain, where "
+                    "a renewal failed the evidence check."
+                ),
+            }
+        return {
+            **row,
+            "as_of": today.isoformat(),
+            "watched": True,
+            "note": (
+                "The watch announces a relied-upon certificate "
+                "expiring mid-term; the loop closes on the record — "
+                "renewal chased, or the risk accepted by a named "
+                "act of counsel — while the watch itself closes "
+                "only on a renewal that evidences the requirement "
+                "set in full."
+            ),
+        }
+
+    def record_certificate_watch_follow_through(
+        self, contract_id: str, state: str, actor: str,
+        note: str = "", today=None,
+    ) -> dict:
+        """Record one follow-through act on a certificate renewal
+        watch (round 17): the watch announced a relied-upon
+        certificate expiring mid-term; this is the act that
+        records someone did something about it — the renewal was
+        chased, or counsel accepted the risk of the lapsing
+        cover, with the note saying why — stamped with its actor
+        on the record the watch stands on.
+
+        The act binds to reality, the covenant discipline: the
+        contract must currently stand on the watch (a relied-upon
+        certificate inside the watch window) — there is no
+        follow-through on a watch that is not running, and the
+        refusal says so. ``risk_accepted`` requires the note: an
+        accepted risk without its reason is not a record counsel
+        can defend later. Each state is recorded once per watch:
+        the record is the loop's state, and a repeat is refused
+        naming the act already on it. Returns the contract's
+        watch reading (:meth:`certificate_watch`)."""
+        from datetime import date as _date
+
+        from .certificates import CERTIFICATE_WATCH_FOLLOW_THROUGH_STATES
+        from .schemas import CertificateWatchFollowThrough
+
+        actor = (actor or "").strip()
+        if not actor:
+            raise ValueError(
+                "A certificate-watch follow-through act needs a named "
+                "actor: it records that someone acted on the watch, "
+                "and the record carries the name."
+            )
+        state = (state or "").strip()
+        if state not in CERTIFICATE_WATCH_FOLLOW_THROUGH_STATES:
+            raise ValueError(
+                f"state {state!r} is not a watch follow-through "
+                "state — the loop closes as renewal_chased, or "
+                "risk_accepted with the reason in the note."
+            )
+        if state == "risk_accepted" and not (note or "").strip():
+            raise ValueError(
+                "Accepting the risk of a lapsing certificate needs "
+                "the note: the reason the cover may lapse is the "
+                "record counsel defends later, not a formality."
+            )
+        store = self._get_store()
+        record = store.get(contract_id)
+        if record is None:
+            raise KeyError(
+                f"Unknown contract_id: {contract_id} (analyze it first)"
+            )
+        today = today or _date.today()
+        view = self.certificate_watches(today=today)
+        row = next(
+            (r for r in view["certificates"] if r["contract_id"] == contract_id),
+            None,
+        )
+        if row is None:
+            raise ValueError(
+                f"Contract {contract_id} carries no certificate on "
+                "the renewal watch — its certificate was not relied "
+                "upon at review, sits outside the watch window, or "
+                "a renewal already evidenced the requirement set "
+                "and moved the watch to a later round's record. "
+                "There is no running watch to follow through."
+            )
+        existing = next(
+            (
+                act
+                for act in record.certificate_watch_follow_throughs
+                if act.get("state") == state
+            ),
+            None,
+        )
+        if existing is not None:
+            raise ValueError(
+                f"The certificate watch on {contract_id} already "
+                f"carries a {state} act (by {existing.get('actor', '')} "
+                f"on {existing.get('at', '')}) — a follow-through "
+                "state is recorded once; the record is the loop's "
+                "state, not a log of reminders."
+            )
+        record.certificate_watch_follow_throughs.append(
+            CertificateWatchFollowThrough(
+                state=state,
+                actor=actor,
+                at=datetime.now(timezone.utc).isoformat(),
+                note=note or "",
+                exhibit_document_id=row["exhibit_document_id"],
+                expiry_date=row["expiry_date"],
+            ).model_dump(mode="json")
+        )
+        store.save(record)
+        return self.certificate_watch(contract_id, today=today)
 
     def dispatch_obligation_sweep(
         self, days: int = 90, today=None, event_sink: EventSink | None = None

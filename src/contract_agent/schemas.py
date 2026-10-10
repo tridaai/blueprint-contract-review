@@ -799,6 +799,65 @@ class CovenantFollowThroughRequest(BaseModel):
     note: Optional[str] = None
 
 
+class CertificateWatchFollowThrough(BaseModel):
+    """One follow-through act on a certificate renewal watch
+    (round 17). The watch announces that a relied-upon
+    certificate is expiring mid-term — but an announcement is
+    not a closed loop: someone must chase the renewal, and if
+    the cover will not be renewed someone with a name must
+    accept that risk on the record. Each act is recorded on
+    the approval record the watch stands on, stamped with its
+    actor, beside the certificate it answers: ``renewal_chased``
+    (counsel chased the counterparty or broker for the renewal
+    certificate) and ``risk_accepted`` (counsel recorded that
+    the lapsed or lapsing cover is an accepted risk, with the
+    note saying why). An act is recorded once per watch per
+    state: the record is the loop's state, not a log of
+    reminders. The acts do not close the watch — only a renewal
+    evidencing the requirement set does that (round 12); they
+    close the question of whether anyone acted on it."""
+
+    state: str  # renewal_chased | risk_accepted
+    actor: str = ""
+    at: str = ""
+    note: str = ""
+    exhibit_document_id: str = ""  # the certificate the watch stands on
+    expiry_date: str = ""  # the expiry the watch stands on
+
+
+class CertificateWatchFollowThroughRequest(BaseModel):
+    """A follow-through act recorded against one contract's
+    certificate renewal watch. The actor is required: acting
+    on a watch is a deliberate act with a name on it, like
+    every other act in this blueprint."""
+
+    state: Optional[str] = None
+    actor: Optional[str] = None
+    note: Optional[str] = None
+
+
+class OutboxPrune(BaseModel):
+    """One outbox prune, kept in the prune ledger (round 17).
+    The prune removes delivery history; until now its report
+    was returned to the caller and gone, so the ledger's own
+    gaps were unauditable — nobody could answer "what delivery
+    history do we no longer hold, and who removed it?" Each
+    prune act appends one of these to the outbox store beside
+    the entries it governed: who pruned, when, the retention
+    age in force, the exact entry ids removed, and what was
+    kept. A prune that removed nothing is recorded too — the
+    act happened, and the ledger is the act's record, not only
+    its casualties'."""
+
+    prune_id: str = ""
+    actor: str = ""
+    at: str = ""
+    retention_days: int = 0
+    pruned_ids: list[str] = Field(default_factory=list)
+    kept_sent: int = 0
+    kept_failed: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Final result
 # ---------------------------------------------------------------------------

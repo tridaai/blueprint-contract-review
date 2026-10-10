@@ -326,12 +326,37 @@ async function loadCertificates() {
       $('certificates').innerHTML = '<span class="empty">No relied-upon certificates expire within the watch window (' + esc(data.window_days) + ' days).</span>';
       return;
     }
+    const watchCell = (c) => {
+      const label = {open: 'follow-through open — nobody has acted on this watch', renewal_chased: 'renewal chased', risk_accepted: 'risk accepted by counsel (see the record)'}[c.follow_through_state] || c.follow_through_state || 'open';
+      let html = `<br><span class="${c.follow_through_state === 'open' || !c.follow_through_state ? 'flag' : 'note'}">watch follow-through: ${esc(label)}</span>`;
+      if (!c.follow_through_state || c.follow_through_state === 'open') html += ` <button data-watch-chase="${esc(c.contract_id)}" style="padding:3px 9px;font-size:12px">Renewal chased</button>`;
+      if (c.follow_through_state !== 'risk_accepted') html += ` <button data-watch-accept="${esc(c.contract_id)}" style="padding:3px 9px;font-size:12px">Accept risk</button>`;
+      return html;
+    };
     $('certificates').innerHTML = `<table><thead><tr><th>Certificate expiry</th><th>Contract</th><th>Watch</th></tr></thead><tbody>
       ${data.certificates.map(c => `<tr>
         <td>${c.overdue ? '<span class="flag">expired ' + esc(-c.days_until) + 'd ago</span>' : esc(c.expiry_date) + '<br><span class="note">in ' + esc(c.days_until) + 'd</span>'}</td>
         <td>${esc(c.contract_id)}<br><span class="note">${esc(c.counterparty_name || '')}</span></td>
-        <td>${pill('certificate of insurance')} <span class="note">${c.renewal_evidence_failed ? 'a renewal arrived (' + esc(c.renewal_contract_id) + ') but failed the evidence check against the original terms — the watch stays open on this expiry' : c.renewed ? 'renewed on evidence — cover extended and the original requirement set evidenced in full' : 'passed review — renewal is the open item'}</span></td></tr>`).join('')}
+        <td>${pill('certificate of insurance')} <span class="note">${c.renewal_evidence_failed ? 'a renewal arrived (' + esc(c.renewal_contract_id) + ') but failed the evidence check against the original terms — the watch stays open on this expiry' : c.renewed ? 'renewed on evidence — cover extended and the original requirement set evidenced in full' : 'passed review — renewal is the open item'}</span>${watchCell(c)}</td></tr>`).join('')}
       </tbody></table>`;
+    const recordWatchAct = async (contractId, state) => {
+      const actor = $('actor').value.trim();
+      if (!actor) { alert('Enter counsel name (section 3) first — a follow-through act carries a name.'); return; }
+      let note = '';
+      if (state === 'risk_accepted') {
+        note = (prompt('Why is this lapsing cover an accepted risk? (the note is the record counsel defends later):') || '').trim();
+        if (!note) return;
+      }
+      const r = await fetch('/contracts/' + contractId + '/certificate-watch/follow-through', {
+        method: 'POST', headers: headers(), body: JSON.stringify({state, actor, note})
+      });
+      if (r.ok) loadCertificates();
+      else alert('Watch follow-through failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));
+    };
+    $('certificates').querySelectorAll('button[data-watch-chase]').forEach(btn =>
+      btn.addEventListener('click', () => recordWatchAct(btn.dataset.watchChase, 'renewal_chased')));
+    $('certificates').querySelectorAll('button[data-watch-accept]').forEach(btn =>
+      btn.addEventListener('click', () => recordWatchAct(btn.dataset.watchAccept, 'risk_accepted')));
   } catch (e) {
     $('certificates').innerHTML = '<span class="empty">Certificate watch unavailable.</span>';
   }

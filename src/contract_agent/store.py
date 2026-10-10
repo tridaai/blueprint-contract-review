@@ -62,6 +62,13 @@ class ApprovalRecord:
     # announcement (the sweep) opens the loop; these acts are
     # what closes it, on the record.
     covenant_follow_throughs: list = field(default_factory=list)
+    # Certificate-watch follow-through (round 17): the acts
+    # recorded against this record's certificate renewal watch —
+    # renewal chased, risk accepted — as
+    # CertificateWatchFollowThrough dumps. The watch announces;
+    # these acts record that someone acted on it, on the record
+    # the watch stands on.
+    certificate_watch_follow_throughs: list = field(default_factory=list)
 
 
 def history_entry(record: ApprovalRecord) -> dict:
@@ -131,6 +138,9 @@ def _dump_record(record: ApprovalRecord) -> str:
             "sla_breach_notified_at": record.sla_breach_notified_at,
             "analyzed_at": record.analyzed_at,
             "covenant_follow_throughs": record.covenant_follow_throughs,
+            "certificate_watch_follow_throughs": (
+                record.certificate_watch_follow_throughs
+            ),
         }
     )
 
@@ -152,6 +162,9 @@ def _load_record(payload: str | dict) -> ApprovalRecord:
         sla_breach_notified_at=data.get("sla_breach_notified_at", ""),
         analyzed_at=data.get("analyzed_at", ""),
         covenant_follow_throughs=data.get("covenant_follow_throughs", []),
+        certificate_watch_follow_throughs=data.get(
+            "certificate_watch_follow_throughs", []
+        ),
     )
 
 
