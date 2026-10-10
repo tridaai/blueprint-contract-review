@@ -8,6 +8,7 @@ Usage:
     contract-agent --file data/contracts.json --all
     contract-agent --all --concurrency 4 # the batch, four at a time
     contract-agent --sweep-obligations 30  # deadline dispatch sweep (report-only)
+    contract-agent --sweep-sla             # announce queue SLA breaches (once per contract)
 
 The default data source is the sample set bundled inside the package, so
 this works identically from a source checkout and a pip install.
@@ -142,6 +143,33 @@ def _run_sweep(contracts: list[ContractInput], days: int) -> None:
     print(f"Report-only: {report['note']}")
 
 
+def _run_sla_sweep(contracts: list[ContractInput]) -> None:
+    """The SLA breach sweep, CLI form: analyse the loaded contracts
+    into a throwaway store (the CLI persists nothing — received_at
+    on the loaded contracts drives the ages), then announce every
+    queued contract past its SLA budget. Events print live via the
+    printing sink; breaches are announced once per contract."""
+    service = build_service_from_env(store=InMemoryStore(), checkpointer=False)
+    for contract in contracts:
+        service.analyze(contract)
+    report = service.dispatch_sla_breach_sweep(event_sink=PrintingSink())
+    print("=" * 72)
+    print(
+        f"SLA sweep: {report['awaiting']} awaiting · "
+        f"{report['breaches_found']} in breach · "
+        f"{report['newly_reported']} newly announced · "
+        f"{report['already_reported']} already announced"
+    )
+    for row in report["breaches"]:
+        owner = "UNASSIGNED" if row["unassigned"] else f"owner {row['assignee']}"
+        print(
+            f"  {row['contract_id']} ({row['counterparty_name']}): "
+            f"{row['worst_position']} — waited {row['business_days_waiting']}bd "
+            f"of {row['sla_budget_business_days']}bd budget · {owner}"
+        )
+    print(report["note"])
+
+
 def _print_batch_summary(items: list[BatchItem], concurrency: int, wall_clock: float) -> None:
     print("=" * 72)
     print(
@@ -184,6 +212,11 @@ def main() -> None:
         metavar="DAYS",
         help="Deadline dispatch sweep: analyse the loaded contracts, then report every obligation due within DAYS (default 90) and emit one obligation_due event per deadline. Report-only — nothing is sent.",
     )
+    parser.add_argument(
+        "--sweep-sla",
+        action="store_true",
+        help="SLA breach sweep: analyse the loaded contracts, then announce every queued contract past its SLA budget — one sla_breach event per contract, the first time it is observed in breach (plus a signed webhook per breach when ACTION_WEBHOOK_URL is configured).",
+    )
     args = parser.parse_args()
 
     # Backend + retriever come from the environment (.env loaded by the
@@ -197,6 +230,9 @@ def main() -> None:
         contracts = _load_contracts(args.file)
         if args.sweep_obligations is not None:
             _run_sweep(contracts, args.sweep_obligations)
+            return
+        if args.sweep_sla:
+            _run_sla_sweep(contracts)
             return
         selected = contracts if args.all else [contracts[args.index]]
         started = time.perf_counter()

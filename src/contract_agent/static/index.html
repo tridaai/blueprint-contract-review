@@ -76,7 +76,8 @@
       <div id="queue" class="empty">Loading…</div>
       <div class="row" style="margin-top:10px">
         <button id="queue-refresh">Refresh</button>
-        <span class="note">awaiting contracts, worst first — click a row to open it</span>
+        <button id="sla-sweep">Sweep SLA breaches</button>
+        <span class="note" id="sla-status">awaiting contracts, worst first — click a row to open it. The sweep announces each breached contract once (event + signed webhook when configured).</span>
       </div>
     </section>
     <section>
@@ -446,8 +447,18 @@ $('analyze').addEventListener('click', analyze);
 $('approve').addEventListener('click', () => decide('approve'));
 $('reject').addEventListener('click', () => decide('reject'));
 $('record-outcomes').addEventListener('click', recordOutcomes);
+async function slaSweep() {
+  const res = await fetch('/queue/sla-sweep', {method: 'POST', headers: headers()});
+  if (!res.ok) { $('sla-status').textContent = 'Sweep failed: ' + res.status; return; }
+  const report = await res.json();
+  $('sla-status').textContent = `Sweep: ${report.breaches_found} in breach · ${report.newly_reported} newly announced · ${report.already_reported} already announced` +
+    (report.webhooks.configured ? ` · webhooks ${report.webhooks.sent} sent / ${report.webhooks.failed} failed` : ' · no webhook configured (event stream only)') + '.';
+  loadQueue();
+}
+
 $('due-refresh').addEventListener('click', loadDue);
 $('queue-refresh').addEventListener('click', loadQueue);
+$('sla-sweep').addEventListener('click', slaSweep);
 loadSamples();
 loadEvals();
 loadDue();

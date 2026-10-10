@@ -43,6 +43,11 @@ class ApprovalRecord:
     assignee: str = ""
     assigned_by: str = ""
     assigned_at: str = ""
+    # SLA breach dedupe (round 6): when the breach sweep first
+    # reported this contract's queue SLA breach (event + webhook).
+    # Set once — a breach is announced once per contract, however
+    # many times the sweep runs afterwards.
+    sla_breach_notified_at: str = ""
 
 
 def history_entry(record: ApprovalRecord) -> dict:
@@ -109,6 +114,7 @@ def _dump_record(record: ApprovalRecord) -> str:
             "assignee": record.assignee,
             "assigned_by": record.assigned_by,
             "assigned_at": record.assigned_at,
+            "sla_breach_notified_at": record.sla_breach_notified_at,
         }
     )
 
@@ -127,6 +133,7 @@ def _load_record(payload: str | dict) -> ApprovalRecord:
         assignee=data.get("assignee", ""),
         assigned_by=data.get("assigned_by", ""),
         assigned_at=data.get("assigned_at", ""),
+        sla_breach_notified_at=data.get("sla_breach_notified_at", ""),
     )
 
 

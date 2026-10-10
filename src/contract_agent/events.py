@@ -14,7 +14,11 @@ Event types: ``run_started``, ``node_started``, ``node_finished``
 (carries ``duration_ms``), ``tool_called``, ``guardrail_verdict``,
 ``repair_attempted``, ``obligation_due`` (a dated register entry of
 this contract falls due within ``OBLIGATION_DUE_WINDOW_DAYS``,
-default 90 — carries kind, date, days_until, overdue), ``run_completed``
+default 90 — carries kind, date, days_until, overdue), ``sla_breach``
+(a queued contract's wait crossed its SLA budget — emitted by the
+breach sweep, once per contract; carries the tier, budget vs
+waited, and the queue owner, with ``unassigned`` called out),
+``run_completed``
 (carries the final status), ``run_failed`` (carries the clean error
 message). Events fire in the offline fallback exactly as in provider
 mode — durations are real wall-clock measurements either way.
@@ -105,6 +109,17 @@ class PrintingSink:
             parts.append(
                 f"{event.detail.get('kind', '')} due {event.detail.get('date', '')} "
                 f"({event.detail.get('days_until')}d)"
+            )
+        elif event.type == "sla_breach":
+            parts.append(
+                f"SLA BREACH {event.detail.get('worst_position', '')} — waited "
+                f"{event.detail.get('business_days_waiting')}bd of "
+                f"{event.detail.get('sla_budget_business_days')}bd budget · "
+                + (
+                    "UNASSIGNED"
+                    if event.detail.get("unassigned")
+                    else f"owner {event.detail.get('assignee', '')}"
+                )
             )
         elif event.type == "run_completed":
             parts.append(f"status={event.detail.get('status')}")

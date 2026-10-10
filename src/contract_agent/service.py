@@ -113,13 +113,21 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
             "review_packet": result.drafts.review_packet if result.drafts else "",
         },
     }
+    return _post_signed_webhook(url, payload)
+
+
+def _post_signed_webhook(url: str, payload: dict) -> str:
+    """POST ``payload`` as JSON to ``url``, HMAC-signed when
+    ``ACTION_WEBHOOK_SECRET`` is set: the receiver verifies
+    X-Trida-Signature against the raw body with the shared secret
+    (HMAC-SHA256, "sha256=<hex>") before trusting it — an unsigned
+    endpoint on the open internet would accept anyone's payload.
+    Returns ``"sent"`` on a 2xx, ``"failed"`` on any error or
+    non-2xx. Short timeout on purpose: a dispatch must not hang the
+    operation that triggered it, and a failure is recorded, never
+    raised."""
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
-    # Signed when the operator sets ACTION_WEBHOOK_SECRET: the
-    # receiver verifies X-Trida-Signature against the raw body with
-    # the shared secret (HMAC-SHA256, "sha256=<hex>") before trusting
-    # the packet — an unsigned endpoint on the open internet would
-    # accept anyone's "approved contract".
     secret = env_str("ACTION_WEBHOOK_SECRET")
     if secret:
         signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
@@ -136,6 +144,37 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
             return "sent" if 200 <= response.status < 300 else "failed"
     except Exception:  # dispatch failure is recorded, never raised
         return "failed"
+
+
+def dispatch_sla_breach_webhook(record: ApprovalRecord, item: dict, notified_at: str) -> str | None:
+    """POST one queue SLA breach to ``ACTION_WEBHOOK_URL`` (off by
+    default), on the approval channel's signing scheme.
+
+    A breach is an operational alarm, not a packet: the payload
+    carries the queue facts (contract, counterparty, severity tier,
+    budget vs waited, owner) so the receiving system — a ticket
+    queue, a chat channel, legal ops' board — can route it. Returns
+    ``None`` when no URL is configured (the default: the breach is
+    announced on the event stream only), ``"sent"`` / ``"failed"``
+    otherwise; a failed dispatch never unmakes the breach report.
+    """
+    load_dotenv()
+    url = env_str("ACTION_WEBHOOK_URL")
+    if not url:
+        return None
+    payload = {
+        "event": "sla_breach",
+        "contract_id": item["contract_id"],
+        "counterparty_name": item["counterparty_name"],
+        "posture": item["posture"],
+        "worst_position": item["worst_position"],
+        "sla_budget_business_days": item["sla_budget_business_days"],
+        "business_days_waiting": item["business_days_waiting"],
+        "assignee": item["assignee"],
+        "unassigned": not item["assignee"],
+        "notified_at": notified_at,
+    }
+    return _post_signed_webhook(url, payload)
 
 
 # ---------------------------------------------------------------------------
@@ -942,6 +981,102 @@ class ContractService:
             "obligations": due["obligations"],
         }
 
+    def dispatch_sla_breach_sweep(
+        self, today=None, event_sink: EventSink | None = None
+    ) -> dict:
+        """The SLA breach sweep: walk the counsel queue, and for
+        every contract whose wait has crossed its SLA budget, emit
+        one ``sla_breach`` event (and, when ``ACTION_WEBHOOK_URL``
+        is configured, a signed webhook on the approval channel's
+        scheme) — the FIRST time that contract is observed in
+        breach. The record carries the notification stamp
+        (``sla_breach_notified_at``), so a breach is announced once
+        per contract however often the sweep runs; a contract that
+        was decided in the meantime has left the queue and is never
+        announced late.
+
+        This is the operational counterpart of the queue's breach
+        flag (round 5): the queue SHOWS breaches to whoever opens
+        it; the sweep ANNOUNCES them to the event stream and the
+        webhook consumer — an unassigned breach is the loudest
+        event this system emits, and its detail says ``unassigned``
+        outright. ``today`` is a parameter so breach behaviour is
+        testable against a frozen clock."""
+        from datetime import date as _date
+
+        from .events import NullSink, RunEvent
+
+        today = today or _date.today()
+        sink = event_sink if event_sink is not None else NullSink()
+        queue_items = self.queue(today=today)
+        breached = [item for item in queue_items if item["sla_breached"]]
+        newly: list[dict] = []
+        already = 0
+        webhooks = {"configured": bool(env_str("ACTION_WEBHOOK_URL")), "sent": 0, "failed": 0}
+        store = self._get_store()
+        for item in breached:
+            record = store.get(item["contract_id"])
+            if record is None:
+                continue
+            if record.sla_breach_notified_at:
+                already += 1
+                continue
+            notified_at = datetime.now(timezone.utc).isoformat()
+            sink.emit(
+                RunEvent(
+                    type="sla_breach",
+                    contract_id=item["contract_id"],
+                    detail={
+                        "via": "sla_sweep",
+                        "counterparty_name": item["counterparty_name"],
+                        "posture": item["posture"],
+                        "worst_position": item["worst_position"],
+                        "sla_budget_business_days": item["sla_budget_business_days"],
+                        "business_days_waiting": item["business_days_waiting"],
+                        "assignee": item["assignee"],
+                        "unassigned": not item["assignee"],
+                        "notified_at": notified_at,
+                    },
+                )
+            )
+            dispatch = dispatch_sla_breach_webhook(record, item, notified_at)
+            if dispatch is not None:
+                webhooks[dispatch] += 1
+            record.sla_breach_notified_at = notified_at
+            store.save(record)
+            newly.append(
+                {
+                    "contract_id": item["contract_id"],
+                    "counterparty_name": item["counterparty_name"],
+                    "worst_position": item["worst_position"],
+                    "sla_budget_business_days": item["sla_budget_business_days"],
+                    "business_days_waiting": item["business_days_waiting"],
+                    "assignee": item["assignee"],
+                    "unassigned": not item["assignee"],
+                    "webhook": dispatch,
+                    "notified_at": notified_at,
+                }
+            )
+        return {
+            "as_of": today.isoformat(),
+            "awaiting": len(queue_items),
+            "breaches_found": len(breached),
+            "newly_reported": len(newly),
+            "already_reported": already,
+            "events_emitted": len(newly),
+            "webhooks": webhooks,
+            "breaches": newly,
+            "note": (
+                "One sla_breach event per contract, the first time "
+                "the sweep observes it past its budget; the record "
+                "carries the stamp, so re-running the sweep does not "
+                "re-announce it. The webhook fires only when "
+                "ACTION_WEBHOOK_URL is configured (signed when "
+                "ACTION_WEBHOOK_SECRET is set) — otherwise the "
+                "breach is announced on the event stream alone."
+            ),
+        }
+
     def audit_rows(self) -> list[dict]:
         """The audit trail: one flat row per analysed contract, with
         counsel's decision (who, when, why) and the safety outcomes
@@ -1031,7 +1166,8 @@ class ContractService:
         no tokens (None), so they are counted separately instead of
         diluting the averages with zeros.
         """
-        results = [record.result for record in self._get_store().all_records()]
+        records = self._get_store().all_records()
+        results = [record.result for record in records]
         queue_items = self.queue()
         telemetries = [r.telemetry for r in results if r.telemetry is not None]
         provider_runs = [t for t in telemetries if t.input_tokens is not None]
@@ -1064,6 +1200,9 @@ class ContractService:
                     1
                     for i in queue_items
                     if i["sla_breached"] and not i["assignee"]
+                ),
+                "breach_events_emitted": sum(
+                    1 for r in records if r.sla_breach_notified_at
                 ),
                 "budgets_business_days": {
                     tier: sla_budget_business_days(tier) for tier in _SLA_DEFAULTS
