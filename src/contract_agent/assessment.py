@@ -51,6 +51,10 @@ def memory_evidence_lines(history: dict | None) -> list[str]:
             f"counsel feedback: {when} decision for this counterparty was "
             f"{feedback.get('decision', '')} — reason: '{feedback.get('reason', '')}'"
         )
+    # Concession-profile lines are pre-computed by the service (the
+    # profile needs the full records, not this summary dict) and
+    # ride along verbatim — computed facts, stated as priors.
+    lines.extend(history.get("concession_lines", []))
     return lines
 
 

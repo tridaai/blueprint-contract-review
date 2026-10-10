@@ -321,6 +321,22 @@ def list_playbook() -> list[dict]:
     return PLAYBOOK
 
 
+@app.get("/counterparties/{counterparty}/profile", dependencies=_AUTH)
+def counterparty_profile(counterparty: str) -> dict:
+    """The counterparty concession profile: clause types they
+    concede vs hold across their stored negotiation chains,
+    re-trade counts, rounds to clear walk-away positions, and
+    counsel's decision tallies — computed in code from the records.
+    404 when the store holds nothing for this counterparty."""
+    profile = service.counterparty_profile(counterparty)
+    if profile["contracts"] == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No stored contracts for counterparty: {counterparty}",
+        )
+    return profile
+
+
 @app.get("/samples", dependencies=_AUTH)
 def list_samples() -> list[dict]:
     return load_sample_contracts()

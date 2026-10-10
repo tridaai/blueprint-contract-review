@@ -242,7 +242,8 @@ function render(result) {
   html += `<div class="row" style="margin-bottom:10px"><button id="brief-btn">Download negotiation brief (.md)</button><span class="note">one document for the negotiation: chain history, open positions by tier, proposed edits, exhibit findings, obligations — assembled from the stored records</span></div>`;
   html += `<div class="row">${pill(result.status, result.status === 'awaiting_counsel' ? 'warn' : 'good')}
     ${pill('posture: ' + f.posture, f.posture === 'aligned' ? 'good' : f.posture === 'negotiable' ? 'warn' : 'bad')}
-    ${pill('worst: ' + f.worst_position)} ${result.reviewer_blocked ? pill('REVIEWER BLOCKED', 'bad') : ''}</div>`;
+    ${pill('worst: ' + f.worst_position)} ${result.reviewer_blocked ? pill('REVIEWER BLOCKED', 'bad') : ''}</div>
+  <div id="concession-profile"></div>`;
   if (result.injection_flags && result.injection_flags.length) {
     html += `<p class="flag">⚠ Injection screen: ${result.injection_flags.length} flag(s) — flagged sentences were removed from prompts; the clauses were still reviewed on substance.</p>
     <ul>${result.injection_flags.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
@@ -380,6 +381,7 @@ function render(result) {
     <h3>Draft — counterparty response (proposes changes; asserts nothing as agreed)</h3><pre>${esc(result.drafts.counterparty_response)}</pre>`;
   }
   $('result').innerHTML = html;
+  loadConcessionProfile(result.counterparty_name);
   $('brief-btn').addEventListener('click', async () => {
     const res = await fetch('/contracts/' + currentId + '/brief', {headers: headers()});
     if (!res.ok) { alert('Brief unavailable: ' + res.status); return; }
@@ -394,6 +396,30 @@ function render(result) {
   $('gate-section').style.display = '';
   $('approve').disabled = !currentValid;
   $('gate-status').textContent = currentValid ? '' : 'Approve is disabled: guardrail validation failed.';
+}
+
+async function loadConcessionProfile(counterparty) {
+  const host = $('concession-profile');
+  if (!host || !counterparty) return;
+  try {
+    const res = await fetch('/counterparties/' + encodeURIComponent(counterparty) + '/profile', {headers: headers()});
+    if (!res.ok) { host.innerHTML = ''; return; }
+    const p = await res.json();
+    if (!p.multi_round_chains) {
+      host.innerHTML = `<p class="note" style="margin-top:10px">Counterparty profile: ${esc(p.contracts)} contract(s) on record for ${esc(counterparty)} — no multi-round negotiation yet, so no concession pattern.</p>`;
+      return;
+    }
+    const rowFor = t => p.clause_types.find(r => r.clause_type === t);
+    const chip = (t, cls) => { const r = rowFor(t); return pill(t + (r && r.re_trades ? ' (re-traded ×' + r.re_trades + ')' : ''), cls); };
+    host.innerHTML = `<div style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--soft)">
+      <strong style="font-size:13px">Counterparty concessions — ${esc(counterparty)}</strong>
+      <span class="note">computed from ${esc(p.contracts)} stored contract(s) in ${esc(p.chains)} chain(s) · re-trades ${esc(p.re_trades)}${p.best_rounds_to_no_walk_away ? ' · walk-away cleared by round ' + esc(p.best_rounds_to_no_walk_away) : ''} · counsel decisions: ${esc(p.decisions.approved)} approved / ${esc(p.decisions.rejected)} rejected</span>
+      <div class="row" style="margin-top:6px"><span class="note">Concedes:</span> ${p.concedes.length ? p.concedes.map(t => chip(t, 'good')).join(' ') : '<span class="note">none observed</span>'}</div>
+      <div class="row" style="margin-top:4px"><span class="note">Holds:</span> ${p.holds.length ? p.holds.map(t => chip(t, 'bad')).join(' ') : '<span class="note">none observed</span>'}${p.mixed.length ? '<span class="note">Mixed:</span> ' + p.mixed.map(t => chip(t, 'warn')).join(' ') : ''}</div>
+    </div>`;
+  } catch (e) {
+    host.innerHTML = '';
+  }
 }
 
 async function analyze() {

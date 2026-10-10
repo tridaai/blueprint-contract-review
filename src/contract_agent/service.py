@@ -357,6 +357,13 @@ class ContractService:
         feedback = self._feedback_for(model)
         if feedback:
             history = {**(history or {}), "feedback": feedback}
+        # Concession profile: how this counterparty has actually
+        # moved across its stored negotiations (concessions.py) —
+        # computed facts about their past rounds, offered to the
+        # assessment as priors alongside the posture memory.
+        concession_lines = self._concession_lines(model)
+        if concession_lines:
+            history = {**(history or {}), "concession_lines": concession_lines}
         result = run_contract(
             model,
             backend=backend,
@@ -540,6 +547,36 @@ class ContractService:
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
             return list(pool.map(guarded, contracts))
+
+    def counterparty_profile(self, counterparty: str) -> dict:
+        """The concession profile for one counterparty, computed
+        from every stored record (see ``concessions.py``): clause
+        types conceded vs held across their negotiation chains,
+        re-trade counts, rounds to clear walk-away positions, and
+        counsel's decision tallies. An unknown counterparty yields a
+        zero profile — the caller decides whether that is a 404."""
+        from .concessions import build_concession_profile
+
+        return build_concession_profile(
+            counterparty, self._get_store().all_records()
+        )
+
+    def _concession_lines(self, contract: ContractInput) -> list[str]:
+        """The counterparty's concession profile as evidence lines
+        for a new analysis, excluding the contract being analysed.
+        Empty when there is no multi-round history — a pattern needs
+        at least one negotiation, not one contract."""
+        if not contract.counterparty_name:
+            return []
+        from .concessions import build_concession_profile, concession_evidence_lines
+
+        records = [
+            record
+            for record in self._get_store().all_records()
+            if record.result.contract_id != contract.contract_id
+        ]
+        profile = build_concession_profile(contract.counterparty_name, records)
+        return concession_evidence_lines(profile)
 
     def _feedback_for(self, contract: ContractInput) -> list[dict]:
         """Recent counsel feedback for this counterparty.
