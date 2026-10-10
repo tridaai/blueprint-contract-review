@@ -150,9 +150,15 @@ def test_non_solicit_only_clause_registers_no_compete_clock():
     assert solicit.detail == "24 months following termination"
 
 
-def test_covenants_stay_out_of_a_commercial_register():
-    # No employment-terms extraction: this is not an employment
-    # letter, and the covenant pass is the employment register's.
+def test_commercial_covenants_register_since_round_18():
+    # Round 14 scoped the covenant pass to employment letters,
+    # and this test pinned that scoping. Round 18 reverses it —
+    # services agreements carry non-competes too — so the same
+    # fixture now registers a commercial non_compete, on the
+    # commercial anchor (the agreement's termination), undated
+    # because the fixture's agreement states no end of its own.
+    # The commercial behaviour is pinned in full in
+    # test_commercial_covenants.py.
     units = [
         unit("C-01", (
             "The Contractor shall not compete with the Customer "
@@ -161,7 +167,12 @@ def test_covenants_stay_out_of_a_commercial_register():
         )),
     ]
     extractions = [extraction("C-01", "non_compete", {"duration_months": 12})]
-    assert build_obligations(units, extractions) == []
+    obligations = build_obligations(units, extractions)
+    assert [o.kind for o in obligations] == ["non_compete"]
+    assert obligations[0].detail == (
+        "12 months following termination of the agreement"
+    )
+    assert obligations[0].date is None
 
 
 def test_add_months_clamps_to_the_target_month():

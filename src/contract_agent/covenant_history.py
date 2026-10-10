@@ -26,18 +26,27 @@ a continuation question for counsel's own read of the
 register, not a lapse. The reading is information —
 ``consistent``, never a finding: nothing is wrong with a new
 bargain; it is wrong only to mistake it for the old one.
+
+Since round 18 the reading covers the commercial covenants
+too: a later round that re-imposes an exclusivity or a
+non-circumvention covenant after the earlier round's one
+lapsed is read the same way — the restriction that ran its
+course is named, and the fresh covenant is a new bargain
+under the new round, for the same reason.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
-from .obligations import COVENANT_KINDS, follow_through_state
+from .obligations import ALL_COVENANT_KINDS, follow_through_state
 from .schemas import ExhibitCheck, Obligation
 
 _LABELS = {
     "non_compete": "non-compete",
     "non_solicit": "non-solicitation",
+    "exclusivity": "exclusivity",
+    "non_circumvention": "non-circumvention",
 }
 
 
@@ -53,9 +62,9 @@ def build_lapsed_covenant_readings(
     per covenant kind the current letter carries afresh whose
     nearest dated prior covenant of that kind has lapsed by
     ``today``."""
-    fresh = {o.kind for o in current_obligations if o.kind in COVENANT_KINDS}
+    fresh = {o.kind for o in current_obligations if o.kind in ALL_COVENANT_KINDS}
     readings: list[ExhibitCheck] = []
-    for kind in COVENANT_KINDS:
+    for kind in ALL_COVENANT_KINDS:
         if kind not in fresh:
             continue
         label = _LABELS[kind]

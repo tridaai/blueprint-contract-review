@@ -520,7 +520,7 @@ class Obligation(BaseModel):
     formula applied to its stated salary basis — so its ``computed``
     flags the figure, never a quoted amount."""
 
-    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term | severance | garden_leave | non_compete | non_solicit
+    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term | severance | garden_leave | non_compete | non_solicit | exclusivity | non_circumvention
     description: str = ""
     detail: str = ""  # the operative value as written, e.g. "120 days' written notice"
     days: Optional[int] = None
@@ -780,7 +780,7 @@ class CovenantFollowThrough(BaseModel):
     An act is recorded once per covenant per state: the record
     is the loop's state, not a log of reminders."""
 
-    kind: str  # non_compete | non_solicit
+    kind: str  # non_compete | non_solicit | exclusivity | non_circumvention
     state: str  # counterparty_notified | restriction_confirmed_lifted
     actor: str = ""
     at: str = ""

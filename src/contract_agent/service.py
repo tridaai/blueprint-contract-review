@@ -1886,7 +1886,7 @@ class ContractService:
         lapse nobody closed is named ``open`` on the row."""
         from datetime import date as _date
 
-        from .obligations import COVENANT_KINDS, due_obligations, follow_through_state
+        from .obligations import ALL_COVENANT_KINDS, due_obligations, follow_through_state
 
         today = today or _date.today()
         rows: list[dict] = []
@@ -1899,7 +1899,7 @@ class ContractService:
                     "status": result.status,
                     **row,
                 }
-                if row["kind"] in COVENANT_KINDS:
+                if row["kind"] in ALL_COVENANT_KINDS:
                     lapsed = row["days_until"] <= 0
                     acts = [
                         act
@@ -1932,7 +1932,7 @@ class ContractService:
         hold."""
         from datetime import date as _date
 
-        from .obligations import COVENANT_KINDS, follow_through_state
+        from .obligations import ALL_COVENANT_KINDS, follow_through_state
 
         today = today or _date.today()
         record = self._get_store().get(contract_id)
@@ -1942,7 +1942,7 @@ class ContractService:
             )
         rows: list[dict] = []
         for obligation in record.result.obligations:
-            if obligation.kind not in COVENANT_KINDS or not obligation.date:
+            if obligation.kind not in ALL_COVENANT_KINDS or not obligation.date:
                 continue
             try:
                 expiry = _date.fromisoformat(obligation.date)
@@ -2009,7 +2009,7 @@ class ContractService:
         (:meth:`covenant_follow_through`)."""
         from datetime import date as _date
 
-        from .obligations import COVENANT_FOLLOW_THROUGH_STATES, COVENANT_KINDS
+        from .obligations import ALL_COVENANT_KINDS, COVENANT_FOLLOW_THROUGH_STATES
         from .schemas import CovenantFollowThrough
 
         actor = (actor or "").strip()
@@ -2019,11 +2019,12 @@ class ContractService:
                 "it closes a lapse, and the record carries the name."
             )
         kind = (kind or "").strip()
-        if kind not in COVENANT_KINDS:
+        if kind not in ALL_COVENANT_KINDS:
             raise ValueError(
                 f"kind {kind!r} is not a restrictive covenant — the "
-                f"follow-through closes non_compete / non_solicit "
-                "lapses, the register's covenant kinds."
+                f"follow-through closes the register's covenant "
+                "kinds (non_compete, non_solicit, exclusivity, "
+                "non_circumvention), employment and commercial alike."
             )
         state = (state or "").strip()
         if state not in COVENANT_FOLLOW_THROUGH_STATES:
@@ -2347,7 +2348,7 @@ class ContractService:
         from datetime import date as _date
 
         from .events import NullSink, RunEvent
-        from .obligations import COVENANT_KINDS
+        from .obligations import ALL_COVENANT_KINDS
 
         today = today or _date.today()
         due = self.obligations_due(days=days, today=today)
@@ -2355,7 +2356,7 @@ class ContractService:
         covenants: list[dict] = []
         closed_covenants: list[dict] = []
         for row in due["obligations"]:
-            if row["kind"] in COVENANT_KINDS:
+            if row["kind"] in ALL_COVENANT_KINDS:
                 covenants.append(row)
                 if row.get("follow_through_state") == (
                     "restriction_confirmed_lifted"

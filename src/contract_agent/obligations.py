@@ -57,6 +57,23 @@ reads the same state (round 17): a covenant whose lapse stands
 confirmed is counted closed, not announced again — the chase
 stops when the loop closes, and the acts stay on the record
 as the announced history.
+
+The commercial register carries restrictive covenants of its
+own (round 18). Services agreements restrict the parties too —
+an exclusivity appointment, a non-circumvention covenant, and
+sometimes a plain non-compete or non-solicit — and until now
+those promises never became clocks: the covenant pass above
+ran only inside an employment letter. A commercial covenant
+runs from the agreement's own termination machinery, and the
+entry states its anchor: undated while the agreement states
+no end of its own (the clock is anchored to the termination
+or expiry, an event, not a date the reviewer invents), and —
+when the agreement states its expiry — expiring at that date
+plus the covenant's duration, computed in code and flagged
+``computed``. The commercial kinds join the same register,
+the same follow-through, the same sweep announcements and the
+same lapsed readings as the employment kinds: a restriction
+is a restriction, whichever paper carries it.
 """
 
 from __future__ import annotations
@@ -83,6 +100,17 @@ _MONTHS = {
 # deadline sweep announces them distinctly from duties falling
 # due (round 15).
 COVENANT_KINDS = ("non_compete", "non_solicit")
+
+# The commercial restrictive-covenant kinds (round 18): the
+# restrictions a services agreement carries — an exclusivity
+# appointment and a non-circumvention covenant. (A commercial
+# agreement's non-compete / non-solicit clauses register under
+# the two kinds above; these two are the kinds only commercial
+# paper carries.) Same register, same clocks, same
+# follow-through: ALL_COVENANT_KINDS is the set every covenant
+# surface reads.
+COMMERCIAL_COVENANT_KINDS = ("exclusivity", "non_circumvention")
+ALL_COVENANT_KINDS = COVENANT_KINDS + COMMERCIAL_COVENANT_KINDS
 
 # The follow-through states a lapsed covenant can be in, in
 # the order the loop closes (round 16): the counterparty is
@@ -240,6 +268,109 @@ def _stated_termination_date(units: list[ClauseUnit]) -> date | None:
                 if found is not None:
                     return found
     return None
+
+
+_AGREEMENT_END_WORDS = ("terminat", "expir", "end of the term", "term ends")
+
+
+def _stated_agreement_end_date(units: list[ClauseUnit]) -> date | None:
+    """An explicit end date the agreement states for ITSELF, if
+    any: a calendar date inside a sentence about the agreement
+    ending ("This Agreement expires on December 31, 2026",
+    "the term of this Agreement terminates on 30 June 2027").
+    Only a date in such a sentence counts — it is the anchor
+    the commercial covenant clocks run from, the agreement's
+    own termination machinery, and any other date in the paper
+    (a notice deadline, a payment date) is not that anchor."""
+    for unit in units:
+        for sentence in re.split(r"(?<=[.!?])\s+", unit.text or ""):
+            low = sentence.lower()
+            if "agreement" not in low:
+                continue
+            if not any(word in low for word in _AGREEMENT_END_WORDS):
+                continue
+            found = _explicit_date(sentence)
+            if found is not None:
+                return found
+    return None
+
+
+def _covenant_period(sentences: list[str], own: list[str]) -> int | None:
+    """The period a commercial covenant runs, in months: stated
+    on the covenant's own sentences first, else on a tail
+    sentence of the same clause tying a period to the
+    agreement's end ("... shall continue for twelve (12) months
+    following the termination of this Agreement"). A covenant
+    stated with no period anywhere in its clause is a
+    restriction without a tail — nothing to clock, so None."""
+    for sentence in own:
+        months = _period_months(sentence)
+        if months:
+            return months
+    for sentence in sentences:
+        if any(
+            word in sentence
+            for word in ("terminat", "expir", "end of the term")
+        ):
+            months = _period_months(sentence)
+            if months:
+                return months
+    return None
+
+
+_EXCLUSIVITY_PHRASES = (
+    "exclusive provider", "exclusive supplier",
+    "exclusive right to provide", "exclusive right to supply",
+    "shall be the exclusive", "will be the exclusive",
+    "appointed as the exclusive", "appoints as the exclusive",
+    "as its exclusive", "as their exclusive",
+    "exclusively provide", "exclusively supply", "exclusively perform",
+)
+
+
+def _exclusivity_months(text: str) -> int | None:
+    """The exclusivity covenant's period in one clause, or None
+    when the clause carries no exclusivity covenant clock.
+    The promise must be an appointment — one party made the
+    exclusive provider — not the word alone: a non-exclusive
+    licence grants the opposite, and exclusive jurisdiction is
+    a venue, not a restriction; both are excluded by name."""
+    sentences = [s.lower() for s in re.split(r"(?<=[.!?])\s+", text or "")]
+    own = [
+        s
+        for s in sentences
+        if any(p in s for p in _EXCLUSIVITY_PHRASES)
+        and "non-exclusive" not in s
+        and "jurisdiction" not in s
+        and "licen" not in s
+    ]
+    if not own:
+        return None
+    return _covenant_period(sentences, own)
+
+
+def _circumvention_months(text: str) -> int | None:
+    """The non-circumvention covenant's period in one clause,
+    or None when the clause carries no such clock. The word
+    alone is not a covenant — the sentence must carry the
+    obligation's framing (a shall-not, a prohibition, the
+    covenant's own name) before its period becomes a clock."""
+    sentences = [s.lower() for s in re.split(r"(?<=[.!?])\s+", text or "")]
+    own = [
+        s
+        for s in sentences
+        if "circumvent" in s
+        and any(
+            framing in s
+            for framing in (
+                "shall not", "will not", "must not", "not to",
+                "prohibit", "non-circumvention", "non circumvention",
+            )
+        )
+    ]
+    if not own:
+        return None
+    return _covenant_period(sentences, own)
 
 
 def due_obligations(
@@ -616,5 +747,108 @@ def build_obligations(
                     source_clause_id=unit.clause_id,
                     source_ref=unit.ref,
                 ))
+
+    # -- Commercial restrictive covenants (round 18) ----------
+    # A services agreement restricts its parties too, and its
+    # covenants run from the agreement's own termination
+    # machinery — not from an end of employment that never
+    # happens under it. The pass runs only where the letter's
+    # machinery above did not (no employment-terms extraction):
+    # non-compete / non-solicit clauses register under their
+    # own kinds with the commercial anchor, and exclusivity /
+    # non-circumvention covenants — which have no clause type
+    # of their own — are read from their sentences. Every entry
+    # states its anchor: the termination or expiry of the
+    # Agreement is the event the clock runs from, dated in code
+    # when the agreement states its own end, undated while it
+    # does not.
+    if employment is None:
+        anchor_date = _stated_agreement_end_date(units)
+
+        def commercial_add(
+            kind: str, months: int, unit: ClauseUnit, promise: str
+        ) -> None:
+            expiry = (
+                _add_months(anchor_date, months)
+                if anchor_date is not None
+                else None
+            )
+            description = (
+                f"{promise} The covenant runs {months} "
+                f"month{'s' if months != 1 else ''} following the "
+                "termination or expiry of the Agreement — that "
+                "event is its anchor."
+            )
+            if expiry is not None:
+                description += (
+                    f" Against the end date the Agreement states "
+                    f"for itself ({anchor_date.isoformat()}), the "
+                    f"covenant expires on {expiry.isoformat()}."
+                )
+            else:
+                description += (
+                    " The Agreement states no end date of its "
+                    "own, so the entry is undated until the "
+                    "termination or expiry occurs."
+                )
+            add(Obligation(
+                kind=kind,
+                description=description,
+                detail=f"{months} months following termination of the agreement",
+                date=expiry.isoformat() if expiry else None,
+                computed=expiry is not None,
+                source_clause_id=unit.clause_id,
+                source_ref=unit.ref,
+            ))
+
+        for extraction in extractions:
+            if extraction.clause_type != "non_compete":
+                continue
+            unit = by_id.get(extraction.clause_id)
+            if unit is None:
+                continue
+            compete_months, solicit_months = _covenant_durations(
+                unit.text or "", extraction.signals or {}
+            )
+            # The register reads text, not labels: a clause typed
+            # non_compete whose text names no covenant of the
+            # kind registers nothing for it — the durations
+            # helper's signals fallback must not mint a covenant
+            # the words never made.
+            low = (unit.text or "").lower()
+            named = {
+                "non_compete": "compet" in low or "restrictive covenant" in low,
+                "non_solicit": "solicit" in low,
+            }
+            for kind, months, promise in (
+                (
+                    "non_compete", compete_months,
+                    "The non-compete covenant binds the parties "
+                    "under the Agreement.",
+                ),
+                (
+                    "non_solicit", solicit_months,
+                    "The non-solicitation covenant binds the "
+                    "parties under the Agreement.",
+                ),
+            ):
+                if months and named[kind]:
+                    commercial_add(kind, months, unit, promise)
+
+        for unit in units:
+            months = _exclusivity_months(unit.text or "")
+            if months:
+                commercial_add(
+                    "exclusivity", months, unit,
+                    "The Agreement appoints one party the "
+                    "exclusive provider of the services.",
+                )
+            months = _circumvention_months(unit.text or "")
+            if months:
+                commercial_add(
+                    "non_circumvention", months, unit,
+                    "The parties covenant not to circumvent one "
+                    "another under the Agreement.",
+                )
 
     return register

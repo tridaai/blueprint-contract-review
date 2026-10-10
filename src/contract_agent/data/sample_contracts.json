@@ -761,5 +761,42 @@
       }
     ],
     "supersedes": "CTR-2029"
+  },
+  {
+    "contract_id": "CTR-2038",
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Caldera Robotics Inc",
+    "our_role": "customer",
+    "sender_name": "Contracts — Caldera Robotics Inc",
+    "cover_email_text": "Please find our master services agreement for managed robotics maintenance attached for your review.",
+    "notes": "Commercial restrictive covenants sample: an MSA carrying an exclusivity appointment (a twelve-month tail) and a non-circumvention covenant (a twenty-four-month tail), both running from the agreement's own termination machinery — and the agreement states its own expiry (December 31, 2026), so both covenant clocks are dated in code from that anchor. The governing-law clause's exclusive jurisdiction and the absence of any licence grant test that the covenant reading fires on appointments, not on the word 'exclusive' alone.",
+    "received_at": "2026-09-14T09:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n4. Term and Termination\nThis Agreement takes effect on the Effective Date and expires on December 31, 2026, unless terminated earlier in accordance with this clause. Either party may terminate this Agreement for convenience on sixty (60) days' written notice.\n\n5. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date.\n\n6. Exclusivity\nDuring the Term, the Provider shall be the exclusive provider of managed robotics maintenance services to the Customer. This exclusivity shall continue for twelve (12) months following the termination or expiry of this Agreement.\n\n7. Non-Circumvention\nEach party agrees not to circumvent, directly or indirectly, the other party in respect of the customers and suppliers introduced under this Agreement. This non-circumvention covenant shall run for twenty-four (24) months following the expiry of this Agreement.\n\n8. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n"
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2039",
+    "doc_type": "amendment",
+    "title": "Amendment No. 1 to Master Services Agreement",
+    "counterparty_name": "Caldera Robotics Inc",
+    "our_role": "customer",
+    "sender_name": "Contracts — Caldera Robotics Inc",
+    "cover_email_text": "Attached is Amendment No. 1 to the Caldera managed robotics agreement, restating the exclusivity tail, for counsel's review.",
+    "notes": "Commercial restrictive covenants sample (amendment): round 2 of the CTR-2038 chain — the amendment restates the agreement's own expiry, keeps the exclusivity appointment but shortens its tail from twelve months to six, and does not carry the non-circumvention covenant forward. The covenant biography reads the step: a duration shortened, a covenant dropped.",
+    "received_at": "2026-11-30T09:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Recitals\nThis Amendment No. 1 amends the Master Services Agreement between the parties. The parties record that the Agreement expires on December 31, 2026, as originally stated.\n\n2. Exclusivity\nThe Provider shall remain the exclusive provider of managed robotics maintenance services to the Customer. This exclusivity shall continue for six (6) months following the termination or expiry of the Agreement.\n\n3. General\nExcept as amended by this Amendment, the Agreement continues in full force and effect. This Amendment is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n"
+      }
+    ],
+    "supersedes": "CTR-2038"
   }
 ]
