@@ -21,6 +21,8 @@ dependencies = [
     # Transitive via langchain-core -> langsmith (websockets>=15.0, unbounded).
     # websockets 17.x requires Python >=3.11. 16.0 supports Python 3.10.
     "websockets==16.0",
+    "langgraph-checkpoint-postgres==3.0.0",
+    "psycopg[binary]==3.2.9",
 ]
 
 [project.optional-dependencies]

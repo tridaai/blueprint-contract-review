@@ -80,6 +80,19 @@ class EventSink(Protocol):
     def emit(self, event: "RunEvent") -> None: ...
 
 
+class ObjectStore(Protocol):
+    """The document seam: contract files live behind object keys,
+    never local paths (S3-compatible in production — AWS S3 / MinIO;
+    an in-memory double for tests). Implementations in
+    ``objectstore.py``."""
+
+    def put(self, key: str, data: bytes, content_type: str = "text/plain") -> str: ...
+
+    def get(self, key: str) -> bytes | None: ...
+
+    def exists(self, key: str) -> bool: ...
+
+
 class Checkpointer(Protocol):
     """The graph-state seam behind the counsel gate.
 
