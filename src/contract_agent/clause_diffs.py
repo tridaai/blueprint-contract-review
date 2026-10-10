@@ -13,17 +13,29 @@ a prompt), and the fallback side is the playbook's stored wording.
 Only flagged clauses appear (any position other than ``preferred``);
 a flagged clause whose playbook entry proposes no fallback says so —
 counsel drafts that one.
+
+Each diff also carries the fallback-tier proposal
+(``fallback_tiers.py``): tier 1 (first fallback) in round one, tier
+2 (the walk-away line) for walk-away verdicts, later rounds, and
+re-traded clause types. ``round_number``/``re_traded_types`` come
+from the caller — the graph knows whether this contract supersedes
+an earlier round; the service refines both from the full chain when
+it attaches the chain report.
 """
 
 from __future__ import annotations
 
+from .fallback_tiers import propose_tier
 from .schemas import ClauseDiff, ClauseUnit, ClauseVerdict
 
 FLAGGED_POSITIONS = {"acceptable_fallback", "review_required", "walk_away"}
 
 
 def build_clause_diffs(
-    units: list[ClauseUnit], verdicts: list[ClauseVerdict]
+    units: list[ClauseUnit],
+    verdicts: list[ClauseVerdict],
+    round_number: int = 1,
+    re_traded_types: frozenset[str] | set[str] = frozenset(),
 ) -> list[ClauseDiff]:
     """Pair each flagged clause's counterparty text with its playbook
     fallback, in document order (verdicts are built in clause order)."""
@@ -33,6 +45,13 @@ def build_clause_diffs(
         if verdict.position not in FLAGGED_POSITIONS:
             continue
         unit = by_id.get(verdict.clause_id)
+        tier, tier_name, tier_language, tier_reason = propose_tier(
+            verdict.clause_type,
+            verdict.position,
+            verdict.fallback_language or "",
+            round_number=round_number,
+            re_traded=verdict.clause_type in re_traded_types,
+        )
         diffs.append(
             ClauseDiff(
                 clause_id=verdict.clause_id,
@@ -44,6 +63,10 @@ def build_clause_diffs(
                 playbook_fallback=verdict.fallback_language or "",
                 playbook_refs=list(verdict.playbook_refs),
                 rationale=verdict.rationale,
+                proposed_tier=tier,
+                tier_name=tier_name,
+                tier_language=tier_language,
+                tier_reason=tier_reason,
             )
         )
     return diffs

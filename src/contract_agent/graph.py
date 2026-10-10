@@ -274,6 +274,7 @@ def _playbook_text_for(clause_type: str) -> str:
     return "\n".join(
         f"- [{e['id']}] {e['title']}: {e['text']}"
         + (f" Fallback language: {e['fallback_language']}" if e.get("fallback_language") else "")
+        + (f" Walk-away line (tier 2): {e['walk_away_line']}" if e.get("walk_away_line") else "")
         for e in entries
     )
 
@@ -424,7 +425,15 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
             "facts": facts.model_dump(),
             "clause_rows": _rows(state),
             "clause_diffs": [
-                d.model_dump() for d in build_clause_diffs(units, verdicts)
+                d.model_dump()
+                for d in build_clause_diffs(
+                    units,
+                    verdicts,
+                    # A contract that supersedes an earlier round is, at
+                    # minimum, round 2 — tier proposals start there; the
+                    # service refines with the full chain when it can.
+                    round_number=2 if contract.supersedes else 1,
+                )
             ],
             "exhibit_checks": [c.model_dump() for c in exhibit_checks],
             "obligations": [

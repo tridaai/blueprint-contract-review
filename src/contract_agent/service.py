@@ -338,6 +338,18 @@ class ContractService:
                     details=list(chain.summary),
                 )
             )
+            # Tier refinement: with the full chain known, rebuild the
+            # clause diffs so fallback-tier proposals use the true
+            # round number and the chain's re-trade flags (the graph
+            # could only assume "round 2" from the supersedes link).
+            from .clause_diffs import build_clause_diffs
+
+            result.clause_diffs = build_clause_diffs(
+                result.clauses,
+                result.clause_verdicts,
+                round_number=chain.rounds,
+                re_traded_types=set(chain.re_traded_clause_types),
+            )
 
     def analyze_batch(
         self,

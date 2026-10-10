@@ -215,6 +215,15 @@ class MockModelBackend:
                         or "none in the playbook — counsel to draft"
                     )
                 )
+                if diff.get("proposed_tier"):
+                    packet_lines.append(
+                        f"  Proposed tier: tier {diff['proposed_tier']} "
+                        f"({diff.get('tier_name')}) — {diff.get('tier_reason')}"
+                    )
+                    if diff.get("tier_language"):
+                        packet_lines.append(
+                            f"  Tier language: {diff['tier_language']}"
+                        )
         packet_lines.append("Options scored by review code:")
         packet_lines += [
             f"- [{o['kind']}] {o['title']} (clause {o.get('clause_id') or '—'}) — score {o['score']}"
@@ -399,6 +408,7 @@ class _BaseLLMBackend:
         return "\n".join(
             f"- [{g.get("playbook_id") or g.get("policy_id") or g.get("guideline_id")}] {g['title']}: {g['text']}"
             + (f"\n  Fallback language: {g['fallback_language']}" if g.get("fallback_language") else "")
+            + (f"\n  Walk-away line (tier 2): {g['walk_away_line']}" if g.get("walk_away_line") else "")
             for g in context.get("playbook_details", [])
         ) or "none retrieved"
 

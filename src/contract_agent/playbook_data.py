@@ -11,6 +11,13 @@ required** (a human must look), **walk-away** (do not accept; escalate
 to senior counsel). The fallback language quoted on entries is the
 playbook's own proposed wording — drafts propose it, counsel decides.
 
+Fallbacks are tiered (``fallback_tiers.py``): an entry's
+``fallback_language`` is tier 1, the first fallback; the designated
+entry for each clause type also carries a ``walk_away_line`` — tier
+2, the final position, beyond which the playbook's answer is to walk
+away. Which tier a packet proposes is decided in code from the round
+number and the negotiation chain, never by the model.
+
 To adapt the blueprint, replace this corpus with your own playbook
 (and keep the mirror in ``data/sample/playbook.json`` in sync).
 """
@@ -61,6 +68,11 @@ PLAYBOOK: list[dict] = [
             "Agreement shall not exceed the fees paid or payable in the twelve (12) "
             "months immediately preceding the event giving rise to the claim."
         ),
+        "walk_away_line": (
+            "Final position on liability: aggregate liability must be capped, and the "
+            "twelve (12) months' fees cap above is the last position we can put. An "
+            "uncapped clause ends the negotiation."
+        ),
     },
     {
         "id": "PB-IND-01",
@@ -91,6 +103,11 @@ PLAYBOOK: list[dict] = [
             "Neither party shall be required to indemnify the other for claims "
             "resulting from the indemnified party's own negligence or wilful "
             "misconduct."
+        ),
+        "walk_away_line": (
+            "Final position on indemnity: indemnification is mutual and fault-based "
+            "only. A one-way indemnity, or indemnifying a party against the "
+            "consequences of its own negligence, ends the negotiation."
         ),
     },
     {
@@ -124,6 +141,11 @@ PLAYBOOK: list[dict] = [
             "counterparty vests in the counterparty on payment in full; all other "
             "intellectual property remains with its owner."
         ),
+        "walk_away_line": (
+            "Final position on intellectual property: pre-existing intellectual "
+            "property is never assigned. An assignment of pre-existing tools, methods "
+            "or know-how ends the negotiation."
+        ),
     },
     {
         "id": "PB-CON-01",
@@ -153,6 +175,11 @@ PLAYBOOK: list[dict] = [
             "The obligations in this section apply to Confidential Information "
             "disclosed by either party and survive for five (5) years from "
             "disclosure."
+        ),
+        "walk_away_line": (
+            "Final position on confidentiality: obligations survive no more than five "
+            "(5) years from disclosure. Perpetual confidentiality ends the "
+            "negotiation."
         ),
     },
     {
@@ -184,6 +211,12 @@ PLAYBOOK: list[dict] = [
             "party gives notice of non-renewal at least ninety (90) days before the "
             "end of the then-current term."
         ),
+        "walk_away_line": (
+            "Final position on term: the agreement must be exitable — termination for "
+            "convenience must exist, and no notice window may exceed one hundred "
+            "eighty (180) days. A lock-in with no convenience termination ends the "
+            "negotiation."
+        ),
     },
     {
         "id": "PB-PAY-01",
@@ -213,6 +246,11 @@ PLAYBOOK: list[dict] = [
             "invoice date; interest on overdue undisputed amounts accrues at "
             "1 percent per month or the maximum lawful rate, whichever is lower."
         ),
+        "walk_away_line": (
+            "Final position on payment: net sixty (60) days is the outer limit for "
+            "undisputed invoices. Full prepayment, terms beyond net 60, or late fees "
+            "above 1.5 percent per month end the negotiation."
+        ),
     },
     {
         "id": "PB-LAW-01",
@@ -241,6 +279,11 @@ PLAYBOOK: list[dict] = [
             "This Agreement is governed by the laws of the State of New York, and "
             "the parties consent to the exclusive jurisdiction of its state and "
             "federal courts."
+        ),
+        "walk_away_line": (
+            "Final position on governing law: a United States governing law and "
+            "exclusive jurisdiction as above. Foreign governing law ends the "
+            "negotiation."
         ),
     },
     {
@@ -272,6 +315,11 @@ PLAYBOOK: list[dict] = [
             "The parties shall comply with applicable data protection law and the "
             "data processing addendum attached as an exhibit to this Agreement."
         ),
+        "walk_away_line": (
+            "Final position on data protection: a data processing addendum must be "
+            "incorporated, with breach notification within seventy-two (72) hours. "
+            "Processing personal data with no DPA ends the negotiation."
+        ),
     },
     {
         "id": "PB-WAR-01",
@@ -287,6 +335,11 @@ PLAYBOOK: list[dict] = [
             "Warranties apply for twelve (12) months from acceptance; the exclusive "
             "remedy is re-performance or, if re-performance is not commercially "
             "practicable, a refund of fees for the affected deliverable."
+        ),
+        "walk_away_line": (
+            "Final position on warranties: a warranty period of at least twelve (12) "
+            "months from acceptance, with re-performance or refund as the remedy. A "
+            "complete disclaimer of warranties ends the negotiation."
         ),
     },
     {
@@ -318,6 +371,11 @@ PLAYBOOK: list[dict] = [
             "The counterparty shall give at least thirty (30) days' written notice "
             "of any assignment, including by change of control, and we may terminate "
             "on notice if the assignee is a competitor."
+        ),
+        "walk_away_line": (
+            "Final position on assignment: no assignment, including by change of "
+            "control, without notice and — outside a bona fide successor — consent. "
+            "Free assignability ends the negotiation."
         ),
     },
     {

@@ -230,6 +230,13 @@ class ClauseDiff(BaseModel):
     playbook_fallback: str = ""  # "" = the playbook proposes none; counsel drafts
     playbook_refs: list[str] = Field(default_factory=list)
     rationale: str = ""
+    # Fallback tiers (fallback_tiers.py): which concession the packet
+    # proposes for this clause, chosen in code from the round number
+    # and the chain's re-trade flags. 0 = no proposal (preferred).
+    proposed_tier: int = 0  # 1 = first fallback | 2 = walk-away line
+    tier_name: str = ""
+    tier_language: str = ""  # the language of the proposed tier
+    tier_reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +396,8 @@ class RetrievedPlaybook(BaseModel):
     title: str = ""
     text: str = ""
     clause_type: str = ""
+    fallback_language: str = ""  # tier 1: the entry's proposed fallback wording
+    walk_away_line: str = ""  # tier 2: the entry's final-position line, when it carries one
     score: float = 0.0
     sources: list[str] = Field(default_factory=list)  # retrieval provenance: keyword / semantic
 

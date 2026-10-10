@@ -84,6 +84,9 @@ class KeywordRetriever:
                     playbook_id=playbook["id"],
                     title=playbook["title"],
                     text=playbook["text"],
+                    clause_type=playbook.get("clause_type", ""),
+                    fallback_language=playbook.get("fallback_language", ""),
+                    walk_away_line=playbook.get("walk_away_line", ""),
                     score=score,
                     sources=["keyword"],
                 )
@@ -308,6 +311,9 @@ class SemanticRetriever:
                     playbook_id=playbook_id,
                     title=playbook["title"],
                     text=playbook["text"],
+                    clause_type=playbook.get("clause_type", ""),
+                    fallback_language=playbook.get("fallback_language", ""),
+                    walk_away_line=playbook.get("walk_away_line", ""),
                     score=round(float(similarity), 4),
                     sources=["semantic"],
                 )
@@ -327,6 +333,9 @@ class SemanticRetriever:
                 playbook_id=playbook["id"],
                 title=playbook["title"],
                 text=playbook["text"],
+                clause_type=playbook.get("clause_type", ""),
+                fallback_language=playbook.get("fallback_language", ""),
+                walk_away_line=playbook.get("walk_away_line", ""),
                 score=round(_cosine(query_vector, vector), 4),
                 sources=["semantic"],
             )
