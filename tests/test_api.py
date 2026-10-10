@@ -122,6 +122,15 @@ def test_audit_export_json_and_csv():
     assert client.get("/audit/export?format=yaml").status_code == 422
 
 
+def test_obligations_due_endpoint():
+    res = client.get("/obligations/due?days=90")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["window_days"] == 90
+    assert payload["count"] == len(payload["obligations"])
+    assert client.get("/obligations/due?days=-1").status_code == 422
+
+
 def test_eval_results_endpoint():
     res = client.get("/evals/results")
     assert res.status_code == 200

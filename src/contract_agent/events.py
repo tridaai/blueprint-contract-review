@@ -12,10 +12,12 @@ each surface attaches the sink it needs:
 
 Event types: ``run_started``, ``node_started``, ``node_finished``
 (carries ``duration_ms``), ``tool_called``, ``guardrail_verdict``,
-``repair_attempted``, ``run_completed`` (carries the final status),
-``run_failed`` (carries the clean error message). Events fire in the
-offline fallback exactly as in provider mode — durations are real
-wall-clock measurements either way.
+``repair_attempted``, ``obligation_due`` (a dated register entry of
+this contract falls due within ``OBLIGATION_DUE_WINDOW_DAYS``,
+default 90 — carries kind, date, days_until, overdue), ``run_completed``
+(carries the final status), ``run_failed`` (carries the clean error
+message). Events fire in the offline fallback exactly as in provider
+mode — durations are real wall-clock measurements either way.
 """
 
 from __future__ import annotations
@@ -98,6 +100,11 @@ class PrintingSink:
             parts.append(
                 f"attempts={event.detail.get('attempts')} "
                 f"repaired={event.detail.get('repaired')}"
+            )
+        elif event.type == "obligation_due":
+            parts.append(
+                f"{event.detail.get('kind', '')} due {event.detail.get('date', '')} "
+                f"({event.detail.get('days_until')}d)"
             )
         elif event.type == "run_completed":
             parts.append(f"status={event.detail.get('status')}")

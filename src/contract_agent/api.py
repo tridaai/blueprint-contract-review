@@ -239,6 +239,16 @@ def metrics() -> dict:
     return service.metrics()
 
 
+@app.get("/obligations/due", dependencies=_AUTH)
+def obligations_due(days: int = 90) -> dict:
+    """Obligation deadlines across all stored contracts: register
+    entries carrying a date that fall due within ``days`` (overdue
+    included), soonest first — the operational view of the register."""
+    if days < 0:
+        raise HTTPException(status_code=422, detail="days must be >= 0.")
+    return service.obligations_due(days=days)
+
+
 @app.get("/audit/export", dependencies=_AUTH)
 def audit_export(format: str = "json"):
     """The audit trail — one row per analysed contract with counsel's

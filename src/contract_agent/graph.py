@@ -65,7 +65,7 @@ from .extractor import extract_clauses, extraction_discrepancies
 from .facts import compute_facts
 from .guardrails import validate_drafts
 from .model_backends import DraftContext, clause_rows_text, estimate_cost_usd
-from .obligations import build_obligations
+from .obligations import build_obligations, due_obligations
 from .options import build_options
 from .playbook_data import PLAYBOOK
 from .resilience import ResilientBackend
@@ -1050,6 +1050,31 @@ def run_contract(
     result.telemetry = RunTelemetry.model_validate(
         _run_telemetry(raw_backend, started, budget.status())
     )
+    # Obligation deadlines are operational, not just displayed: any
+    # dated register entry of this contract that is due within the
+    # window (OBLIGATION_DUE_WINDOW_DAYS, default 90) is announced on
+    # the run's event stream, so a consumer watching the stream (SSE,
+    # a queue bridge) can act on the deadline the run just computed.
+    from datetime import date as _date
+
+    load_dotenv()
+    due_window = env_int("OBLIGATION_DUE_WINDOW_DAYS", 90)
+    for row in due_obligations(result.obligations, _date.today(), due_window):
+        sink.emit(
+            RunEvent(
+                type="obligation_due",
+                contract_id=contract.contract_id,
+                detail={
+                    "kind": row["kind"],
+                    "date": row["date"],
+                    "days_until": row["days_until"],
+                    "overdue": row["overdue"],
+                    "computed": row["computed"],
+                    "description": row["description"],
+                    "source_clause_id": row["source_clause_id"],
+                },
+            )
+        )
     sink.emit(
         RunEvent(
             type="run_completed",

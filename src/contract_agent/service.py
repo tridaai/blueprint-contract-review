@@ -469,6 +469,37 @@ class ContractService:
         record = self._get_store().get(contract_id)
         return record.result if record else None
 
+    def obligations_due(self, days: int = 90, today=None) -> dict:
+        """Obligation deadlines across every stored contract: the
+        register entries carrying a date that fall due within
+        ``days`` (overdue included), soonest first. This is the
+        operational surface of the obligations register — a computed
+        notice deadline counsel can act on, not just read."""
+        from datetime import date as _date
+
+        from .obligations import due_obligations
+
+        today = today or _date.today()
+        rows: list[dict] = []
+        for record in self._get_store().all_records():
+            result = record.result
+            for row in due_obligations(result.obligations, today, days):
+                rows.append(
+                    {
+                        "contract_id": result.contract_id,
+                        "counterparty_name": result.counterparty_name,
+                        "status": result.status,
+                        **row,
+                    }
+                )
+        rows.sort(key=lambda row: (row["date"], row["contract_id"]))
+        return {
+            "as_of": today.isoformat(),
+            "window_days": days,
+            "count": len(rows),
+            "obligations": rows,
+        }
+
     def audit_rows(self) -> list[dict]:
         """The audit trail: one flat row per analysed contract, with
         counsel's decision (who, when, why) and the safety outcomes

@@ -79,6 +79,37 @@ def _length_phrase(text: str, start: int = 0) -> str:
     return f"{n} {unit}"
 
 
+def due_obligations(
+    obligations: list[Obligation], today: date, window_days: int
+) -> list[dict]:
+    """The dated register entries that are due — overdue first, then
+    by date — within ``window_days`` of ``today``.
+
+    Only entries carrying a ``date`` can be due; undated duties (net
+    30, breach notice within 72 hours) are obligations of performance,
+    not of the calendar, and stay out of this view. Overdue entries
+    are included however old they are: a missed notice deadline is
+    the most important row in the list, not one to age out.
+    """
+    due: list[dict] = []
+    for obligation in obligations:
+        if not obligation.date:
+            continue
+        try:
+            obligation_date = date.fromisoformat(obligation.date)
+        except ValueError:
+            continue
+        days_until = (obligation_date - today).days
+        if days_until > window_days:
+            continue
+        row = obligation.model_dump()
+        row["days_until"] = days_until
+        row["overdue"] = days_until < 0
+        due.append(row)
+    due.sort(key=lambda row: (row["date"], row["kind"], row["source_clause_id"]))
+    return due
+
+
 def build_obligations(
     units: list[ClauseUnit], extractions: list[ClauseExtraction]
 ) -> list[Obligation]:

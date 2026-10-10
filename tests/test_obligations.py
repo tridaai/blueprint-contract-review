@@ -90,6 +90,88 @@ def test_sample_order_form_register_end_to_end():
     assert all(o.source_clause_id for o in result.obligations)
 
 
+def test_due_obligations_window_overdue_and_undated():
+    from datetime import date
+
+    from contract_agent.obligations import due_obligations
+    from contract_agent.schemas import Obligation
+
+    obligations = [
+        Obligation(kind="notice_period", date="2026-10-03", days=90, computed=True, source_clause_id="C-01"),
+        Obligation(kind="renewal", date="2026-12-20", source_clause_id="C-01"),
+        Obligation(kind="renewal", date="2027-06-01", source_clause_id="C-02"),  # outside window
+        Obligation(kind="payment", days=30, source_clause_id="C-03"),  # undated: never "due"
+        Obligation(kind="term", date="not-a-date", source_clause_id="C-04"),  # garbled: skipped
+    ]
+    due = due_obligations(obligations, today=date(2026, 10, 10), window_days=90)
+    assert [row["date"] for row in due] == ["2026-10-03", "2026-12-20"]  # overdue first
+    assert due[0]["overdue"] is True and due[0]["days_until"] == -7
+    assert due[1]["overdue"] is False and due[1]["days_until"] == 71
+
+
+def _renewal_contract(days_from_today: int):
+    from datetime import date, timedelta
+
+    from helpers import contract
+
+    renewal = (date.today() + timedelta(days=days_from_today)).strftime("%B %d, %Y")
+    text = (
+        "1. Term and Termination\n"
+        f"This Agreement renews automatically on {renewal} for successive "
+        "one (1) year terms unless either party gives at least ninety (90) "
+        "days' written notice of non-renewal. Either party may terminate "
+        "for convenience on written notice.\n\n"
+        "2. Limitation of Liability\n"
+        "Each party's aggregate liability shall not exceed the fees paid "
+        "in the twelve (12) months preceding the claim."
+    )
+    return contract(text, contract_id="CTR-DUE-1")
+
+
+def test_obligation_due_event_fires_for_computed_deadline():
+    from contract_agent.events import CollectingSink
+
+    sink = CollectingSink()
+    run_contract(
+        _renewal_contract(120),  # renewal in 120d -> notice deadline in 30d
+        backend=MockModelBackend(),
+        retriever=KeywordRetriever(),
+        event_sink=sink,
+    )
+    due_events = [e for e in sink.events if e.type == "obligation_due"]
+    kinds = {e.detail["kind"] for e in due_events}
+    assert "notice_period" in kinds  # the computed deadline is announced
+    notice = next(e for e in due_events if e.detail["kind"] == "notice_period")
+    assert notice.detail["computed"] is True
+    assert 0 <= notice.detail["days_until"] <= 90
+    # The renewal itself is 120 days out — outside the default window.
+    assert "renewal" not in kinds
+
+
+def test_service_obligations_due_aggregates_across_contracts():
+    from datetime import date
+
+    from contract_agent.objectstore import InMemoryObjectStore
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+
+    svc = ContractService(
+        backend=MockModelBackend(),
+        retriever=KeywordRetriever(),
+        store=InMemoryStore(),
+        checkpointer=False,
+        object_store=InMemoryObjectStore(),
+    )
+    svc.analyze(_renewal_contract(120))
+    payload = svc.obligations_due(days=90, today=date.today())
+    assert payload["window_days"] == 90
+    rows = [r for r in payload["obligations"] if r["contract_id"] == "CTR-DUE-1"]
+    assert {r["kind"] for r in rows} == {"notice_period"}
+    assert rows[0]["counterparty_name"] == "Northwind Traders Ltd"
+    # A zero-day window sees only what is already overdue.
+    assert svc.obligations_due(days=0, today=date.today())["count"] == 0
+
+
 def test_sample_msa_register_end_to_end():
     contract = next(
         c for c in sample_contract_models() if c.contract_id == "CTR-2001"

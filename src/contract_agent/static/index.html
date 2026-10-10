@@ -72,6 +72,14 @@
       <div id="evals" class="empty">Loading…</div>
     </section>
     <section>
+      <h2>Obligations due soon</h2>
+      <div id="due" class="empty">Loading…</div>
+      <div class="row" style="margin-top:10px">
+        <button id="due-refresh">Refresh</button>
+        <span class="note">dated register entries due within 90 days, across all analyzed contracts</span>
+      </div>
+    </section>
+    <section>
       <h2>How it works</h2>
       <p class="note">intake + clause segmentation → per-clause extraction → injection screen → per-clause playbook review (rules + LLM cross-check) → computed facts (posture, absence detection) → playbook retrieval → assessment (bounded tool loop) → scored options → draft packet + counterparty response → self-verify → independent review → guardrails → <strong>counsel gate</strong>. Code computes the verdicts; the model does language work; counsel decides.</p>
     </section>
@@ -146,6 +154,26 @@ async function loadEvals() {
       <p class="note">From evals/run_evals.py (deterministic runner over the golden set).</p>`;
   } catch (e) {
     $('evals').innerHTML = '<span class="empty">No eval results yet — run <code>python evals/run_evals.py</code>.</span>';
+  }
+}
+
+async function loadDue() {
+  try {
+    const res = await fetch('/obligations/due?days=90', {headers: headers()});
+    if (!res.ok) throw new Error('none');
+    const data = await res.json();
+    if (!data.obligations.length) {
+      $('due').innerHTML = '<span class="empty">No dated obligations due within 90 days.</span>';
+      return;
+    }
+    $('due').innerHTML = `<table><thead><tr><th>When</th><th>Contract</th><th>Obligation</th></tr></thead><tbody>
+      ${data.obligations.map(o => `<tr>
+        <td>${o.overdue ? '<span class="flag">overdue ' + esc(-o.days_until) + 'd</span>' : esc(o.date) + '<br><span class="note">in ' + esc(o.days_until) + 'd' + (o.computed ? ' · computed' : '') + '</span>'}</td>
+        <td>${esc(o.contract_id)}<br><span class="note">${esc(o.counterparty_name || '')}</span></td>
+        <td>${pill(o.kind)} ${esc(o.detail || o.description)}</td></tr>`).join('')}
+      </tbody></table>`;
+  } catch (e) {
+    $('due').innerHTML = '<span class="empty">Due view unavailable.</span>';
   }
 }
 
@@ -262,6 +290,7 @@ async function analyze() {
   const result = await res.json();
   $('run-status').textContent = 'Done — awaiting counsel.';
   render(result);
+  loadDue();
 }
 
 async function decide(path) {
@@ -281,8 +310,10 @@ async function decide(path) {
 $('analyze').addEventListener('click', analyze);
 $('approve').addEventListener('click', () => decide('approve'));
 $('reject').addEventListener('click', () => decide('reject'));
+$('due-refresh').addEventListener('click', loadDue);
 loadSamples();
 loadEvals();
+loadDue();
 </script>
 </body>
 </html>
