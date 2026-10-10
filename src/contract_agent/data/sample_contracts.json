@@ -621,5 +621,51 @@
         "raw_text": "Annex 1 \u2014 Sub-processor List\n\nThe Processor engages the following sub-processors in the processing under this Addendum:\n- Hostline GmbH (Germany) \u2014 data hosting\n- Postmark Systems Ltd (Ireland) \u2014 email delivery\nThe Processor shall give the Controller at least thirty (30) days' written notice before any change to this list takes effect.\n"
       }
     ]
+  },
+  {
+    "contract_id": "CTR-2032",
+    "doc_type": "employment",
+    "title": "Employment Offer Letter",
+    "counterparty_name": "Priya Raman",
+    "our_role": "employer",
+    "sender_name": "",
+    "cover_email_text": "Attached is the offer letter for the Staff Engineer role, with the schedule of prior inventions the candidate provided, for counsel's review before it goes out.",
+    "notes": "Prior-invention schedule exhibit sample (adversarial): the schedule of prior inventions is attached and lists two inventions, but the assignment clause assigns every invention 'including every invention listed on the Schedule' \u2014 it never excludes the scheduled inventions, so the assignment would swallow them: prior_invention_exclusion is a mismatch.",
+    "received_at": "2026-10-07T09:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Employment and At-Will Status\nThe Employee's employment is at will: the Employee's employment may be terminated by either party at any time, with or without cause, on thirty (30) days' written notice. If the Company terminates the employment without cause, the Employee will receive severance of three (3) months of base salary. Nothing in this letter guarantees employment for any period.\n\n2. Restrictive Covenants\nFor twelve (12) months following the end of the Employee's employment, the Employee shall not be employed by a business that competes with the Company within the state in which the Employee was employed. The Employee also agrees not to solicit the Company's customers or employees for twelve (12) months following the end of employment.\n\n3. Invention Assignment\nThe Employee hereby assigns to the Company all inventions conceived or reduced to practice at any time, whether before or during the employment, including every invention listed on the Schedule of Prior Inventions attached as Exhibit A, and all inventions developed on the Employee's own time that relate to the Company's business.\n\n4. Dispute Resolution\nAny dispute arising out of the Employee's employment shall be resolved by binding arbitration, at either party's election, under a mutual arbitration agreement. Nothing in this section prevents either party from seeking injunctive relief in court, or from pursuing statutory claims that cannot lawfully be submitted to arbitration.\n\n5. Confidentiality\nEach party shall hold the other party's Confidential Information in confidence for three (3) years from the date of disclosure.\n"
+      },
+      {
+        "doc_type": "schedule",
+        "document_id": "SCHED-A",
+        "raw_text": "Schedule of Prior Inventions\n\nThe Employee records the following inventions, conceived before the employment, as the Employee's prior inventions:\n- RouteWeaver \u2014 a route-planning prototype for regional delivery fleets\n- Ledgerline \u2014 a bookkeeping reconciliation tool for small practices\n"
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2033",
+    "doc_type": "employment",
+    "title": "Employment Offer Letter",
+    "counterparty_name": "Daniel Okafor",
+    "our_role": "employer",
+    "sender_name": "",
+    "cover_email_text": "Attached is the offer letter for the Director of Platform Engineering role, with the signed schedule of prior inventions, for counsel's review before it goes out.",
+    "notes": "Prior-invention schedule exhibit sample (clean): the assignment clause excludes the inventions listed on the schedule of prior inventions, and the schedule is attached listing two \u2014 both prior-invention checks come back consistent.",
+    "received_at": "2026-10-07T11:30:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Employment and At-Will Status\nThe Employee's employment is at will: the Employee's employment may be terminated by either party at any time, with or without cause, on thirty (30) days' written notice. If the Company terminates the employment without cause, the Employee will receive severance of three (3) months of base salary. Nothing in this letter guarantees employment for any period.\n\n2. Restrictive Covenants\nFor twelve (12) months following the end of the Employee's employment, the Employee shall not be employed by a business that competes with the Company within the state in which the Employee was employed. The Employee also agrees not to solicit the Company's customers or employees for twelve (12) months following the end of employment.\n\n3. Invention Assignment\nThe Employee hereby assigns to the Company all inventions conceived or reduced to practice in the course of the Employee's employment and relating to the Company's business. Inventions conceived before the employment are excluded from this assignment, including any inventions listed on the schedule of prior inventions signed by the Employee and attached as Exhibit A. No assignment is made of inventions developed entirely on the Employee's own time that do not relate to the Company's business.\n\n4. Dispute Resolution\nAny dispute arising out of the Employee's employment shall be resolved by binding arbitration, at either party's election, under a mutual arbitration agreement. Nothing in this section prevents either party from seeking injunctive relief in court, or from pursuing statutory claims that cannot lawfully be submitted to arbitration.\n\n5. Confidentiality\nEach party shall hold the other party's Confidential Information in confidence for three (3) years from the date of disclosure.\n"
+      },
+      {
+        "doc_type": "schedule",
+        "document_id": "SCHED-A",
+        "raw_text": "Schedule of Prior Inventions\n\nThe Employee records the following inventions, conceived before the employment, as the Employee's prior inventions:\n- RouteWeaver \u2014 a route-planning prototype for regional delivery fleets\n- Ledgerline \u2014 a bookkeeping reconciliation tool for small practices\n"
+      }
+    ]
   }
 ]

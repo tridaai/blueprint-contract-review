@@ -539,7 +539,7 @@ class ExhibitCheck(BaseModel):
     different) | missing_in_exhibit (the exhibit is silent on it) |
     exhibit_missing (the promised exhibit is not in the package)."""
 
-    name: str  # breach_notice_window | subprocessor_list | order_form_fees_total | order_form_payment_terms | order_form_term | sow_deliverables | sow_delivery_dates | sow_acceptance_period
+    name: str  # breach_notice_window | subprocessor_list | order_form_fees_total | order_form_payment_terms | order_form_term | sow_deliverables | sow_delivery_dates | sow_acceptance_period | insurance_* | subprocessor_notice_period | subprocessor_authorised_list | subprocessor_transfer_terms | prior_invention_schedule | prior_invention_exclusion | subprocessor_list_drift
     expectation: str = ""
     exhibit_document_id: str = ""  # "" when no DPA exhibit is attached
     promised: str = ""  # the value as the clause states it

@@ -77,3 +77,6 @@
 {"case_id": "X10", "kind": "exhibit", "contract_id": "CTR-2029", "expected_checks": 6, "expected_failed": {}, "expected_posture": "aligned"}
 {"case_id": "X11", "kind": "exhibit", "contract_id": "CTR-2030", "expected_checks": 3, "expected_failed": {"subprocessor_notice_period": "missing_in_exhibit", "subprocessor_authorised_list": "mismatch", "subprocessor_transfer_terms": "mismatch"}, "expected_posture": "negotiable"}
 {"case_id": "X12", "kind": "exhibit", "contract_id": "CTR-2031", "expected_checks": 3, "expected_failed": {}, "expected_posture": "aligned"}
+{"case_id": "X13", "kind": "exhibit", "contract_id": "CTR-2025", "expected_checks": 1, "expected_failed": {"prior_invention_schedule": "exhibit_missing"}, "expected_posture": "negotiable"}
+{"case_id": "X14", "kind": "exhibit", "contract_id": "CTR-2032", "expected_checks": 2, "expected_failed": {"prior_invention_exclusion": "mismatch"}, "expected_posture": "escalation_required"}
+{"case_id": "X15", "kind": "exhibit", "contract_id": "CTR-2033", "expected_checks": 2, "expected_failed": {}, "expected_posture": "negotiable"}

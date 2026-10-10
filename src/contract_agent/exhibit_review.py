@@ -73,6 +73,23 @@ A fifth family follows the same discipline (round 10):
   (``subprocessor_transfer_terms``). The list is the operative
   document in a DPA — it is where engagements actually change — so
   it is checked like one.
+
+A sixth family follows the same discipline (round 11):
+
+- **Prior-invention schedules.** An employment agreement's
+  invention assignment that excludes "inventions listed on the
+  schedule of prior inventions" makes the schedule load-bearing:
+  the employee's pre-existing work stays theirs only if the
+  schedule exists and names it. When the clause relies on such a
+  schedule, the schedule must be in the package and must list
+  inventions (``prior_invention_schedule`` — promised but absent
+  is ``exhibit_missing``, the exhibit analogue of a missing
+  clause). And when a schedule IS attached and lists inventions,
+  the assignment clause is read back against it
+  (``prior_invention_exclusion``): an assignment that never
+  excludes the scheduled inventions would swallow them — the
+  schedule becomes a list of things the employee is about to
+  assign away.
 """
 
 from __future__ import annotations
@@ -324,6 +341,7 @@ def build_exhibit_checks(
     checks.extend(_sow_checks(contract, units, extractions))
     checks.extend(_insurance_certificate_checks(contract, units, extractions))
     checks.extend(_subprocessor_list_checks(contract, units, extractions))
+    checks.extend(_prior_invention_checks(contract, units, extractions))
     return checks
 
 
@@ -1326,5 +1344,165 @@ def _subprocessor_list_checks(
             found=found,
             status=status,
             detail=detail,
+        ))
+    return checks
+
+
+# ---------------------------------------------------------------------------
+# Prior-invention schedules: the exclusion is only as good as the schedule
+# ---------------------------------------------------------------------------
+
+_PRIOR_INVENTION_DOC = re.compile(r"prior inventions?", re.I)
+
+_EXCLUSION_WORDS = (
+    "exclud",
+    "not assign",
+    "not be assigned",
+    "shall not apply",
+    "does not apply",
+    "no assignment is made",
+    "retained by",
+    "remains the property",
+    "carved out",
+    "carve-out",
+)
+
+
+def _assignment_relies_on_schedule(clause_text: str) -> bool:
+    """The assignment clause ties its prior-invention exclusion to
+    a schedule: the exclusion reaches only what the schedule lists,
+    so the schedule's contents decide what the employee keeps."""
+    lower = clause_text.lower()
+    return "prior invention" in lower and "schedule" in lower
+
+
+def _assignment_excludes_scheduled(clause_text: str) -> bool:
+    """The assignment clause actually excludes prior/scheduled
+    inventions: a sentence tying prior inventions (or the schedule)
+    to exclusion language. An assignment that speaks of prior
+    inventions only to include them does not qualify."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n", clause_text):
+        lower = sentence.lower()
+        if "prior" not in lower and "schedule" not in lower:
+            continue
+        if any(word in lower for word in _EXCLUSION_WORDS):
+            return True
+    return False
+
+
+def _prior_invention_checks(
+    contract: ContractInput,
+    units,
+    extractions: list[ClauseExtraction],
+) -> list[ExhibitCheck]:
+    """Prior-invention schedule checks: generated when an
+    ``ip_assignment`` clause relies on a schedule of prior
+    inventions, or when such a schedule is attached — the schedule
+    is checked for existing and listing, and the clause is checked
+    for actually excluding what the schedule lists."""
+    unit_text = {u.clause_id: u.text or "" for u in units}
+    assignment = next(
+        (e for e in extractions if e.clause_type == "ip_assignment"), None
+    )
+    if assignment is None:
+        return []
+    clause_text = unit_text.get(assignment.clause_id, "")
+    doc = _find_schedule_document(contract, _PRIOR_INVENTION_DOC)
+    relies = _assignment_relies_on_schedule(clause_text)
+    if not relies and doc is None:
+        return []
+    doc_id = (doc.document_id or doc.doc_type) if doc else ""
+    items = _list_items(doc.raw_text) if doc is not None else []
+    names = [_item_name(item) for item in items]
+    checks: list[ExhibitCheck] = []
+
+    schedule_expectation = (
+        "The invention assignment excludes the inventions listed "
+        "on the schedule of prior inventions; the schedule must be "
+        "in the package and must list the inventions it protects — "
+        "an exclusion that points at a schedule nobody attached "
+        "protects nothing."
+    )
+    if doc is None:
+        checks.append(ExhibitCheck(
+            name="prior_invention_schedule",
+            expectation=schedule_expectation,
+            promised="schedule of prior inventions",
+            status="exhibit_missing",
+            detail=(
+                "The assignment clause excludes inventions listed "
+                "on the schedule of prior inventions, but no such "
+                "schedule is in the package — which inventions the "
+                "exclusion covers cannot be checked, and an "
+                "unattached schedule is easily lost before it is "
+                "ever argued over."
+            ),
+        ))
+        return checks
+    if names:
+        checks.append(ExhibitCheck(
+            name="prior_invention_schedule",
+            expectation=schedule_expectation,
+            exhibit_document_id=doc_id,
+            promised="schedule of prior inventions",
+            found=f"{len(names)} prior invention(s) listed",
+            status="consistent",
+            detail=(
+                f"The schedule of prior inventions is attached and "
+                f"lists {len(names)} invention(s): "
+                f"{', '.join(names)}."
+            ),
+        ))
+    else:
+        checks.append(ExhibitCheck(
+            name="prior_invention_schedule",
+            expectation=schedule_expectation,
+            exhibit_document_id=doc_id,
+            promised="schedule of prior inventions",
+            found="schedule attached, no inventions listed",
+            status="missing_in_exhibit",
+            detail=(
+                "A schedule of prior inventions is attached but "
+                "lists no inventions — the exclusion the clause "
+                "grants reaches an empty list."
+            ),
+        ))
+        return checks
+
+    exclusion_expectation = (
+        "A schedule of prior inventions only protects what it "
+        "lists if the assignment clause excludes the scheduled "
+        "inventions; an assignment that never excludes them takes "
+        "them with everything else."
+    )
+    if _assignment_excludes_scheduled(clause_text):
+        checks.append(ExhibitCheck(
+            name="prior_invention_exclusion",
+            expectation=exclusion_expectation,
+            exhibit_document_id=doc_id,
+            promised="scheduled inventions excluded from the assignment",
+            found="assignment excludes prior/scheduled inventions",
+            status="consistent",
+            detail=(
+                "The assignment clause excludes the inventions the "
+                "schedule lists — the schedule's contents stay the "
+                "employee's, as the schedule exists to provide."
+            ),
+        ))
+    else:
+        checks.append(ExhibitCheck(
+            name="prior_invention_exclusion",
+            expectation=exclusion_expectation,
+            exhibit_document_id=doc_id,
+            promised="scheduled inventions excluded from the assignment",
+            found=", ".join(names),
+            status="mismatch",
+            detail=(
+                f"The schedule lists {', '.join(names)}, but the "
+                "assignment clause never excludes the scheduled "
+                "inventions — as drafted, the assignment would "
+                "swallow the very inventions the schedule records "
+                "as the employee's own."
+            ),
         ))
     return checks
