@@ -340,12 +340,33 @@ def list_playbook_proposals(status: str = "") -> dict:
     """The playbook proposal queue: candidate entries drafted from
     coverage gaps (clause types that keep arriving flagged with no
     fallback language), each PROPOSED until counsel activates or
-    dismisses it. Nothing here is active playbook."""
+    dismisses it. Nothing here is active playbook. Activated
+    proposals carry their effectiveness view (verdicts issued under
+    each entry since activation; whether the gap recurred)."""
     proposals = service.list_playbook_proposals(status=status or None)
-    return {
-        "count": len(proposals),
-        "proposals": [p.model_dump(mode="json") for p in proposals],
-    }
+    rendered = []
+    for proposal in proposals:
+        row = proposal.model_dump(mode="json")
+        if proposal.status == "activated":
+            row["effectiveness"] = service.proposal_effectiveness(
+                proposal.proposal_id
+            )
+        rendered.append(row)
+    return {"count": len(rendered), "proposals": rendered}
+
+
+@app.get("/playbook/proposals/{proposal_id}/effectiveness", dependencies=_AUTH)
+def playbook_proposal_effectiveness(proposal_id: str) -> dict:
+    """What one proposal has done since counsel's decision: for an
+    activated proposal, verdicts issued under each of its entries
+    since activation, the clause type's verdicts and positions over
+    the same window, and whether flagged-without-fallback verdicts
+    for the type recurred (the gap the activation was meant to
+    close). A never-activated proposal reports its status instead."""
+    try:
+        return service.proposal_effectiveness(proposal_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/playbook/proposals/generate", dependencies=_AUTH)

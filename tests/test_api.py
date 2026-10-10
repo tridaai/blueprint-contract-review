@@ -144,5 +144,5 @@ def test_eval_results_endpoint():
     res = client.get("/evals/results")
     assert res.status_code == 200
     payload = res.json()
-    assert payload["total"] == 76
+    assert payload["total"] == 77
     assert payload["passed"] is True

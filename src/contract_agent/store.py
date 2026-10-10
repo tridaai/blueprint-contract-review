@@ -48,6 +48,13 @@ class ApprovalRecord:
     # Set once — a breach is announced once per contract, however
     # many times the sweep runs afterwards.
     sla_breach_notified_at: str = ""
+    # When the analysis that produced this record's result ran
+    # (round 9): stamped by the service on every analysis save, so
+    # time-ordered readers — proposal effectiveness above all — can
+    # tell which verdicts were issued after a given moment. Records
+    # saved before the stamp existed carry "" and are counted as
+    # unstamped by those readers, never silently backdated.
+    analyzed_at: str = ""
 
 
 def history_entry(record: ApprovalRecord) -> dict:
@@ -115,6 +122,7 @@ def _dump_record(record: ApprovalRecord) -> str:
             "assigned_by": record.assigned_by,
             "assigned_at": record.assigned_at,
             "sla_breach_notified_at": record.sla_breach_notified_at,
+            "analyzed_at": record.analyzed_at,
         }
     )
 
@@ -134,6 +142,7 @@ def _load_record(payload: str | dict) -> ApprovalRecord:
         assigned_by=data.get("assigned_by", ""),
         assigned_at=data.get("assigned_at", ""),
         sla_breach_notified_at=data.get("sla_breach_notified_at", ""),
+        analyzed_at=data.get("analyzed_at", ""),
     )
 
 

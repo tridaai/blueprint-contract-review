@@ -431,7 +431,11 @@ class ContractService:
         )
         self._attach_round_diff(model, result)
         self._get_store().save(
-            ApprovalRecord(result=result, contract=model.model_dump(mode="json"))
+            ApprovalRecord(
+                result=result,
+                contract=model.model_dump(mode="json"),
+                analyzed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            )
         )
         self._archive_documents(model, result)
         return result
@@ -1626,6 +1630,21 @@ class ContractService:
         store.save(proposal)
         return proposal
 
+    def proposal_effectiveness(self, proposal_id: str) -> dict:
+        """What one playbook proposal has done since counsel decided
+        it (``proposal_effectiveness.py``): for an activated
+        proposal, the verdicts issued under each of its entries
+        since activation, and whether its coverage gap — flagged
+        verdicts with no fallback language — has recurred since.
+        A proposal that was never activated reports its status and
+        no window, not zeros."""
+        from .proposal_effectiveness import proposal_effectiveness
+
+        proposal = self._get_proposal_store().get(proposal_id)
+        if proposal is None:
+            raise KeyError(f"Unknown playbook proposal: {proposal_id}")
+        return proposal_effectiveness(proposal, self._get_store().all_records())
+
     def metrics(self) -> dict:
         """Operational summary over the stored runs (``/metrics``).
 
@@ -1678,6 +1697,11 @@ class ContractService:
                 },
             },
             "playbook_coverage": self.playbook_coverage(results),
+            "proposal_effectiveness": [
+                self.proposal_effectiveness(proposal.proposal_id)
+                for proposal in self._get_proposal_store().all()
+                if proposal.status == "activated"
+            ],
             "telemetry": {
                 "runs_with_telemetry": len(telemetries),
                 "provider_runs": len(provider_runs),
