@@ -213,11 +213,13 @@ async function loadQueue() {
       `<div class="row"><span class="flag">Serially renewed suspension: ${esc(a.clause_type)} — re-confirmed ${esc(a.renewal_count)} time(s) across ${esc(a.renewal_span_months)} month(s) since ${esc(a.suspended_by)} set it aside; last renewed by ${esc(a.last_reconfirmed_by)}. A standing decision wearing a review date — weigh it as one in the calibration panel.</span></div>`).join('');
     const staleAlerts = (data.stale_webhook_failures || []).map(f =>
       `<div class="row"><span class="flag">Stale webhook failure: ${esc(f.family)} for ${esc(f.contract_id)} (${esc(f.label)}) — failed ${esc(f.age_days)} day(s) ago, ${esc(f.attempts)} attempt(s), still unrepaired${f.announced ? ' (announced to the operator\u2019s system of record)' : ' (not yet announced — run the announce sweep in the outbox panel)'}. Re-send it from the webhook outbox panel below.</span></div>`).join('');
+    const watchAlerts = (data.stale_watch_follow_throughs || []).map(a =>
+      `<div class="row"><span class="flag">Certificate watch chase gone quiet: ${esc(a.contract_id)} (${esc(a.counterparty_name || '')}) — the renewal was chased by ${esc(a.chased_by)} ${esc(a.age_days)} day(s) ago and no evidenced renewal has arrived; the certificate expires ${esc(a.expiry_date)}. Chase again or accept the risk in the certificate panel below.</span></div>`).join('');
     if (!data.queue.length) {
-      $('queue').innerHTML = reviewAlerts + serialAlerts + staleAlerts + '<span class="empty">Queue is clear — nothing awaiting counsel.</span>';
+      $('queue').innerHTML = reviewAlerts + serialAlerts + watchAlerts + staleAlerts + '<span class="empty">Queue is clear — nothing awaiting counsel.</span>';
       return;
     }
-    $('queue').innerHTML = reviewAlerts + serialAlerts + staleAlerts + `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th>SLA</th><th>Owner</th><th></th></tr></thead><tbody>
+    $('queue').innerHTML = reviewAlerts + serialAlerts + watchAlerts + staleAlerts + `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th>SLA</th><th>Owner</th><th></th></tr></thead><tbody>
       ${data.queue.map(q => `<tr data-contract="${esc(q.contract_id)}" style="cursor:pointer">
         <td>${esc(q.contract_id)}<br><span class="note">${esc(q.counterparty_name || '')}</span></td>
         <td>${pill(q.posture, q.posture === 'aligned' ? 'good' : q.posture === 'negotiable' ? 'warn' : 'bad')}</td>
@@ -339,7 +341,11 @@ async function loadCertificates() {
     }
     const watchCell = (c) => {
       const label = {open: 'follow-through open — nobody has acted on this watch', renewal_chased: 'renewal chased', risk_accepted: 'risk accepted by counsel (see the record)'}[c.follow_through_state] || c.follow_through_state || 'open';
-      let html = `<br><span class="${c.follow_through_state === 'open' || !c.follow_through_state ? 'flag' : 'note'}">watch follow-through: ${esc(label)}</span>`;
+      const ageing = c.follow_through_ageing || {};
+      const ageNote = ageing.stale
+        ? ` · <span class="flag">STALE — chased ${esc(ageing.age_days)} day(s) ago by ${esc(ageing.chased_by)}, no evidenced renewal since</span>`
+        : (ageing.age_days !== null && ageing.age_days !== undefined && c.follow_through_state === 'renewal_chased' ? ` · chased ${esc(ageing.age_days)} day(s) ago` : '');
+      let html = `<br><span class="${c.follow_through_state === 'open' || !c.follow_through_state ? 'flag' : 'note'}">watch follow-through: ${esc(label)}</span>${ageNote}`;
       if (!c.follow_through_state || c.follow_through_state === 'open') html += ` <button data-watch-chase="${esc(c.contract_id)}" style="padding:3px 9px;font-size:12px">Renewal chased</button>`;
       if (c.follow_through_state !== 'risk_accepted') html += ` <button data-watch-accept="${esc(c.contract_id)}" style="padding:3px 9px;font-size:12px">Accept risk</button>`;
       return html;

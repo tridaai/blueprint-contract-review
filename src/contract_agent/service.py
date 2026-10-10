@@ -2132,12 +2132,18 @@ class ContractService:
         recorded against the watch on the record it stands on,
         and their state — so the watch never reads as handled
         when nobody has acted, and a chased renewal is named as
-        chased, not as renewed."""
+        chased, not as renewed. And its ageing (round 18): how
+        long the chase has stood unanswered, and whether it has
+        gone stale — a chased renewal with no evidenced renewal
+        since is a question nobody answered, and the row says
+        how long it has been waiting."""
         from datetime import date as _date
 
         from .certificates import (
+            certificate_watch_follow_through_stale_days,
             certificate_watch_window_days,
             certificate_watches,
+            follow_through_ageing,
             watch_follow_through_state,
         )
 
@@ -2157,12 +2163,55 @@ class ContractService:
             )
             row["follow_through"] = acts
             row["follow_through_state"] = watch_follow_through_state(acts)
+            row["follow_through_ageing"] = follow_through_ageing(acts, today)
         return {
             "as_of": today.isoformat(),
             "window_days": window,
+            "follow_through_stale_threshold_days": (
+                certificate_watch_follow_through_stale_days()
+            ),
+            "stale_follow_through_count": sum(
+                1 for row in rows if row["follow_through_ageing"]["stale"]
+            ),
             "count": len(rows),
             "certificates": rows,
         }
+
+    def stale_certificate_watch_follow_throughs(self, today=None) -> list[dict]:
+        """The queue's stale-chase alerts (round 18): watches
+        whose renewal was chased past the stale threshold
+        (``CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS``, default
+        30) with no evidenced renewal since — the chase went
+        quiet, and the queue is where counsel works, so the
+        quiet chase resurfaces there beside the queue's other
+        attention lists. The watch's continued presence is the
+        proof the chase is unanswered: an evidenced renewal
+        would have moved the watch off the record the chase
+        stands on. Oldest chase first."""
+        from datetime import date as _date
+
+        today = today or _date.today()
+        view = self.certificate_watches(today=today)
+        alerts: list[dict] = []
+        for row in view["certificates"]:
+            ageing = row.get("follow_through_ageing") or {}
+            if not ageing.get("stale"):
+                continue
+            alerts.append(
+                {
+                    "contract_id": row["contract_id"],
+                    "counterparty_name": row["counterparty_name"],
+                    "expiry_date": row["expiry_date"],
+                    "days_until": row["days_until"],
+                    "overdue": row["overdue"],
+                    "chased_by": ageing["chased_by"],
+                    "chased_at": ageing["chased_at"],
+                    "age_days": ageing["age_days"],
+                    "stale_threshold_days": ageing["stale_threshold_days"],
+                }
+            )
+        alerts.sort(key=lambda a: (-(a["age_days"] or 0), a["contract_id"]))
+        return alerts
 
     def certificate_watch(self, contract_id: str, today=None) -> dict:
         """One contract's certificate renewal watch, read back

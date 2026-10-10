@@ -52,17 +52,33 @@ note, that the lapsing cover is an accepted risk.
 state the watch surfaces. The acts close the question of
 whether anyone acted; they do not close the watch — only
 evidenced renewal does that.
+
+**The chase ages** (round 18): a chase is a question asked of
+the counterparty, and a question can go unanswered. A renewal
+chased ``CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS`` (default
+30) ago with the watch still standing — no evidenced renewal
+has arrived, or the watch would have moved — is a chase that
+went quiet, and :func:`follow_through_ageing` reads it as
+**stale**: the stale-failure discipline applied to a human
+wait. The queue surfaces the stale chases beside its other
+attention lists. An accepted risk never goes stale — accepting
+was the answer, not a question — and a watch nobody has acted
+on is not a stale chase either: it is an open watch, which the
+row already says.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from .config import env_int
 from .store import ApprovalRecord
 
 WATCH_WINDOW_ENV = "CERTIFICATE_EXPIRY_WATCH_DAYS"
 DEFAULT_WATCH_WINDOW_DAYS = 90
+
+FOLLOW_THROUGH_STALE_ENV = "CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS"
+DEFAULT_FOLLOW_THROUGH_STALE_DAYS = 30
 
 # The follow-through states a watch can be in, in the order
 # the loop closes (round 17): the renewal is chased, or the
@@ -81,6 +97,14 @@ def certificate_watch_window_days() -> int:
     return env_int(WATCH_WINDOW_ENV, DEFAULT_WATCH_WINDOW_DAYS)
 
 
+def certificate_watch_follow_through_stale_days() -> int:
+    """How long a chased renewal may go unanswered before the
+    chase itself reads as stale, in days."""
+    return env_int(
+        FOLLOW_THROUGH_STALE_ENV, DEFAULT_FOLLOW_THROUGH_STALE_DAYS
+    )
+
+
 def watch_follow_through_state(acts: list[dict]) -> str:
     """One watch's follow-through state, read from the acts
     recorded against it: the furthest closing state reached,
@@ -94,6 +118,56 @@ def watch_follow_through_state(acts: list[dict]) -> str:
     if "renewal_chased" in states:
         return "renewal_chased"
     return "open"
+
+
+def _act_date(value: str) -> date | None:
+    """An act's ISO stamp as a date, or None when it does not
+    parse — an unstamped act has no age, and no age means never
+    stale: the reading fails closed, like the outbox's."""
+    try:
+        return datetime.fromisoformat(value or "").date()
+    except ValueError:
+        return None
+
+
+def follow_through_ageing(
+    acts: list[dict], today: date, threshold_days: int | None = None
+) -> dict:
+    """One watch's follow-through ageing (round 18): the state,
+    the chase that was made (by whom, when), its age in days,
+    and whether the chase has gone quiet — chased at least
+    ``threshold_days`` ago with the state still
+    ``renewal_chased``. The watch row carrying this reading is
+    itself the proof no evidenced renewal arrived: a renewal
+    that evidenced the requirement set would have moved the
+    watch and superseded the record the acts stand on. An
+    accepted risk is a decision, not a question, and never
+    reads stale; an open watch has no chase to age."""
+    threshold = (
+        certificate_watch_follow_through_stale_days()
+        if threshold_days is None
+        else threshold_days
+    )
+    state = watch_follow_through_state(acts)
+    chased = next(
+        (a for a in acts if a.get("state") == "renewal_chased"), None
+    )
+    chased_on = _act_date(chased.get("at", "")) if chased else None
+    age = (
+        max(0, (today - chased_on).days) if chased_on is not None else None
+    )
+    return {
+        "state": state,
+        "chased_at": chased.get("at", "") if chased else "",
+        "chased_by": chased.get("actor", "") if chased else "",
+        "age_days": age,
+        "stale_threshold_days": threshold,
+        "stale": bool(
+            state == "renewal_chased"
+            and age is not None
+            and age >= threshold
+        ),
+    }
 
 
 def _relied_upon_expiry(record: ApprovalRecord):

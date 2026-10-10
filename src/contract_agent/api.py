@@ -370,7 +370,10 @@ def counsel_queue() -> dict:
     counsel works, so the set-asides reaching their shelf life are
     surfaced there, beside the contracts — ``serial_renewal_alerts``:
     set-asides renewed past the serial threshold, a standing pattern
-    named where the next renewal would be signed — and
+    named where the next renewal would be signed —
+    ``stale_watch_follow_throughs``: certificate watches whose
+    renewal was chased past the stale threshold with no evidenced
+    renewal since, a chase that went quiet — and
     ``stale_webhook_failures``: signed deliveries that failed and
     have sat unrepaired past the stale threshold, the same
     attention reading in delivery form."""
@@ -380,6 +383,9 @@ def counsel_queue() -> dict:
         "queue": items,
         "suspension_review_alerts": service.suspension_review_alerts(),
         "serial_renewal_alerts": service.serial_renewal_alerts(),
+        "stale_watch_follow_throughs": (
+            service.stale_certificate_watch_follow_throughs()
+        ),
         "stale_webhook_failures": service.stale_webhook_failures(),
     }
 
