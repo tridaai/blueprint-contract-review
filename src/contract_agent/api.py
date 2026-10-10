@@ -51,6 +51,7 @@ from .schemas import (
     ContractInput,
     DecisionRequest,
     EditOutcomesRequest,
+    MetricsSnapshotRequest,
     PatternSuspensionRequest,
     ProposalDecisionRequest,
     CertificateWatchFollowThroughRequest,
@@ -248,6 +249,52 @@ def metrics() -> dict:
     telemetry aggregates (calls, tokens, estimated cost, mean latency).
     Aggregates only — no draft text."""
     return service.metrics()
+
+
+@app.post("/metrics/snapshots", dependencies=_AUTH)
+def keep_metrics_snapshot(request: MetricsSnapshotRequest) -> dict:
+    """Keep the current /metrics payload as a named snapshot, so
+    the numbers trend instead of only ever reading as of now.
+    Requires the actor's name; a label, when given, must be
+    unique among the kept snapshots. The payload is kept whole —
+    the prune ledger readings ride inside its webhooks block, so
+    retention pace trends with everything else."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the operator keeping this snapshot.",
+        )
+    try:
+        snapshot = service.keep_metrics_snapshot(
+            actor, label=request.label or ""
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return snapshot.model_dump(mode="json")
+
+
+@app.get("/metrics/snapshots", dependencies=_AUTH)
+def metrics_snapshots() -> dict:
+    """The kept metrics snapshots, oldest first — each the whole
+    /metrics payload as it stood when it was kept, with the
+    keeper's name and label."""
+    snapshots = service.metrics_snapshots()
+    return {
+        "count": len(snapshots),
+        "snapshots": [s.model_dump(mode="json") for s in snapshots],
+    }
+
+
+@app.get("/metrics/snapshots/trend", dependencies=_AUTH)
+def metrics_snapshot_trend() -> dict:
+    """The kept snapshots as a trend: each row the headline
+    numbers as kept, plus the movement since the previous kept
+    snapshot — run growth, queue and breach movement, outbox
+    totals, and the prune pace (prunes and retired entries
+    since the previous snapshot), read off the prune ledger
+    readings each payload carries."""
+    return service.metrics_snapshot_trend()
 
 
 @app.get("/options/pattern-calibration", dependencies=_AUTH)

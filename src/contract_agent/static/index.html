@@ -91,6 +91,16 @@
       </div>
     </section>
     <section>
+      <h2>Metrics snapshots</h2>
+      <div id="snapshots" class="empty">Loading…</div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="snapshot-label" placeholder="Label (optional, unique — e.g. October baseline)">
+        <button id="snapshot-keep">Keep snapshot</button>
+        <button id="snapshots-refresh">Refresh</button>
+        <span class="note" id="snapshots-status">the /metrics payload kept whole under your name (section 3), so the numbers trend instead of only ever reading as of now — each row the movement since the previous kept snapshot, the prune pace among it: prunes and retired entries since the previous snapshot, read off the prune ledger readings each payload carries</span>
+      </div>
+    </section>
+    <section>
       <h2>Playbook proposals</h2>
       <div id="proposals" class="empty">Loading…</div>
       <div class="row" style="margin-top:10px">
@@ -286,6 +296,44 @@ async function loadOutbox() {
     $('outbox-status').textContent = r.ok ? `Re-send ${body.outcome} — the attempt is recorded under ${actor}.` : 'Re-send refused: ' + (body.detail || r.status);
     loadOutbox();
   }));
+}
+
+async function loadSnapshots() {
+  const host = $('snapshots');
+  try {
+    const res = await fetch('/metrics/snapshots/trend', {headers: headers()});
+    if (!res.ok) { host.textContent = 'Snapshots unavailable: ' + res.status; return; }
+    const trend = await res.json();
+    if (!trend.snapshots.length) {
+      host.innerHTML = '<span class="empty">No snapshots kept yet — keep one to start the trend; the first row has no predecessor, so its movements read as —, never as zero.</span>';
+      return;
+    }
+    const move = (v) => v === null || v === undefined ? '—' : (v > 0 ? '+' + v : '' + v);
+    host.innerHTML = `<table><thead><tr><th>Snapshot</th><th>Kept</th><th>Runs</th><th>Awaiting</th><th>SLA breached</th><th>Outbox failed</th><th>Prune pace since previous</th></tr></thead><tbody>
+      ${trend.snapshots.map(s => `<tr>
+        <td><strong>${esc(s.snapshot_id)}</strong>${s.label ? ' · ' + esc(s.label) : ''}<br><span class="note">by ${esc(s.actor)}</span></td>
+        <td>${esc((s.kept_at || '').slice(0, 10))}</td>
+        <td>${esc(s.runs_total)} <span class="note">(${move(s.runs_since_previous)})</span></td>
+        <td>${esc(s.awaiting)}</td>
+        <td>${esc(s.sla_breached)} <span class="note">(${move(s.sla_breached_change)})</span></td>
+        <td>${esc(s.outbox_failed)}</td>
+        <td>${s.prunes_since_previous === null || s.prunes_since_previous === undefined ? '—' : esc(s.prunes_since_previous) + ' prune(s), ' + esc(s.entries_retired_since_previous) + ' entr' + (s.entries_retired_since_previous === 1 ? 'y' : 'ies') + ' retired'}<br><span class="note">${esc(s.total_prunes)} prune(s), ${esc(s.entries_removed)} entries retired all-time</span></td></tr>`).join('')}
+      </tbody></table>`;
+  } catch (e) {
+    host.innerHTML = '<span class="empty">Snapshots unavailable.</span>';
+  }
+}
+
+async function keepSnapshot() {
+  const actor = $('actor').value.trim();
+  if (!actor) { alert('Enter your name in section 3 first — a kept snapshot carries a name.'); return; }
+  const label = $('snapshot-label').value.trim();
+  const res = await fetch('/metrics/snapshots', {method: 'POST', headers: headers(), body: JSON.stringify({actor, label})});
+  const body = await res.json().catch(() => ({}));
+  $('snapshots-status').textContent = res.ok
+    ? `Kept ${body.snapshot_id}${body.label ? ' (“' + body.label + '”)' : ''} by ${actor} — the trend below now reads against it.`
+    : 'Keep refused: ' + (body.detail || res.status);
+  if (res.ok) { $('snapshot-label').value = ''; loadSnapshots(); }
 }
 
 async function loadDue() {
@@ -853,6 +901,8 @@ $('outbox-prune').addEventListener('click', async () => {
   loadOutbox();
 });
 $('sla-sweep').addEventListener('click', slaSweep);
+$('snapshot-keep').addEventListener('click', keepSnapshot);
+$('snapshots-refresh').addEventListener('click', loadSnapshots);
 $('proposals-refresh').addEventListener('click', loadProposals);
 $('proposals-generate').addEventListener('click', async () => {
   const res = await fetch('/playbook/proposals/generate', {method: 'POST', headers: headers()});
@@ -868,6 +918,7 @@ loadDue();
 loadCertificates();
 loadQueue();
 loadOutbox();
+loadSnapshots();
 loadProposals();
 </script>
 </body>

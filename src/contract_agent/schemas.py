@@ -1085,3 +1085,35 @@ class PatternSuspensionRequest(BaseModel):
     actor: Optional[str] = None
     note: Optional[str] = None
     review_by: Optional[str] = None
+
+
+class MetricsSnapshot(BaseModel):
+    """A kept metrics payload (round 19): the ``/metrics``
+    summary as it stood at a moment, retained under an
+    operator's name so the numbers can be TRENDED — read
+    against the snapshots kept before it — instead of only ever
+    read as of now. The payload is kept whole: counts and
+    aggregates only (that is all /metrics ever carries), and
+    because it is whole, every block trends — the queue's SLA
+    state, the outbox, and the prune ledger's readings among
+    them, so the retention of delivery history becomes a pace
+    (prunes and retired entries SINCE the previous snapshot),
+    not just an all-time total. A snapshot is an act with a
+    name on it, like a prune or a suspension: who kept it, when,
+    and under what label."""
+
+    snapshot_id: str = ""
+    label: str = ""
+    actor: str = ""
+    kept_at: str = ""
+    metrics: dict = Field(default_factory=dict)
+
+
+class MetricsSnapshotRequest(BaseModel):
+    """Keep a metrics snapshot. The actor is required — a kept
+    baseline carries a name, like every recorded act here. The
+    label is optional; when given it must be unique among the
+    kept snapshots, so a label always names one moment."""
+
+    actor: Optional[str] = None
+    label: Optional[str] = None

@@ -50,6 +50,10 @@ from .model_backends import ModelBackend, get_backend
 from .objectstore import get_object_store
 from .ports import Checkpointer, EventSink, ObjectStore
 from .calibration_store import CalibrationStore, default_calibration_store
+from .metrics_snapshot_store import (
+    MetricsSnapshotStore,
+    default_metrics_snapshot_store,
+)
 from .proposal_store import PlaybookProposalStore, default_proposal_store
 from .webhook_outbox import OutboxStore, default_outbox_store, record_dispatch
 from .retriever import Retriever, get_retriever
@@ -426,6 +430,7 @@ class ContractService:
     proposal_store: PlaybookProposalStore | None = None
     calibration_store: CalibrationStore | None = None
     outbox_store: OutboxStore | None = None
+    metrics_snapshot_store: MetricsSnapshotStore | None = None
     _resolved_store: Store | None = field(default=None, repr=False)
     _resolved_checkpointer: Checkpointer | None = field(default=None, repr=False)
     _checkpointer_resolved: bool = field(default=False, repr=False)
@@ -438,6 +443,9 @@ class ContractService:
         default=None, repr=False
     )
     _resolved_outbox_store: OutboxStore | None = field(
+        default=None, repr=False
+    )
+    _resolved_metrics_snapshot_store: MetricsSnapshotStore | None = field(
         default=None, repr=False
     )
 
@@ -479,6 +487,14 @@ class ContractService:
                 self.outbox_store or default_outbox_store()
             )
         return self._resolved_outbox_store
+
+    def _get_metrics_snapshot_store(self) -> MetricsSnapshotStore:
+        if self._resolved_metrics_snapshot_store is None:
+            self._resolved_metrics_snapshot_store = (
+                self.metrics_snapshot_store
+                or default_metrics_snapshot_store()
+            )
+        return self._resolved_metrics_snapshot_store
 
     def _refresh_retriever(self) -> None:
         """Push newly registered playbook entries into the held
@@ -3743,6 +3759,65 @@ class ContractService:
             "serially_renewed_types": report["serially_renewed_types"],
         }
 
+    def keep_metrics_snapshot(self, actor: str, label: str = ""):
+        """Keep the current metrics payload as a named snapshot
+        (``metrics_snapshots.py``, round 19): the /metrics summary
+        whole — prune ledger readings included — retained in the
+        snapshot store so the numbers trend instead of only ever
+        reading as of now. The actor is required: a kept baseline
+        carries a name, like a prune or a suspension. A label,
+        when given, must be unique among the kept snapshots —
+        a collision is refused, naming the snapshot that holds
+        it, so a label always picks out one moment."""
+        from .metrics_snapshots import next_snapshot_id
+        from .schemas import MetricsSnapshot
+
+        actor = (actor or "").strip()
+        if not actor:
+            raise ValueError(
+                "Provide the actor keeping this snapshot — a kept "
+                "baseline carries a name."
+            )
+        label = (label or "").strip()
+        store = self._get_metrics_snapshot_store()
+        existing = store.all()
+        if label:
+            holder = next(
+                (s for s in existing if s.label == label), None
+            )
+            if holder is not None:
+                raise ValueError(
+                    f"Label {label!r} is already kept on "
+                    f"{holder.snapshot_id} (kept by {holder.actor} "
+                    f"at {holder.kept_at}) — a label names one "
+                    "moment; keep this snapshot under another."
+                )
+        snapshot = MetricsSnapshot(
+            snapshot_id=next_snapshot_id(existing),
+            label=label,
+            actor=actor,
+            kept_at=datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            ),
+            metrics=self.metrics(),
+        )
+        store.save(snapshot)
+        return snapshot
+
+    def metrics_snapshots(self) -> list:
+        """The kept metrics snapshots, oldest first."""
+        return self._get_metrics_snapshot_store().all()
+
+    def metrics_snapshot_trend(self) -> dict:
+        """The kept snapshots read as a trend
+        (``metrics_snapshots.snapshot_trend``): each row the
+        headline numbers as kept, with the movement since the
+        previous kept snapshot — the prune pace among them,
+        differences of the prune ledger's own totals."""
+        from .metrics_snapshots import snapshot_trend
+
+        return snapshot_trend(self.metrics_snapshots())
+
     def metrics(self) -> dict:
         """Operational summary over the stored runs (``/metrics``).
 
@@ -3751,6 +3826,11 @@ class ContractService:
         cost sums cover provider runs; offline runs honestly report
         no tokens (None), so they are counted separately instead of
         diluting the averages with zeros.
+
+        The payload can be KEPT (``keep_metrics_snapshot``) and
+        trended (``metrics_snapshot_trend``): retained whole under
+        an operator's name, this summary — prune ledger readings
+        included — reads against the snapshots kept before it.
         """
         from .webhook_outbox import prune_ledger_readings
 
