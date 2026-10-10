@@ -1813,6 +1813,18 @@ class ContractService:
         self._refresh_retriever()
         return proposal
 
+    def pattern_calibration(self) -> dict:
+        """The pattern-term calibration report (``pattern_calibration.py``):
+        per clause type, how often the reflection-pattern score term
+        was applied, how often it actually decided the packet's
+        recommendation, and what counsel did with the escalations
+        on decided records. Clause types whose term never decided
+        anything are flagged as calibration candidates — for
+        counsel; the report changes nothing itself."""
+        from .pattern_calibration import pattern_calibration
+
+        return pattern_calibration(self._get_store().all_records())
+
     def proposal_effectiveness(self, proposal_id: str) -> dict:
         """What one playbook proposal has done since counsel decided
         it (``proposal_effectiveness.py``): for an activated
@@ -1828,6 +1840,22 @@ class ContractService:
         if proposal is None:
             raise KeyError(f"Unknown playbook proposal: {proposal_id}")
         return proposal_effectiveness(proposal, self._get_store().all_records())
+
+    def _pattern_calibration_summary(
+        self, records: list[ApprovalRecord]
+    ) -> dict:
+        """The calibration headline for /metrics: totals and the
+        candidate clause types. The full report — per-type evidence
+        and the follow-through counts — lives at
+        ``/options/pattern-calibration``."""
+        from .pattern_calibration import pattern_calibration
+
+        report = pattern_calibration(records)
+        return {
+            "applications": report["applications"],
+            "decisive": report["decisive"],
+            "calibration_candidates": report["calibration_candidates"],
+        }
 
     def metrics(self) -> dict:
         """Operational summary over the stored runs (``/metrics``).
@@ -1886,6 +1914,7 @@ class ContractService:
                 for proposal in self._get_proposal_store().all()
                 if proposal.status in ("activated", "retired")
             ],
+            "pattern_calibration": self._pattern_calibration_summary(records),
             "telemetry": {
                 "runs_with_telemetry": len(telemetries),
                 "provider_runs": len(provider_runs),

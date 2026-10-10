@@ -246,6 +246,18 @@ def metrics() -> dict:
     return service.metrics()
 
 
+@app.get("/options/pattern-calibration", dependencies=_AUTH)
+def pattern_calibration() -> dict:
+    """The pattern-term calibration report: per clause type, how
+    often the reflection-pattern score term was applied to a scored
+    option, how often it actually decided the packet's
+    recommendation, and what counsel did with those escalations on
+    decided records. Types whose term never decided anything are
+    flagged as calibration candidates — the report proposes for
+    counsel; it changes nothing itself."""
+    return service.pattern_calibration()
+
+
 @app.get("/queue", dependencies=_AUTH)
 def counsel_queue() -> dict:
     """The counsel worklist: contracts awaiting a decision — SLA
