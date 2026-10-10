@@ -43,6 +43,23 @@ across several rounds (an amendment that raised a limit in
 round 2 is not the root round's bargain), and counsel reading
 a failed renewal should see which round's clause each failed
 requirement came from, not a blended "original terms".
+
+The requirement set itself is composed across the whole
+chain (round 14): walking the supersedes chain from the root
+to the prior round, each requirement is taken from the round
+that LAST SET it. A round sets a coverage limit when it first
+states it or states it at a different amount — an amendment
+that raises (or deliberately lowers) a limit moves the
+requirement and its provenance to that round, while a
+restatement that merely carries the standing amount leaves
+both where they were. Endorsement requirements, once any
+round imposes them, persist — a later round's silence does
+not quietly un-require what the bargain required — and the
+named-insured term is attributed to the round that imposed
+the certificate regime. So a short amendment round that
+restates nothing cannot thin the set the renewal is judged
+against, and a limit raised in round 2 and merely carried by
+round 3's restatement is judged — and cited — from round 2.
 """
 
 from __future__ import annotations
@@ -127,12 +144,75 @@ def _requirement_provenance(
     return provenance
 
 
+def _compose_requirement_set(
+    chain: list[ContractInput],
+) -> tuple[dict[str, float], dict[str, ContractInput]]:
+    """The effective insurance requirement set across a chain of
+    rounds (oldest → newest), and the round that set each part
+    of it.
+
+    A round SETS a coverage limit when it first states the
+    cover or states it at an amount different from the standing
+    composed value: an amendment moves the requirement; a
+    restatement at the standing amount merely carries it, and
+    the setter stays the earlier round. Endorsements are
+    sticky: the first round whose agreement requires one sets
+    it, and no later round's silence removes it. The
+    named-insured term is set by the first round whose
+    agreement carries the certificate regime's language."""
+    required: dict[str, float] = {}
+    setters: dict[str, ContractInput] = {}
+    for round_ in chain:
+        agreement = round_.agreement_text()
+        lower = agreement.lower()
+        for key, amount in _coverage_amounts(agreement).items():
+            if key not in required or required[key] != amount:
+                required[key] = amount
+                setters[key] = round_
+        for phrase in ("additional insured", "waiver of subrogation"):
+            if phrase in lower and phrase not in setters:
+                setters[phrase] = round_
+        if "named_insured" not in setters and (
+            "certificate of insurance" in lower or "named insured" in lower
+        ):
+            setters["named_insured"] = round_
+    return required, setters
+
+
+def _composed_provenance(
+    required_limits: dict[str, float],
+    setters: dict[str, ContractInput],
+) -> dict[str, str]:
+    """Per-requirement provenance for a composed set: each
+    requirement placed by the round-13 placement rule inside
+    the round that SET it, so a requirement imposed by an
+    amendment cites the amendment's clause, not the prior
+    round's restatement of it."""
+    provenance: dict[str, str] = {}
+    by_setter: dict[str, tuple[ContractInput, list[str]]] = {}
+    for key, setter in setters.items():
+        by_setter.setdefault(setter.contract_id, (setter, []))[1].append(key)
+    for setter, keys in by_setter.values():
+        limits = {k: required_limits[k] for k in keys if k in required_limits}
+        placed = _requirement_provenance(setter, limits)
+        for key in keys:
+            if key in placed:
+                provenance[key] = placed[key]
+    return provenance
+
+
 def build_certificate_renewal(
-    prior: ContractInput, current: ContractInput
+    prior: ContractInput,
+    current: ContractInput,
+    chain: list[ContractInput] | None = None,
 ) -> list[ExhibitCheck]:
     """The renewal-evidence check between two consecutive rounds
     of a chain, or an empty list when no renewal arrived or there
-    is no original requirement set to check it against."""
+    is no requirement set to check it against. The requirement
+    set is composed across ``chain`` — every round from the root
+    to ``prior``, oldest first (the service walks the supersedes
+    links); without a chain, the prior round alone composes it,
+    which is the pre-round-14 reading."""
     prior_cert = _find_schedule_document(prior, _CERT_DOC)
     current_cert = _find_schedule_document(current, _CERT_DOC)
     if prior_cert is None or current_cert is None:
@@ -144,20 +224,25 @@ def build_certificate_renewal(
     if current_expiry <= prior_expiry:
         return []  # cover was not extended — no renewal arrived
 
-    # The original requirement set: the prior round's agreement.
-    agreement = prior.agreement_text()
-    lower = agreement.lower()
-    required_limits = _coverage_amounts(agreement)
-    additional_required = "additional insured" in lower
-    waiver_required = "waiver of subrogation" in lower
+    # The requirement set, composed across the whole chain:
+    # each requirement from the round that last set it — an
+    # amendment's uplift survives a later round that restates
+    # nothing, and a restated amount is cited from the round
+    # that set it, not the round that carried it.
+    rounds = list(chain) if chain else []
+    if not rounds or rounds[-1].contract_id != prior.contract_id:
+        rounds.append(prior)
+    required_limits, setters = _compose_requirement_set(rounds)
+    additional_required = "additional insured" in setters
+    waiver_required = "waiver of subrogation" in setters
     if not required_limits and not additional_required and not waiver_required:
-        return []  # the original terms required nothing checkable
+        return []  # the chain's terms required nothing checkable
     labels = {key: label for key, label, _ in _COVERAGE_KEYS}
     counterparty = prior.counterparty_name or current.counterparty_name or ""
     # Provenance: which round, and which clause in it, set each
     # requirement — named on the findings below, per requirement,
     # so a failed renewal shows its evidence chain.
-    provenance = _requirement_provenance(prior, required_limits)
+    provenance = _composed_provenance(required_limits, setters)
 
     def set_by(key: str) -> str:
         return f" (set by {provenance[key]})" if key in provenance else ""
@@ -227,11 +312,12 @@ def build_certificate_renewal(
     doc_id = current_cert.document_id or current_cert.doc_type
     expectation = (
         "A renewal certificate is evidence against the terms "
-        "that required the insurance — the original round's "
-        "requirement set — not against whatever terms arrived "
-        "with the renewal. Limits or endorsements quietly "
-        "dropped at renewal are a mismatch against the original "
-        "clause, not a fresh consistent."
+        "that required the insurance — the requirement set "
+        "composed across the chain, each requirement from the "
+        "round that last set it — not against whatever terms "
+        "arrived with the renewal. Limits or endorsements "
+        "quietly dropped at renewal are a mismatch against the "
+        "clause that set them, not a fresh consistent."
     )
     promised = (
         f"the original requirement set (certificate to "

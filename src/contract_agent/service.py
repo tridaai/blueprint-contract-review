@@ -756,18 +756,46 @@ class ContractService:
             )
         )
 
+    def _chain_contracts(self, model: ContractInput) -> list[ContractInput]:
+        """The supersedes chain behind ``model`` as stored
+        contract inputs, oldest first, ending with the round
+        ``model`` directly supersedes. (``_chain_rounds`` above
+        walks the same links for RESULTS; this walk is for the
+        intake packages, which is what requirement composition
+        reads.) A missing or unstored ancestor ends the walk
+        where the record ends — the chain is what the store can
+        show, never a reconstruction. Cycles in bad intake
+        terminate on the seen set."""
+        store = self._get_store()
+        rounds: list[ContractInput] = []
+        seen = {model.contract_id}
+        cursor = model.supersedes
+        while cursor and cursor not in seen:
+            seen.add(cursor)
+            record = store.get(cursor)
+            if record is None or not record.contract:
+                break
+            ancestor = ContractInput.model_validate(record.contract)
+            rounds.append(ancestor)
+            cursor = ancestor.supersedes
+        rounds.reverse()
+        return rounds
+
     def _attach_certificate_renewal(
         self, model: ContractInput, result: AgentResult
     ) -> None:
         """Renewal-certificate evidence (``certificate_renewal.py``):
         when this round supersedes a stored one and its certificate
         runs past the prior round's, the renewal is read against
-        the ORIGINAL round's insurance requirement set — limits or
-        endorsements quietly dropped at renewal are a mismatch
-        against the original clause even when the current draft
-        has been restated to match the thinner certificate.
-        Attached after the run like the drift: the comparison
-        needs the prior round's stored package."""
+        the requirement set composed across the whole chain —
+        each requirement from the round that last set it — so
+        limits or endorsements quietly dropped at renewal are a
+        mismatch against the clause that set them even when the
+        current draft has been restated to match the thinner
+        certificate, and a short amendment round that restated
+        nothing cannot thin the set. Attached after the run like
+        the drift: the comparison needs the chain's stored
+        packages."""
         if not model.supersedes or model.supersedes == model.contract_id:
             return
         prior = self._get_store().get(model.supersedes)
@@ -777,7 +805,9 @@ class ContractService:
         from .schemas import TraceStep
 
         prior_model = ContractInput.model_validate(prior.contract)
-        renewal = build_certificate_renewal(prior_model, model)
+        renewal = build_certificate_renewal(
+            prior_model, model, chain=self._chain_contracts(model)
+        )
         if not renewal:
             return
         result.certificate_renewal = renewal
@@ -786,8 +816,8 @@ class ContractService:
             TraceStep(
                 name="certificate_renewal",
                 title=(
-                    f"Certificate renewal vs {prior_model.contract_id}'s "
-                    f"original terms: {check.status}"
+                    f"Certificate renewal vs the chain-composed "
+                    f"requirement set: {check.status}"
                 ),
                 details=[check.detail],
             )
