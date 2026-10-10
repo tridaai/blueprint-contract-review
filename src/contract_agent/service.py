@@ -1775,14 +1775,53 @@ class ContractService:
         store.save(proposal)
         return proposal
 
+    def retire_playbook_proposal(
+        self, proposal_id: str, actor: str, reason: str = ""
+    ) -> PlaybookProposal:
+        """Counsel retires an activated proposal: the lifecycle
+        closes (proposed → activated → retired), its entries leave
+        the active playbook and retrieval — the mirror image of
+        activation — and the reason goes on the record. The
+        proposal itself is never deleted: its effectiveness view
+        keeps measuring the window it was live for, and reports
+        what the clause type has done since the entries left,
+        including whether the coverage gap re-opened. A reason is
+        required — a retirement nobody explained is how playbooks
+        silently thin out."""
+        from .playbook_registry import unregister_entries
+
+        if not (reason or "").strip():
+            raise ValueError(
+                "Retiring a playbook proposal requires a reason — "
+                "it is recorded on the proposal, beside the actor."
+            )
+        store = self._get_proposal_store()
+        proposal = store.get(proposal_id)
+        if proposal is None:
+            raise KeyError(f"Unknown playbook proposal: {proposal_id}")
+        if proposal.status != "activated":
+            raise ValueError(
+                f"Proposal {proposal_id} is {proposal.status} — "
+                "only an activated proposal can be retired."
+            )
+        proposal.status = "retired"
+        proposal.retired_by = actor
+        proposal.retired_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        proposal.retire_reason = reason
+        store.save(proposal)
+        unregister_entries([entry.id for entry in proposal.entries])
+        self._refresh_retriever()
+        return proposal
+
     def proposal_effectiveness(self, proposal_id: str) -> dict:
         """What one playbook proposal has done since counsel decided
         it (``proposal_effectiveness.py``): for an activated
         proposal, the verdicts issued under each of its entries
         since activation, and whether its coverage gap — flagged
         verdicts with no fallback language — has recurred since.
-        A proposal that was never activated reports its status and
-        no window, not zeros."""
+        A retired proposal reports its live window plus the
+        post-retirement window. A proposal that was never activated
+        reports its status and no window, not zeros."""
         from .proposal_effectiveness import proposal_effectiveness
 
         proposal = self._get_proposal_store().get(proposal_id)
@@ -1845,7 +1884,7 @@ class ContractService:
             "proposal_effectiveness": [
                 self.proposal_effectiveness(proposal.proposal_id)
                 for proposal in self._get_proposal_store().all()
-                if proposal.status == "activated"
+                if proposal.status in ("activated", "retired")
             ],
             "telemetry": {
                 "runs_with_telemetry": len(telemetries),

@@ -23,6 +23,15 @@ not take), and the position spread.
 Nothing here judges whether the activation was *wise* — it reports
 what happened under it, on the proposal record's surfaces
 (``/playbook/proposals`` and ``/metrics``), so counsel can.
+
+Retirement (round 10) closes the window rather than erasing it: a
+retired proposal's view measures the activation → retirement
+window exactly as above, and adds a post-retirement window —
+verdicts for the clause type since the entries left the playbook,
+and whether the coverage gap the activation had closed has
+re-opened (flagged verdicts arriving with no fallback language
+again). The gap re-opening is the honest price of retiring, stated
+on the record rather than discovered at the next flagged contract.
 """
 
 from __future__ import annotations
@@ -51,21 +60,28 @@ def proposal_effectiveness(
     measure: the view says so, with its status, instead of
     reporting zeros that would look like failure."""
     entry_ids = [entry.id for entry in proposal.entries]
+    live = proposal.status in ("activated", "retired")
     base = {
         "proposal_id": proposal.proposal_id,
         "clause_type": proposal.clause_type,
         "status": proposal.status,
-        "activated_at": proposal.decided_at if proposal.status == "activated" else "",
-        "decided_by": proposal.decided_by if proposal.status == "activated" else "",
+        "activated_at": proposal.decided_at if live else "",
+        "decided_by": proposal.decided_by if live else "",
+        "retired_at": proposal.retired_at if proposal.status == "retired" else "",
+        "retired_by": proposal.retired_by if proposal.status == "retired" else "",
+        "retire_reason": (
+            proposal.retire_reason if proposal.status == "retired" else ""
+        ),
     }
     empty_entries = [
         {"entry_id": entry_id, "verdicts": 0, "positions": {}}
         for entry_id in entry_ids
     ]
-    if proposal.status != "activated":
+    if not live:
         return {
             **base,
             "active": False,
+            "retired": False,
             "runs_since_activation": 0,
             "unstamped_runs": 0,
             "entries": empty_entries,
@@ -75,16 +91,24 @@ def proposal_effectiveness(
             "flagged_for_type": 0,
             "flagged_without_fallback_since": 0,
             "gap_recurring": False,
+            "post_retirement": None,
         }
     since = _parse_ts(proposal.decided_at)
+    until = _parse_ts(proposal.retired_at) if proposal.status == "retired" else None
     stamped = [r for r in records if r.analyzed_at]
     unstamped = len(records) - len(stamped)
-    in_window = [
-        r
-        for r in stamped
-        if since is None
-        or (_parse_ts(r.analyzed_at) is not None and _parse_ts(r.analyzed_at) >= since)
-    ]
+
+    def _in_window(record) -> bool:
+        ts = _parse_ts(record.analyzed_at)
+        if ts is None:
+            return False
+        if since is not None and ts < since:
+            return False
+        if until is not None and ts >= until:
+            return False
+        return True
+
+    in_window = [r for r in stamped if _in_window(r)]
     per_entry: dict[str, dict] = {
         entry_id: {"entry_id": entry_id, "verdicts": 0, "positions": Counter()}
         for entry_id in entry_ids
@@ -110,9 +134,38 @@ def proposal_effectiveness(
                 flagged += 1
                 if not verdict.fallback_language:
                     without_fallback += 1
+    post_retirement = None
+    if proposal.status == "retired":
+        after = [
+            r
+            for r in stamped
+            if until is not None
+            and _parse_ts(r.analyzed_at) is not None
+            and _parse_ts(r.analyzed_at) >= until
+        ]
+        pr_verdicts = 0
+        pr_flagged = 0
+        pr_without_fallback = 0
+        for record in after:
+            for verdict in record.result.clause_verdicts:
+                if verdict.clause_type != proposal.clause_type:
+                    continue
+                pr_verdicts += 1
+                if verdict.position != "preferred":
+                    pr_flagged += 1
+                    if not verdict.fallback_language:
+                        pr_without_fallback += 1
+        post_retirement = {
+            "runs": len(after),
+            "verdicts_for_type": pr_verdicts,
+            "flagged_for_type": pr_flagged,
+            "flagged_without_fallback": pr_without_fallback,
+            "gap_reopened": pr_without_fallback > 0,
+        }
     return {
         **base,
-        "active": True,
+        "active": proposal.status == "activated",
+        "retired": proposal.status == "retired",
         "runs_since_activation": len(in_window),
         "unstamped_runs": unstamped,
         "entries": [
@@ -129,4 +182,5 @@ def proposal_effectiveness(
         "flagged_for_type": flagged,
         "flagged_without_fallback_since": without_fallback,
         "gap_recurring": without_fallback > 0,
+        "post_retirement": post_retirement,
     }

@@ -799,11 +799,14 @@ class PlaybookProposal(BaseModel):
     a human act, recorded with the actor — is the only way a
     proposal's entries join the active playbook
     (``playbook_registry.py``); the agent never activates its own
-    drafts, and a dismissed proposal is never re-drafted."""
+    drafts, and a dismissed proposal is never re-drafted. An
+    activated proposal may later be RETIRED by counsel, with a
+    reason: the lifecycle closes, the entries leave the playbook,
+    and the effectiveness record is preserved."""
 
     proposal_id: str
     clause_type: str = ""
-    status: str = "proposed"  # proposed | activated | dismissed
+    status: str = "proposed"  # proposed | activated | dismissed | retired
     based_on_type: str = ""  # the covered clause type whose family shaped the draft
     based_on_entry_ids: list[str] = Field(default_factory=list)
     basis: str = ""  # why that donor: the stated similarity rule's reading
@@ -815,6 +818,13 @@ class PlaybookProposal(BaseModel):
     decided_by: str = ""
     decided_at: str = ""
     decision_note: str = ""
+    # Retirement (round 10): an ACTIVATED proposal counsel later
+    # withdraws, with the reason on record. The entries leave the
+    # active playbook; the proposal — and its effectiveness record —
+    # stay, so what the entry did while live remains auditable.
+    retired_by: str = ""
+    retired_at: str = ""
+    retire_reason: str = ""
 
 
 class ProposalDecisionRequest(BaseModel):

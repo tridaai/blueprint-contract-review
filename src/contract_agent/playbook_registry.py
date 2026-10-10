@@ -44,6 +44,17 @@ def register_entries(entries: list[dict]) -> None:
             _registered[entry_id] = dict(entry)
 
 
+def unregister_entries(entry_ids: list[str]) -> None:
+    """Drop registered entries by id — a proposal's retirement
+    (round 10). Only registry entries are dropped: a shipped corpus
+    id is never in the registry under its own key in a way this
+    could shadow, and unknown ids are ignored, so a retirement
+    replayed after a restart that never re-registered them is a
+    no-op."""
+    for entry_id in entry_ids:
+        _registered.pop(entry_id, None)
+
+
 def clear_registered() -> None:
     """Drop every registered entry (tests; never called at runtime)."""
     _registered.clear()

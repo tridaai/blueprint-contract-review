@@ -347,7 +347,7 @@ def list_playbook_proposals(status: str = "") -> dict:
     rendered = []
     for proposal in proposals:
         row = proposal.model_dump(mode="json")
-        if proposal.status == "activated":
+        if proposal.status in ("activated", "retired"):
             row["effectiveness"] = service.proposal_effectiveness(
                 proposal.proposal_id
             )
@@ -416,6 +416,34 @@ def dismiss_playbook_proposal(proposal_id: str, request: ProposalDecisionRequest
     try:
         proposal = service.dismiss_playbook_proposal(
             proposal_id, actor=actor, note=request.note or ""
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return proposal.model_dump(mode="json")
+
+
+@app.post("/playbook/proposals/{proposal_id}/retire", dependencies=_AUTH)
+def retire_playbook_proposal(proposal_id: str, request: ProposalDecisionRequest):
+    """Counsel retires an activated proposal: its entries leave the
+    active playbook, the lifecycle closes, and the effectiveness
+    record is preserved. Requires the actor's name and a reason
+    (the request's 'note') — both go on the record."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the counsel member retiring this proposal.",
+        )
+    if not (request.note or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'note' — the reason for retiring this proposal.",
+        )
+    try:
+        proposal = service.retire_playbook_proposal(
+            proposal_id, actor=actor, reason=request.note or ""
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
