@@ -43,6 +43,19 @@ Two more families follow the same discipline (round 5):
   ``sow_delivery_dates``), and an acceptance period it states is
   checked against the agreement's acceptance window
   (``sow_acceptance_period``).
+
+A fourth family follows the same discipline (round 8):
+
+- **Certificates of insurance.** When the agreement states the
+  insurance the counterparty must carry — coverage types with
+  minimum limits, a certificate to be furnished, additional-insured
+  or waiver-of-subrogation endorsements — the certificate exhibit
+  is checked against every one of those statements
+  (``insurance_named_insured``, ``insurance_limits_<coverage>``,
+  ``insurance_certificate_expiry``, ``insurance_additional_insured``,
+  ``insurance_waiver_of_subrogation``). A certificate naming a
+  different legal entity, carrying half the required limit, or
+  already expired does not become true by being attached.
 """
 
 from __future__ import annotations
@@ -283,6 +296,7 @@ def build_exhibit_checks(
         ))
     checks.extend(_order_form_checks(contract, units, extractions))
     checks.extend(_sow_checks(contract, units, extractions))
+    checks.extend(_insurance_certificate_checks(contract, units, extractions))
     return checks
 
 
@@ -590,6 +604,380 @@ def _sow_checks(
             exhibit_document_id=doc_id,
             promised=f"{msa_days} days",
             found=f"{sow_days} days",
+            status=status,
+            detail=detail,
+        ))
+    return checks
+
+
+# ---------------------------------------------------------------------------
+# Certificates of insurance: the exhibit must prove the clause's insurance
+# ---------------------------------------------------------------------------
+
+_CERT_DOC = re.compile(r"certificate of insurance", re.I)
+
+# Coverage families, by the phrases contracts and certificates use
+# for them. The key names the check (insurance_limits_<key>).
+_COVERAGE_KEYS: list[tuple[str, str, tuple[str, ...]]] = [
+    ("general_liability", "commercial general liability",
+     ("commercial general liability", "general liability")),
+    ("professional_liability", "professional liability",
+     ("professional liability", "errors and omissions", "errors & omissions")),
+    ("workers_compensation", "workers' compensation",
+     ("workers' compensation", "workers compensation", "worker's compensation")),
+    ("automobile_liability", "automobile liability",
+     ("commercial automobile", "automobile liability", "auto liability")),
+    ("cyber_liability", "cyber liability",
+     ("cyber liability", "network security liability", "cyber insurance")),
+]
+
+_MONEY_VALUE = re.compile(r"\$\s?([\d,]+(?:\.\d+)?)\s*(million|m)?\b", re.I)
+
+
+def _money_value(text: str) -> float | None:
+    m = _MONEY_VALUE.search(text)
+    if not m:
+        return None
+    value = float(m.group(1).replace(",", ""))
+    if m.group(2):
+        value *= 1_000_000
+    return value
+
+
+def _fmt_money(value: float) -> str:
+    return f"${value:,.0f}" if value == int(value) else f"${value:,.2f}"
+
+
+def _text_sentences(text: str) -> list[str]:
+    """Sentences and lines: certificates are line-oriented, so a
+    line break ends a statement the way a full stop does."""
+    return [
+        s.strip()
+        for s in re.split(r"(?<=[.!?])\s+|\n", text or "")
+        if s.strip()
+    ]
+
+
+def _coverage_amounts(text: str) -> dict[str, float]:
+    """Coverage type → amount stated, read per coverage phrase: a
+    sentence may carry two coverages with two amounts ("general
+    liability … $2,000,000 … and professional liability … $1,000,000"),
+    so each phrase's amount is the first money value between it and
+    the next coverage phrase in the same sentence."""
+    amounts: dict[str, float] = {}
+    for sentence in _text_sentences(text):
+        lower = sentence.lower()
+        if "insurance" not in lower and "liability" not in lower:
+            continue
+        hits: list[tuple[int, str]] = []
+        for key, _label, phrases in _COVERAGE_KEYS:
+            for phrase in phrases:
+                idx = lower.find(phrase)
+                if idx >= 0:
+                    hits.append((idx, key))
+                    break
+        hits.sort()
+        for pos, (idx, key) in enumerate(hits):
+            end = hits[pos + 1][0] if pos + 1 < len(hits) else len(sentence)
+            amount = _money_value(sentence[idx:end])
+            if amount is not None:
+                amounts[key] = max(amount, amounts.get(key, 0.0))
+    return amounts
+
+
+def _named_insured(cert_text: str) -> str:
+    for line in cert_text.splitlines():
+        lower = line.lower()
+        if "named insured" in lower or lower.strip().startswith("insured"):
+            if ":" in line:
+                return line.split(":", 1)[1].strip()
+            return line.strip()
+    return ""
+
+
+def _normalise_name(name: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", (name or "").lower()).split())
+
+
+_MONTH_NAMES = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+    "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+    "november": 11, "december": 12,
+}
+
+
+def _parse_stated_date(raw: str):
+    """Parse the three date shapes _DATE_STATED matches."""
+    from datetime import date
+
+    raw = raw.strip().strip(",")
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        pass
+    m = re.match(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", raw)
+    if m and m.group(1).lower() in _MONTH_NAMES:
+        return date(int(m.group(3)), _MONTH_NAMES[m.group(1).lower()], int(m.group(2)))
+    m = re.match(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", raw)
+    if m and m.group(2).lower() in _MONTH_NAMES:
+        return date(int(m.group(3)), _MONTH_NAMES[m.group(2).lower()], int(m.group(1)))
+    return None
+
+
+def _certificate_expiry(cert_text: str):
+    """The certificate's expiry: a date in a sentence about expiry,
+    else the end of a stated policy period."""
+    for sentence in _text_sentences(cert_text):
+        if "expir" in sentence.lower():
+            m = _DATE_STATED.search(sentence)
+            if m:
+                return _parse_stated_date(m.group(0))
+    for sentence in _text_sentences(cert_text):
+        if "policy period" in sentence.lower():
+            dates = _DATE_STATED.findall(sentence)
+            if dates:
+                return _parse_stated_date(dates[-1])
+    return None
+
+
+def _add_months(d, months: int):
+    month = d.month - 1 + months
+    year = d.year + month // 12
+    month = month % 12 + 1
+    day = min(d.day, [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28,
+                      31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
+    from datetime import date
+
+    return date(year, month, day)
+
+
+def _endorsement_present(cert_lower: str, phrase: str) -> bool | None:
+    """True: the certificate carries the endorsement. False: it
+    mentions the endorsement only to withhold it. None: silent."""
+    if phrase not in cert_lower:
+        return None
+    for sentence in _text_sentences(cert_lower):
+        if phrase in sentence and any(
+            neg in sentence
+            for neg in ("no ", "not ", "none", "excluded", "absent")
+        ):
+            return False
+    return True
+
+
+def _insurance_certificate_checks(
+    contract: ContractInput,
+    units,
+    extractions: list[ClauseExtraction],
+) -> list[ExhibitCheck]:
+    """Insurance-certificate checks: generated from what the
+    agreement states the counterparty must carry and furnish,
+    checked against the attached certificate of insurance."""
+    agreement_text = contract.agreement_text()
+    lower = agreement_text.lower()
+    required_limits = _coverage_amounts(agreement_text)
+    certificate_promised = "certificate of insurance" in lower
+    additional_required = "additional insured" in lower
+    waiver_required = "waiver of subrogation" in lower
+    if not required_limits and not certificate_promised:
+        return []  # the agreement relies on no insurance exhibit
+
+    cert = _find_schedule_document(contract, _CERT_DOC)
+    doc_id = (cert.document_id or cert.doc_type) if cert else ""
+    counterparty = contract.counterparty_name or ""
+    labels = {key: label for key, label, _ in _COVERAGE_KEYS}
+
+    # The expectations, in the order counsel reads a certificate:
+    # who is insured, for how much, until when, with what endorsements.
+    expectations: list[tuple[str, str, str]] = []
+    if counterparty:
+        expectations.append((
+            "insurance_named_insured",
+            "The certificate must name the counterparty to the "
+            "agreement as the insured; insurance held by a different "
+            "legal entity is not the counterparty's insurance.",
+            counterparty,
+        ))
+    for key in sorted(required_limits):
+        expectations.append((
+            f"insurance_limits_{key}",
+            f"The agreement requires {labels[key]} insurance of at "
+            f"least {_fmt_money(required_limits[key])}; the "
+            "certificate must state cover at or above that limit.",
+            f"{labels[key]} ≥ {_fmt_money(required_limits[key])}",
+        ))
+    expectations.append((
+        "insurance_certificate_expiry",
+        "The certificate must be in force — unexpired at review, "
+        "and, where the agreement states an initial term, covering "
+        "that term.",
+        "in force for the term",
+    ))
+    if additional_required:
+        expectations.append((
+            "insurance_additional_insured",
+            "The agreement requires the customer to be named as an "
+            "additional insured; the certificate must show the "
+            "endorsement.",
+            "additional insured endorsed",
+        ))
+    if waiver_required:
+        expectations.append((
+            "insurance_waiver_of_subrogation",
+            "The agreement requires a waiver of subrogation; the "
+            "certificate must show it.",
+            "waiver of subrogation endorsed",
+        ))
+
+    if cert is None:
+        return [
+            ExhibitCheck(
+                name=name,
+                expectation=expectation,
+                promised=promised,
+                status="exhibit_missing",
+                detail=(
+                    "The agreement states this insurance requirement, "
+                    "but no certificate of insurance is in the package "
+                    "— the cover the clause relies on is unevidenced."
+                ),
+            )
+            for name, expectation, promised in expectations
+        ]
+
+    cert_text = cert.raw_text
+    cert_lower = cert_text.lower()
+    cert_limits = _coverage_amounts(cert_text)
+    checks: list[ExhibitCheck] = []
+    for name, expectation, promised in expectations:
+        if name == "insurance_named_insured":
+            found_name = _named_insured(cert_text)
+            if not found_name:
+                status, found, detail = (
+                    "missing_in_exhibit", "",
+                    "The certificate names no insured at all — whose "
+                    "cover it evidences cannot be told from it.",
+                )
+            elif _normalise_name(found_name) == _normalise_name(counterparty):
+                status, found, detail = (
+                    "consistent", found_name,
+                    f"The certificate names {found_name}, the "
+                    "counterparty to the agreement.",
+                )
+            else:
+                status, found, detail = (
+                    "mismatch", found_name,
+                    f"The certificate names {found_name}, but the "
+                    f"counterparty to the agreement is {counterparty} "
+                    "— a different legal entity's insurance does not "
+                    "evidence this counterparty's cover.",
+                )
+        elif name.startswith("insurance_limits_"):
+            key = name.removeprefix("insurance_limits_")
+            required = required_limits[key]
+            stated = cert_limits.get(key)
+            if stated is None:
+                status, found, detail = (
+                    "missing_in_exhibit", "",
+                    f"The certificate states no {labels[key]} cover "
+                    "at all — the cover the agreement requires is "
+                    "not evidenced.",
+                )
+            elif stated >= required:
+                status, found, detail = (
+                    "consistent", _fmt_money(stated),
+                    f"The certificate states {labels[key]} cover of "
+                    f"{_fmt_money(stated)}, at or above the "
+                    f"{_fmt_money(required)} the agreement requires.",
+                )
+            else:
+                status, found, detail = (
+                    "mismatch", _fmt_money(stated),
+                    f"The certificate states {labels[key]} cover of "
+                    f"{_fmt_money(stated)}, below the "
+                    f"{_fmt_money(required)} the agreement requires.",
+                )
+        elif name == "insurance_certificate_expiry":
+            from .facts import _parse_date as _parse_contract_date
+
+            expiry = _certificate_expiry(cert_text)
+            received = _parse_contract_date(contract.received_at)
+            unit_text = {u.clause_id: u.text or "" for u in units}
+            term = next(
+                (e for e in extractions if e.clause_type == "term_termination"),
+                None,
+            )
+            term_months = (
+                _months_near(unit_text.get(term.clause_id, ""), "initial term")
+                if term is not None
+                else None
+            )
+            if expiry is None:
+                status, found, detail = (
+                    "missing_in_exhibit", "",
+                    "The certificate states no expiry or policy "
+                    "period — whether the cover is in force cannot "
+                    "be told from it.",
+                )
+            elif received is not None and expiry < received:
+                status, found, detail = (
+                    "mismatch", expiry.isoformat(),
+                    f"The certificate expired on {expiry.isoformat()}, "
+                    f"before the agreement was received "
+                    f"({received.isoformat()}) — the cover it "
+                    "evidences is no longer in force.",
+                )
+            elif (
+                received is not None
+                and term_months
+                and expiry < _add_months(received, term_months)
+            ):
+                status, found, detail = (
+                    "mismatch", expiry.isoformat(),
+                    f"The certificate expires on {expiry.isoformat()}, "
+                    f"inside the agreement's initial term of "
+                    f"{term_months} months from receipt — the cover "
+                    "runs out before the term it supports.",
+                )
+            else:
+                status, found, detail = (
+                    "consistent", expiry.isoformat(),
+                    f"The certificate is in force until "
+                    f"{expiry.isoformat()}.",
+                )
+        else:  # endorsements
+            phrase = (
+                "additional insured"
+                if name == "insurance_additional_insured"
+                else "waiver of subrogation"
+            )
+            present = _endorsement_present(cert_lower, phrase)
+            if present is True:
+                status, found, detail = (
+                    "consistent", f"{phrase} endorsed",
+                    f"The certificate shows the {phrase} endorsement "
+                    "the agreement requires.",
+                )
+            elif present is False:
+                status, found, detail = (
+                    "missing_in_exhibit", f"no {phrase} endorsed",
+                    f"The certificate mentions {phrase} only to "
+                    "withhold it — the endorsement the agreement "
+                    "requires is not there.",
+                )
+            else:
+                status, found, detail = (
+                    "missing_in_exhibit", "",
+                    f"The certificate says nothing about {phrase} — "
+                    "the endorsement the agreement requires is not "
+                    "evidenced.",
+                )
+        checks.append(ExhibitCheck(
+            name=name,
+            expectation=expectation,
+            exhibit_document_id=doc_id,
+            promised=promised,
+            found=found,
             status=status,
             detail=detail,
         ))
