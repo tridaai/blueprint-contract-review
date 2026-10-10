@@ -66,6 +66,16 @@ wearing a review date is a different fact from a fresh
 suspension, and the report says which one counsel is looking
 at. Naming changes nothing: the scorer honours the suspension
 exactly as before.
+
+**On the queue** (round 16): the report named the pattern, but
+counsel works the queue — and the queue carried only the
+due-review alerts, so a serially renewed set-aside was visible
+everywhere except where the re-confirm act happens.
+``serial_renewal_alerts`` is the queue's own reading of the
+same series: each active suspension past the threshold, with
+its count and span, as an alert list beside the due reviews —
+the same attention, in the room where the next renewal would
+be signed.
 """
 
 from __future__ import annotations
@@ -132,6 +142,45 @@ def suspension_review_alerts(suspensions, today: date) -> list[dict]:
         and alert["review_state"] in ("due", "overdue")
     ]
     alerts.sort(key=lambda a: (a["review_by"], a["clause_type"]))
+    return alerts
+
+
+def serial_renewal_alerts(suspensions) -> list[dict]:
+    """The queue's serial-renewal alerts (round 16): each ACTIVE
+    suspension whose renewal series has crossed
+    ``SERIAL_RENEWAL_THRESHOLD``, with the series attached —
+    the count, the span from the original set-aside, and the
+    latest renewal's act. A serially renewed set-aside is the
+    same kind of attention as a due review, and it belongs in
+    the same room: the queue, where counsel would sign the
+    next renewal. A lifted suspension is history, not a
+    standing pattern, and never alerts; the scorer is
+    untouched either way — the alert weighs the pattern, it
+    does not move the term."""
+    alerts: list[dict] = []
+    for suspension in suspensions:
+        if suspension.status != "active":
+            continue
+        series = renewal_series(suspension)
+        if series is None or not series["serially_renewed"]:
+            continue
+        last = suspension.reconfirmations[-1]
+        alerts.append(
+            {
+                "clause_type": suspension.clause_type,
+                "renewal_count": series["renewal_count"],
+                "renewal_span_days": series["renewal_span_days"],
+                "renewal_span_months": series["renewal_span_months"],
+                "suspended_by": suspension.suspended_by,
+                "suspended_at": suspension.suspended_at,
+                "reason": suspension.reason,
+                "last_reconfirmed_by": last.actor,
+                "last_reconfirmed_at": last.at,
+                "last_reconfirmation_note": last.note,
+                "review_by": suspension.review_by or "",
+            }
+        )
+    alerts.sort(key=lambda a: (-a["renewal_count"], a["clause_type"]))
     return alerts
 
 

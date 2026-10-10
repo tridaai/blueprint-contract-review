@@ -2737,6 +2737,19 @@ class ContractService:
             self._get_calibration_store().all(), today or _date.today()
         )
 
+    def serial_renewal_alerts(self) -> list[dict]:
+        """Pattern-term suspensions renewed into a pattern
+        (``pattern_calibration.serial_renewal_alerts``, round
+        16): the active set-asides whose re-confirmations have
+        crossed the serial threshold, with the series attached.
+        The queue carries them beside the due-review alerts —
+        a "temporary" set-aside renewed for the fourth time is
+        attention of the same kind, and the queue is where the
+        next renewal would be signed."""
+        from .pattern_calibration import serial_renewal_alerts
+
+        return serial_renewal_alerts(self._get_calibration_store().all())
+
     def reconfirm_pattern_suspension(
         self, clause_type: str, actor: str, note: str = "",
         review_by: str = "",

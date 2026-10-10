@@ -366,7 +366,9 @@ def counsel_queue() -> dict:
     payload also carries ``suspension_review_alerts``: pattern-term
     suspensions whose review date has come due — the queue is where
     counsel works, so the set-asides reaching their shelf life are
-    surfaced there, beside the contracts — and
+    surfaced there, beside the contracts — ``serial_renewal_alerts``:
+    set-asides renewed past the serial threshold, a standing pattern
+    named where the next renewal would be signed — and
     ``stale_webhook_failures``: signed deliveries that failed and
     have sat unrepaired past the stale threshold, the same
     attention reading in delivery form."""
@@ -375,6 +377,7 @@ def counsel_queue() -> dict:
         "count": len(items),
         "queue": items,
         "suspension_review_alerts": service.suspension_review_alerts(),
+        "serial_renewal_alerts": service.serial_renewal_alerts(),
         "stale_webhook_failures": service.stale_webhook_failures(),
     }
 
