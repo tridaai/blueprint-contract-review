@@ -125,7 +125,17 @@ For each contract, the pipeline:
    the stored payload under a named operator
    (`POST /webhooks/outbox/{id}/resend`), the attempt on record,
    instead of re-running whatever produced the event — no
-   silent loss at the last mile. And the renewal check's
+   silent loss at the last mile. The outbox ages under a
+   **governed retention rule**: sent entries older than
+   `WEBHOOK_OUTBOX_RETENTION_DAYS` (default 90) may be pruned
+   by a named operator (`POST /webhooks/outbox/prune`), the
+   report naming what it took — but failed entries are never
+   pruned, and one left unrepaired past
+   `WEBHOOK_OUTBOX_STALE_FAILURE_DAYS` (default 7) reads as
+   **stale**: counted on the outbox view and in `/metrics`,
+   and listed on the counsel queue beside the suspension
+   alerts, so a delivery that died last week is a number legal
+   ops manages to. And the renewal check's
    requirement set is **composed across the whole chain**: each
    requirement from the round that last set it — a round sets a
    limit when it first states it or states it changed, a
@@ -133,7 +143,15 @@ For each contract, the pipeline:
    persist — named per requirement ("set by CTR-2029 §7"), so a
    limit raised by a mid-chain amendment is judged, and cited,
    from the amendment, and a short round that restates nothing
-   cannot thin the set the renewal is judged against.
+   cannot thin the set the renewal is judged against. The two
+   annexes also get their **whole-chain biography**
+   (`GET /contracts/{id}/annex-history`): the drift checks are
+   pairwise — the latest step — while the history walks every
+   round of the chain, each round's list, each step's movement,
+   the notice clock read on every addition and the transfer
+   reading on every removal, a vanished schedule named as the
+   loudest step of all — computed with the drift modules' own
+   readings, so the timeline and the findings cannot disagree.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -294,7 +312,17 @@ stays set aside throughout, and the original suspension's
 stamps stand untouched, so the record shows one set-aside,
 deliberately renewed, not a chain of lifts and
 re-suspensions. A suspension is a decision with a shelf life,
-not a forgetting.
+not a forgetting. And the renewals are read **as a series**:
+the report carries each suspension's renewal count, the span
+from the original act to the latest renewal, and the full
+history on its row — and a set-aside renewed three or more
+times is named in the headline (`serially_renewed_types`, in
+`/metrics` and the console too) as what it is: a standing
+decision wearing a review date, not a fresh suspension.
+Naming changes nothing — the scorer honours the set-aside
+exactly as before — but a "temporary" suspension renewed
+across seven months is a fact counsel should see stated, not
+infer from a stack of quiet acts.
 
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
@@ -367,7 +395,15 @@ weeks later, so `POST /obligations/sweep` (or the CLI's
 `--sweep-obligations DAYS`) sweeps every stored contract for
 obligations due within the window, emits one `obligation_due` event
 per deadline, and returns a dispatch report. Report-only: the sweep
-sends nothing — delivery belongs to the event consumer. The same
+sends nothing — delivery belongs to the event consumer.
+Restrictive-covenant expiries are announced **as what they are**:
+a covenant's date is the day a restriction *lifts*, the
+operational opposite of a duty falling due, so a due
+`non_compete`/`non_solicit` entry draws a `covenant_expiring`
+event (kind and `effect: restriction_lapses` on the event),
+counted separately in the report and listed under `covenants`
+— consumers route "a former employee may now be hired"
+differently from "a notice deadline is near". The same
 sweep runs the **certificate renewal watch**: a certificate of
 insurance that passed its review (the cover the agreement relies
 on) still expires mid-term, so relied-upon certificates expiring
@@ -452,7 +488,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 441 tests (440 run + 1 Postgres-gated skip)
+make test                  # 470 tests (469 run + 1 Postgres-gated skip)
 make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```

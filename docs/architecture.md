@@ -232,6 +232,20 @@ termination + duration (calendar months, day clamped) when
 it does — computed in code, flagged `computed`, and flowing
 into `/obligations/due` and the deadline sweep on their dates.
 
+**Covenant expiries announced distinctly** (`ContractService.
+dispatch_obligation_sweep`, round 15). In the sweep a
+covenant's date is not a duty falling due — it is the day a
+restriction *lifts*, and the counterparty's counsel watches
+for it for exactly that reason. Due `non_compete` /
+`non_solicit` entries (`COVENANT_KINDS`) therefore draw a
+`covenant_expiring` event instead of `obligation_due`,
+carrying the kind and `effect: restriction_lapses`, and the
+report counts them separately (`covenant_count`,
+`covenant_events_emitted`) and lists them under `covenants`:
+consumers route "a restriction expired" differently from "a
+deadline is near". Every other due entry keeps the
+`obligation_due` reading, and the sweep stays report-only.
+
 **Sub-processor list drift** (`subprocessor_drift.py`, round
 11). The annex is a living list, so the single-round checks are
 joined by a cross-round one: consecutive rounds of a chain have
@@ -317,6 +331,23 @@ round-13 placement rule, so every requirement cites the clause
 of the round that set it. Without a stored chain the prior
 round alone composes the set — the pre-round-14 reading.
 
+**Annex history across the chain** (`annex_history.py`, round
+15). The drift checks are pairwise — the right shape for a
+finding, the wrong shape for a biography. The history walks
+the whole chain (`_chain_contracts` plus the current round)
+and lays each annex family's timeline out in one view: every
+round's entries, every step's movement (added / removed /
+moved for the list; added / removed for the schedule), the
+notice clock read on every sub-processor addition, and the
+transfer reading on every schedule removal, with a vanished
+schedule recorded as a step of its own. A family is reported
+only when some round of the chain carries its annex; rounds
+that do not are rows marked absent, not silently skipped.
+The computation reuses the drift modules' own entry, clock,
+and reliance readings, so the biography cannot disagree with
+the findings it summarises. `GET /contracts/{id}/annex-history`
+serves it and the console renders it beside the brief.
+
 **Drift findings on the wire** (`ContractService.
 dispatch_drift_finding_webhook`, round 13). Drift findings
 used to wait on the record for someone to open the brief; the
@@ -355,6 +386,27 @@ payloads themselves stay out of it — and the console carries
 an outbox panel with the re-send act. Dispatches are recorded
 only when an endpoint is configured: with no webhook there is
 no delivery to lose, and no entry.
+
+**Outbox retention and stale failures** (`webhook_outbox.py`,
+round 15). A ledger that only grows becomes a ledger nobody
+reads, so the outbox ages under a governed rule. **Sent**
+entries older than `WEBHOOK_OUTBOX_RETENTION_DAYS` (default
+90, measured from the last attempt — a re-send refreshes the
+entry's age) may be pruned, but only by a named operator's
+deliberate act (`POST /webhooks/outbox/prune`): no timer, no
+side effect of a read, and the report names the pruned ids
+and the failures it kept. **Failed entries are never
+pruned** — a failure leaves the ledger only by being repaired
+(a re-send that lands) and then ageing out as a sent entry,
+so pruning the history can never be how a dead delivery gets
+forgotten. A failure left unrepaired past
+`WEBHOOK_OUTBOX_STALE_FAILURE_DAYS` (default 7) is **stale**:
+the outbox view carries a `staleness` block (threshold,
+retention age, the stale rows, oldest first), `/metrics`
+carries the count beside the outbox totals, and the `/queue`
+payload lists the stale failures beside the suspension
+review alerts — a delivery that died is operational attention
+of the same kind as a contract nobody has picked up.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -685,6 +737,24 @@ suspension re-confirmed to a future date leaves
 `suspensions_due_review` without ever having stopped binding.
 `POST /options/pattern-calibration/reconfirm`, with a console
 action beside the lift.
+
+**Serial renewals** (`pattern_calibration.renewal_series`,
+round 15). Re-confirmation made renewal one quiet act, and a
+quiet act can repeat forever. The report therefore reads each
+active suspension's renewals as a series — the count, the
+span from the original set-aside to the latest renewal
+(`renewal_span_days` / `renewal_span_months`), the full
+history — on the suspension block, with the row's detail
+speaking the span ("Re-confirmed 3 time(s) across 7 months").
+At `SERIAL_RENEWAL_THRESHOLD` (3) renewals the type is named
+in the headline list `serially_renewed_types` (carried into
+the `/metrics` calibration summary and the console): a
+permanent set-aside wearing a review date is a different fact
+from a fresh suspension, and the report states which one
+counsel is looking at. A lifted suspension's renewals are
+history, not a standing pattern, and are not named. Naming
+changes nothing about the scorer — the suspension binds
+exactly as before.
 
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
