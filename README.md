@@ -515,7 +515,37 @@ arrived, or the watch would have moved — reads **stale** on
 the watch row, and the quiet chases resurface on the counsel
 queue (`stale_watch_follow_throughs`) beside its other
 attention lists; an accepted risk is a decision, not a
-question, and never goes stale.
+question, and never goes stale. And the deadline sweep's
+announcements are **follow-through-aware**: the
+`certificate_expiring` event carries the watch's follow-through
+state, so an unacted watch announces differently from a chased
+one; a stale chase draws its own announcement — a
+`certificate_watch_stale_chase` event plus one signed webhook
+per sweep naming them all — the chase act stamped so it is
+announced **once per stale period**, the outbox stale sweep's
+discipline; and a watch whose risk counsel accepted **stops
+announcing** altogether — the decision closed the loop the
+announcement was chasing — counted in the sweep report as
+accepted instead.
+
+**SOWs read against their master.** A statement of work lives
+under a master agreement, and both can carry restrictive
+covenants — the conflict exists only between the documents.
+When an SOW's own text names its master (CTR-2040) and the
+master is in the store, the SOW's covenant register is read
+against the master's: a **duration or scope conflict** is
+flagged with both documents and both clause sources named
+(CTR-2041 grants exclusivity for twenty-four months over a
+wider scope where the master granted twelve, and halves the
+non-compete), the **order of precedence** read in code where
+either document states one — CTR-2040 states the master
+controls; where neither states one, the check says so and
+leaves the call to counsel. An aligned SOW (CTR-2042) reads
+consistent, a kind only the master carries reads as
+incorporation, and a kind only the SOW carries stands on its
+own terms — silence is not a conflict, and the readings are on
+record because they were checked. An SOW naming no master, or
+one the store has never seen, draws no checks at all.
 
 **Queue ownership and SLA.** The counsel queue (`GET /queue`) is a
 worklist with an owner and a clock: an operator records an assignee
@@ -552,7 +582,14 @@ and its source digest is stored in the chain's index, so each new
 brief leads with a **"Since the last brief"** section diffed
 against the previous export — the new round, clauses moved, edits
 proposed anew, outcomes and decisions recorded, obligations
-opened or closed. A re-export with no changes says exactly that.
+opened or closed — and the chain's **covenant movements**: the
+digest carries the covenant biography's step readings, and the
+delta names the movements of the steps that arrived since the
+previous export (a covenant introduced, dropped, its tail
+changed, its expiry moved) in the biography's own summary
+sentences, so counsel reads a shortened tail in the brief, not
+only in the timeline view — and the two surfaces cannot tell the
+story two ways. A re-export with no changes says exactly that.
 
 **The matter brief.** A negotiation is one chain; a matter is
 several — the platform MSA and its SOW, the renewal and the
@@ -584,8 +621,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 559 tests (558 run + 1 Postgres-gated skip)
-make evals                 # golden set: 84/84 (gate ≥ 95%)
+make test                  # 602 tests (601 run + 1 Postgres-gated skip)
+make evals                 # golden set: 86/86 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -624,7 +661,14 @@ is a labelled offline fallback, never the story.
   outcomes, token/cost/latency aggregates) and adds **playbook
   coverage analytics** — which playbook entries fire, which clause
   types most often lack fallback language, position distribution
-  per counterparty. `/queue` is the counsel worklist (awaiting
+  per counterparty. The payload can be **kept as a snapshot**
+  (`POST /metrics/snapshots`, under a named operator, an optional
+  unique label) and **trended** (`GET /metrics/snapshots/trend`):
+  each kept row reads against the previous one — run growth,
+  breach movement, outbox totals, and the **prune pace** (prunes
+  and retired entries since the previous snapshot, differences of
+  the ledger readings each payload carries), so retention
+  behaviour is visible over time, not just as totals. `/queue` is the counsel worklist (awaiting
   contracts — SLA breaches first, then worst first — each with its
   recorded assignee and SLA state); `/obligations/due?days=N` aggregates
   register deadlines across contracts, runs announce due
@@ -660,9 +704,12 @@ passes review and is then caught by the renewal watch, the
 CTR-2030/2031 sub-processor pair, the prior-invention trio:
 CTR-2025's promised-but-absent schedule, CTR-2032's swallowed
 schedule, CTR-2033's clean one, and the severance-arithmetic
-pair: CTR-2034's agreeing figures, CTR-2035's $20,000 gap).
+pair: CTR-2034's agreeing figures, CTR-2035's $20,000 gap). The
+`sow_master` cases seed a master agreement and read the SOW
+under it (CTR-2040 with CTR-2041's conflicts and CTR-2042's
+alignment).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 84/84).
+gate is ≥ 95% (currently 86/86).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
@@ -671,7 +718,7 @@ drafts and calling that an LLM result.
 
 ```
 src/contract_agent/   the package (pipeline, AI layer, guardrails, infra)
-migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions, webhook outbox, prune ledger)
+migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions, webhook outbox, prune ledger, metrics snapshots)
 evals/                golden set + deterministic runner + opt-in judge pack
 tests/                hermetic pytest suite (in-memory doubles)
 docs/architecture.md  the full pipeline + production topology

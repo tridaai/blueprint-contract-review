@@ -380,6 +380,45 @@ from the paper, so the biography cannot disagree with the
 findings it narrates — and it is absent (null) for a chain
 whose negotiation never carried a covenant.
 
+**Covenant movements in the brief delta** (`brief.py`, round
+19). The biography lived in the annex-history view; counsel
+reading the brief saw none of it. The brief's source digest
+now carries the biography's step readings verbatim (the
+service builds them with the biography's own builder, fed the
+same stored registers and follow-through records the history
+view reads), and `brief_delta_lines` names the movements of
+the steps that ARRIVED since the previous export — a step
+whose later round sits in the chain past the round that
+export covered — in the biography's own summary sentences. A
+step whose covenants were all carried unchanged is not news;
+the step filters on a non-`carried` movement. One computation,
+two surfaces: the delta cannot drift from the biography.
+
+**SOW-vs-MSA covenant conflicts** (`sow_covenants.py`, round
+19). A statement of work's covenants are read against the
+master agreement its own text names — the linkage is stated
+(a sentence speaking of a master agreement and carrying its
+contract id) and the master must be in the store, or there are
+no checks at all. Per covenant kind, the two stored registers
+compare: different tails are a duration conflict; exclusivity
+also compares appointment scope (the services after
+"exclusive provider of", beneficiary trimmed), and a master
+that expressly engages providers on a non-exclusive basis
+conflicts with an SOW exclusivity grant even with no master
+covenant to compare. Kinds only one document carries are
+consistent readings (incorporation, or the SOW's own covenant
+standing) — recorded because they were checked. The order of
+precedence is read in code from the stated language: the
+winner is the document named in the control clause of a
+conflict sentence (a precedence sentence names both
+documents), the SOW read first; neither document stating one
+is itself the reading, and both registers stay on record
+either way. The checks attach after the run (the comparison
+needs the master's stored package), ride the result as
+`sow_covenant_conflicts`, surface in the brief's exhibit
+findings and delta, and never move posture — posture is the
+SOW against the playbook; this is the SOW against its master.
+
 **Certificate renewal evidence** (`certificate_renewal.py`,
 round 12). A renewal certificate is a cross-round fact too:
 when a later round's certificate extends cover past the prior
@@ -576,6 +615,22 @@ ledger growing fast is history being retired fast; a last
 prune long ago beside a growing outbox is retention nobody is
 running — both are now numbers legal ops manages to, not
 surprises found in an audit.
+
+**Metrics snapshots** (`metrics_snapshots.py` +
+`metrics_snapshot_store.py`, round 19). The readings above
+still only ever read as of now. A snapshot keeps the whole
+`/metrics` payload — prune readings riding inside its webhooks
+block — in its own store (PostgreSQL `metrics_snapshots`,
+migration 0007; in-memory double for tests) under a named
+operator, with an optional label that must be unique among
+the kept snapshots. `snapshot_trend` reads the kept snapshots
+in kept order: each row the headline numbers as kept, plus
+the movement since the previous kept snapshot — and the prune
+pace as differences of the ledger's own totals (prunes since
+previous, entries retired since previous), measured, never
+estimated. The first kept snapshot's movements are null, not
+zero: nothing moved is a different claim from nothing to
+compare against.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -1132,6 +1187,27 @@ alerts — the stale-failure discipline applied to a human wait.
 An accepted risk is a decision, not a question, and never
 reads stale; an open watch has no chase to age; an unstamped
 act has no age and fails closed, like the outbox's readings.
+
+**The announcements are follow-through-aware** (round 19).
+The deadline sweep announced every watched certificate the
+same way on every run. It now announces what is true: the
+`certificate_expiring` event carries the watch's
+follow-through state and whether its chase reads stale; a
+stale chase (`stale_chase_due` in `certificates.py`: ageing
+stale, chase act unstamped) draws one
+`certificate_watch_stale_chase` event, and the sweep sends
+one signed announcement webhook naming all of them
+(`build_certificate_stale_chase_payload`, deliberately not
+outboxed — the stamp is the record), then stamps the chase
+act (`stale_announced_at`) on the record and persists it:
+announced once per stale period. A period is per chase act —
+a later chase, recorded on the record a renewal moved the
+watch to, is a new unstamped act with its own announcement.
+A watch whose follow-through is `risk_accepted` draws no
+event at all: the sweep counts it under
+`certificate_risk_accepted_count` and lists it under
+`certificates_risk_accepted` — the covenant sweep's
+counted-closed discipline, applied to a decision.
 
 ## Production topology
 
