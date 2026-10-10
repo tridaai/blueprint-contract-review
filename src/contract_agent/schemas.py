@@ -232,6 +232,28 @@ class ClauseDiff(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Obligations register (extracted in code — dates validated/derived)
+# ---------------------------------------------------------------------------
+
+class Obligation(BaseModel):
+    """One dated or recurring duty the contract creates, with its
+    source clause. Built in code from extraction signals + clause
+    text (``obligations.py``): day/hour counts are the code-extracted
+    signal values, and a ``date`` is either quoted from the clause or
+    derived by date arithmetic (``computed`` says which)."""
+
+    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term
+    description: str = ""
+    detail: str = ""  # the operative value as written, e.g. "120 days' written notice"
+    days: Optional[int] = None
+    hours: Optional[int] = None
+    date: Optional[str] = None  # ISO date: explicit in the clause, or computed
+    computed: bool = False  # True when `date` was derived (e.g. renewal date − notice days)
+    source_clause_id: str = ""
+    source_ref: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Computed document facts (code only — never the model)
 # ---------------------------------------------------------------------------
 
@@ -380,6 +402,7 @@ class AgentResult(BaseModel):
     injection_flags: list[str] = Field(default_factory=list)
     clause_verdicts: list[ClauseVerdict] = Field(default_factory=list)
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
+    obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""
     assessment: Assessment = Field(default_factory=Assessment)

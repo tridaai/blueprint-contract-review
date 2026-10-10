@@ -65,6 +65,7 @@ from .extractor import extract_clauses, extraction_discrepancies
 from .facts import compute_facts
 from .guardrails import validate_drafts
 from .model_backends import DraftContext, clause_rows_text, estimate_cost_usd
+from .obligations import build_obligations
 from .options import build_options
 from .playbook_data import PLAYBOOK
 from .resilience import ResilientBackend
@@ -77,6 +78,7 @@ from .schemas import (
     ClauseDiff,
     ClauseExtraction,
     ClauseOption,
+    Obligation,
     ClauseUnit,
     ClauseVerdict,
     ContractFacts,
@@ -208,6 +210,7 @@ class AgentState(TypedDict, total=False):
     injection_flags: list[str]
     verdicts: list[dict[str, Any]]
     clause_diffs: list[dict[str, Any]]
+    obligations: list[dict[str, Any]]
     facts: dict[str, Any]
     playbook: list[dict[str, Any]]
     retrieval_info: str
@@ -416,6 +419,9 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
             "clause_rows": _rows(state),
             "clause_diffs": [
                 d.model_dump() for d in build_clause_diffs(units, verdicts)
+            ],
+            "obligations": [
+                o.model_dump() for o in build_obligations(units, extractions)
             ],
         }
 
@@ -788,6 +794,8 @@ def _build_trace(state: AgentState) -> list[TraceStep]:
                     if facts.critical_absences
                     else []
                 ),
+                f"obligations register: {len(state.get('obligations', []))} "
+                "dated/recurring duties extracted in code",
             ],
         ),
         step(
@@ -1001,6 +1009,9 @@ def run_contract(
         clause_verdicts=[ClauseVerdict.model_validate(v) for v in state.get("verdicts", [])],
         clause_diffs=[
             ClauseDiff.model_validate(d) for d in state.get("clause_diffs", [])
+        ],
+        obligations=[
+            Obligation.model_validate(o) for o in state.get("obligations", [])
         ],
         playbook=[RetrievedPlaybook.model_validate(g) for g in state.get("playbook", [])],
         vector_store=state.get("retrieval_info", ""),

@@ -178,7 +178,7 @@ def extract_signals_rules(unit: ClauseUnit, clause_type: str) -> dict:
         signals["mutual"] = any(
             p in text for p in ("each party", "either party", "mutual", "both parties")
         )
-        m = re.search(r"(\d+)\s*years?", text)
+        m = re.search(r"\(?(\d+)\)?\s*years?", text)
         signals["duration_years"] = int(m.group(1)) if m else None
         signals["perpetual"] = any(
             p in text for p in ("perpetual", "in perpetuity", "indefinitely", "without time limit")

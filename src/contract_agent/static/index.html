@@ -186,6 +186,17 @@ function render(result) {
     <dt>Package</dt><dd>${f.package_complete ? 'complete' : 'INCOMPLETE — exhibits missing: ' + (f.exhibits_missing || []).map(esc).join(', ')} · signature pages: ${f.signature_pages_present ? 'present' : 'absent'}</dd>
     <dt>Discrepancies</dt><dd>${esc(f.discrepancy_count)} extraction cross-check discrepancy(ies)</dd>
   </dl>`;
+  html += `<h3>Obligations register <span class="note">(extracted in code — what must happen, by when, if signed)</span></h3>` +
+    ((result.obligations && result.obligations.length)
+      ? `<table><thead><tr><th>Kind</th><th>Obligation</th><th>Detail</th><th>When</th><th>Source</th></tr></thead><tbody>
+        ${result.obligations.map(o => `<tr>
+          <td>${pill(o.kind)}</td>
+          <td>${esc(o.description)}</td>
+          <td>${esc(o.detail || '—')}</td>
+          <td>${o.date ? esc(o.date) + (o.computed ? ' <span class="note">(computed)</span>' : '') : o.days ? esc(o.days) + ' days' : o.hours ? esc(o.hours) + ' hours' : '—'}</td>
+          <td>${esc(o.source_clause_id)}${o.source_ref ? ' (§' + esc(o.source_ref) + ')' : ''}</td></tr>`).join('')}
+        </tbody></table>`
+      : `<p class="empty">No dated or recurring obligations extracted from this contract.</p>`);
   html += `<h3>Playbook retrieved</h3><ul>${result.playbook.map(g =>
     `<li>[${esc(g.playbook_id)}] ${esc(g.title)} <span class="note">(score ${esc(g.score)}, via ${esc((g.sources||[]).join('+') || 'keyword')})</span></li>`).join('') || '<li>none</li>'}</ul>`;
   html += `<h3>Assessment <span class="note">(composed by: ${esc(result.assessment.source)})</span></h3>

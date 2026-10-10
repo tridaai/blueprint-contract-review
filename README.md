@@ -42,7 +42,12 @@ For each contract, the pipeline:
 5. **Computes document facts in code**: position counts, worst
    position, and **absence detection** — a contract with no liability
    cap clause at all is flagged, and missing liability/data-protection
-   clauses are critical absences that force escalation posture.
+   clauses are critical absences that force escalation posture. The
+   same pass builds an **obligations register**: renewal dates,
+   notice periods, payment terms, breach-notice windows, and
+   reporting duties extracted in code with their source clauses —
+   including notice deadlines derived by date arithmetic and flagged
+   as computed, never quoted.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
