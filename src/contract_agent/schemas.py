@@ -137,6 +137,7 @@ class ContractInput(BaseModel):
     contract_id: str
     doc_type: str = "msa"  # msa | sow | nda | amendment | order_form | dpa | employment
     supersedes: str = ""  # contract_id of the previous negotiation round this draft replaces
+    matter: str = ""  # the matter this contract belongs to: chains sharing a counterparty + matter tag form one matter (matter_brief.py)
     title: str = ""
     counterparty_name: str = ""
     our_role: str = ""  # vendor | customer | partner — the side we review from

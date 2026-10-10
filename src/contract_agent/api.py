@@ -558,6 +558,30 @@ def negotiation_brief(contract_id: str):
     )
 
 
+@app.get("/matters/brief", dependencies=_AUTH)
+def matter_brief(counterparty: str, matter: str):
+    """The matter brief as a markdown download: every chain sharing
+    this counterparty + matter tag — combined open positions,
+    exhibit findings across the documents, and all obligations
+    sorted by deadline — assembled in code from the stored records
+    and exported via the object-store port. Draft for counsel
+    review; the agent sends it nowhere."""
+    try:
+        brief = service.matter_brief(counterparty, matter)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return PlainTextResponse(
+        brief["markdown"],
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": "attachment; filename=matter-brief.md",
+            "X-Object-Key": brief["key"],
+        },
+    )
+
+
 @app.post("/contracts/{contract_id}/approve", response_model=AgentResult, dependencies=_AUTH)
 def approve(contract_id: str, request: DecisionRequest) -> AgentResult:
     try:

@@ -1148,6 +1148,96 @@ class ContractService:
             "delta_lines": delta,
         }
 
+    def matter_brief(self, counterparty: str, matter: str) -> dict:
+        """The matter brief: one markdown document across every
+        chain that shares this counterparty and matter tag (see
+        ``matter_brief.py``) — combined open positions, exhibit
+        findings across the documents, and all obligations sorted
+        by deadline — exported through the object-store port under
+        ``matters/<slug>/`` with the chain brief's lineage
+        discipline: versioned keys, a retained digest per export in
+        the index, and a "Since the last matter brief" delta
+        against the previous export. Raises KeyError when no stored
+        contract carries the counterparty + matter pair, ValueError
+        when the matter tag is empty (an untagged contract is in no
+        matter)."""
+        if not (matter or "").strip():
+            raise ValueError("A matter tag is required — untagged contracts form no matter.")
+        from .matter_brief import (
+            build_matter_brief,
+            matter_delta_lines,
+            matter_records,
+            matter_slug,
+            matter_source_digest,
+        )
+
+        chains = matter_records(
+            self._get_store().all_records(), counterparty, matter
+        )
+        if not chains:
+            raise KeyError(
+                f"No stored contracts for counterparty {counterparty!r} "
+                f"in matter {matter!r} (analyze them first)"
+            )
+        objects = self._get_object_store()
+        slug = matter_slug(counterparty, matter)
+        index_key = f"matters/{slug}/matter-brief-index.json"
+        exports: list[dict] = []
+        raw_index = objects.get(index_key)
+        if raw_index:
+            try:
+                loaded = json.loads(raw_index.decode("utf-8"))
+                if isinstance(loaded, list):
+                    exports = loaded
+            except (ValueError, UnicodeDecodeError):
+                exports = []  # a corrupt index starts a new lineage, never blocks a brief
+        previous = exports[-1] if exports else None
+        digest = matter_source_digest(counterparty, matter, chains)
+        delta = (
+            matter_delta_lines(previous["digest"], digest)
+            if previous is not None
+            else []
+        )
+        markdown = build_matter_brief(
+            counterparty,
+            matter,
+            chains,
+            delta_lines=delta,
+            first_export=previous is None,
+        )
+        seq = len(exports) + 1
+        versioned_key = f"matters/{slug}/matter-brief-v{seq}.md"
+        objects.put(versioned_key, markdown.encode("utf-8"), content_type="text/markdown")
+        key = f"matters/{slug}/matter-brief.md"
+        objects.put(key, markdown.encode("utf-8"), content_type="text/markdown")
+        exports.append(
+            {
+                "seq": seq,
+                "key": versioned_key,
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "digest": digest,
+            }
+        )
+        objects.put(
+            index_key,
+            json.dumps(exports, indent=2).encode("utf-8"),
+            content_type="application/json",
+        )
+        return {
+            "counterparty": counterparty,
+            "matter": matter,
+            "key": key,
+            "markdown": markdown,
+            "export_seq": seq,
+            "versioned_key": versioned_key,
+            "previous_export": (
+                {"key": previous["key"]} if previous is not None else None
+            ),
+            "delta_lines": delta,
+            "chains": len(chains),
+            "contracts": sum(len(chain) for chain in chains),
+        }
+
     def queue(self, today=None) -> list[dict]:
         """The counsel worklist: every contract still awaiting a
         decision, worked in the order counsel should take them —
