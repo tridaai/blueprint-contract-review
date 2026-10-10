@@ -87,7 +87,7 @@
         <button id="outbox-refresh">Refresh</button>
         <button id="outbox-announce">Announce stale failures</button>
         <button id="outbox-prune">Prune sent entries past retention</button>
-        <span class="note" id="outbox-status">every signed dispatch — approved packets, SLA breaches, drift findings — with its delivery state. A failed delivery is re-sent from the stored payload, under a named operator; the event is never regenerated. Sent entries past the retention age may be pruned under a name; failed entries are never pruned — one left unrepaired past the stale threshold is flagged here, in /metrics, and on the queue, and the announce sweep tells the operator's system of record about it, once per stale period.</span>
+        <span class="note" id="outbox-status">every signed dispatch — approved packets, SLA breaches, drift findings — with its delivery state. A failed delivery is re-sent from the stored payload, under a named operator; the event is never regenerated. Sent entries past the retention age may be pruned under a name; failed entries are never pruned — one left unrepaired past the stale threshold is flagged here, in /metrics, and on the queue, and the announce sweep tells the operator's system of record about it, once per stale period. Every prune is itself recorded in the prune ledger below: the act that removes history leaves a record.</span>
       </div>
     </section>
     <section>
@@ -259,12 +259,23 @@ async function loadOutbox() {
   const view = await res.json();
   const counts = view.counts || {};
   const staleness = view.staleness || {};
-  if (!view.entries.length) { host.innerHTML = '<p class="note">No dispatches recorded — a dispatch is recorded only when a webhook endpoint is configured and a packet is approved, a breach is swept, or a drift finding fires.</p>'; return; }
+  let pruneHtml = '';
+  try {
+    const pres = await fetch('/webhooks/outbox/prunes', {headers: headers()});
+    if (pres.ok) {
+      const ledger = await pres.json();
+      if (ledger.prunes && ledger.prunes.length) {
+        pruneHtml = '<p class="note" style="margin-top:10px">Prune ledger — the acts that removed delivery history, themselves on record:</p>' +
+          ledger.prunes.map(p => `<div class="row" style="justify-content:space-between;border-top:1px solid #e5e5e0;padding:6px 0"><span><strong>${esc(p.prune_id)}</strong> · pruned by ${esc(p.actor)} · ${esc(p.at)} — removed ${p.pruned_ids.length} entr${p.pruned_ids.length === 1 ? 'y' : 'ies'} past the ${esc(p.retention_days)}-day retention age${p.pruned_ids.length ? ': ' + esc(p.pruned_ids.join(', ')) : ''} · kept ${esc(p.kept_sent)} sent, ${esc(p.kept_failed)} failed</span></div>`).join('');
+      }
+    }
+  } catch (e) { /* the ledger is a side reading; the outbox stands without it */ }
+  if (!view.entries.length) { host.innerHTML = '<p class="note">No dispatches recorded — a dispatch is recorded only when a webhook endpoint is configured and a packet is approved, a breach is swept, or a drift finding fires.</p>' + pruneHtml; return; }
   host.innerHTML = `<p class="note" style="margin-bottom:8px">${counts.total} dispatch(es) · ${counts.sent} sent · ${counts.failed} failed · ${counts.resends} re-send(s)${staleness.stale_failed ? ` · <span class="flag">${staleness.stale_failed} stale failure(s) — failed more than ${esc(staleness.stale_threshold_days)} day(s) ago and still unrepaired${staleness.unannounced_stale_failed ? `, ${staleness.unannounced_stale_failed} not yet announced` : ', all announced'}</span>` : ''}</p>` +
     view.entries.map(e => `<div class="row" style="justify-content:space-between;border-top:1px solid #e5e5e0;padding:6px 0">
       <span><strong>${esc(e.family)}</strong> · ${esc(e.contract_id)} · ${esc(e.label)} — <strong>${esc(e.status)}</strong> · ${e.attempts.length} attempt(s)${e.attempts.length > 1 ? ', last by ' + esc(e.attempts[e.attempts.length - 1].actor || 'system') : ''}${e.status === 'failed' && e.age_days !== null && e.age_days !== undefined && staleness.stale_threshold_days !== undefined && e.age_days >= staleness.stale_threshold_days ? ` · <span class="flag">STALE — unrepaired for ${esc(e.age_days)} day(s)${e.stale_announced_at ? ', announced ' + esc(e.stale_announced_at) : ', not yet announced'}</span>` : ''}</span>
       ${e.status === 'failed' ? `<button data-resend="${esc(e.outbox_id)}">Re-send</button>` : ''}
-    </div>`).join('');
+    </div>`).join('') + pruneHtml;
   host.querySelectorAll('[data-resend]').forEach(btn => btn.addEventListener('click', async () => {
     const actor = (prompt('Re-send this delivery as (your name — it goes on the attempt record):') || '').trim();
     if (!actor) return;

@@ -694,11 +694,22 @@ def prune_webhook_outbox(body: WebhookResendRequest) -> dict:
     older than ``WEBHOOK_OUTBOX_RETENTION_DAYS`` (default 90)
     are removed, under a named operator; FAILED entries are
     never pruned, and the report names the failures kept —
-    stale ones flagged. 422 when the actor is missing."""
+    stale ones flagged. The act is recorded in the prune
+    ledger. 422 when the actor is missing."""
     try:
         return service.prune_webhook_outbox(actor=body.actor or "")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/webhooks/outbox/prunes", dependencies=_AUTH)
+def webhook_outbox_prunes() -> dict:
+    """The prune ledger: every prune act recorded against the
+    outbox — who pruned, when, the retention age in force, the
+    exact entry ids removed, and what was kept — so the gaps in
+    the delivery ledger are themselves auditable. Append-only:
+    nothing prunes the prunes."""
+    return service.webhook_outbox_prunes()
 
 
 @app.post("/webhooks/outbox/{outbox_id}/resend", dependencies=_AUTH)

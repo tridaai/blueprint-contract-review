@@ -2638,7 +2638,9 @@ class ContractService:
                 "the event is never regenerated to recover a "
                 "delivery. Sent entries older than the retention "
                 "age may be pruned by a named operator (POST "
-                "/webhooks/outbox/prune); failed entries are never "
+                "/webhooks/outbox/prune) — every prune act is "
+                "itself recorded in the prune ledger (GET "
+                "/webhooks/outbox/prunes); failed entries are never "
                 "pruned, and one left unrepaired past the stale "
                 "threshold is named in the staleness block and "
                 "announced by the stale-failure sweep (POST "
@@ -2769,11 +2771,20 @@ class ContractService:
         only by being repaired and then ageing out as a sent
         entry — so the report also names the failures it kept,
         stale ones flagged: pruning the history must never be
-        how a dead delivery gets forgotten."""
+        how a dead delivery gets forgotten.
+
+        The act itself leaves a record (round 17): every prune
+        appends an entry to the prune ledger
+        (:meth:`webhook_outbox_prunes`) — who, when, the
+        retention age in force, the exact ids removed — a prune
+        that removed nothing included, so the ledger's own gaps
+        are auditable and "what history do we no longer hold?"
+        has an answer."""
         from .webhook_outbox import (
             outbox_retention_days,
             outbox_stale_failure_days,
             prunable_sent_entries,
+            record_prune,
             stale_failure_rows,
         )
 
@@ -2792,22 +2803,58 @@ class ContractService:
             if store.delete(entry.outbox_id):
                 pruned.append(entry.outbox_id)
         kept = store.all()
+        kept_sent = sum(1 for e in kept if e.status == "sent")
+        kept_failed = sum(1 for e in kept if e.status == "failed")
+        ledger_entry = record_prune(
+            store,
+            actor=actor,
+            retention_days=retention,
+            pruned_ids=pruned,
+            kept_sent=kept_sent,
+            kept_failed=kept_failed,
+        )
         return {
             "actor": actor,
-            "pruned_at": datetime.now(timezone.utc).isoformat(),
+            "prune_id": ledger_entry.prune_id,
+            "pruned_at": ledger_entry.at,
             "retention_days": retention,
             "stale_threshold_days": outbox_stale_failure_days(),
             "pruned": pruned,
             "pruned_count": len(pruned),
-            "kept_sent": sum(1 for e in kept if e.status == "sent"),
-            "kept_failed": sum(1 for e in kept if e.status == "failed"),
+            "kept_sent": kept_sent,
+            "kept_failed": kept_failed,
             "stale_failures_kept": stale_failure_rows(kept),
             "note": (
                 "Only sent entries past the retention age were "
                 "removed. Failed entries are never pruned: a "
                 "failure leaves the ledger by being repaired (a "
                 "re-send that lands) and then ageing out as a "
-                "sent entry."
+                "sent entry. The prune itself is recorded in the "
+                "prune ledger (GET /webhooks/outbox/prunes) — the "
+                "act that removes history leaves a record."
+            ),
+        }
+
+    def webhook_outbox_prunes(self) -> dict:
+        """The prune ledger (round 17): every prune act ever
+        recorded against the outbox, in the order they happened —
+        who pruned, when, the retention age in force, the exact
+        entry ids removed, and what was kept. The prune removes
+        delivery history; this is the record that the history was
+        removed deliberately, by a named operator, under a stated
+        rule — the answer to "what delivery history do we no
+        longer hold, and who removed it?" The ledger is
+        append-only: nothing prunes the prunes."""
+        prunes = self._get_outbox_store().prunes()
+        return {
+            "count": len(prunes),
+            "prunes": [p.model_dump(mode="json") for p in prunes],
+            "note": (
+                "One entry per prune act, recorded as it happened "
+                "— including prunes that removed nothing. A pruned "
+                "entry's delivery history is gone; this ledger is "
+                "what remains: the actor, the moment, the retention "
+                "age in force, and the ids taken."
             ),
         }
 

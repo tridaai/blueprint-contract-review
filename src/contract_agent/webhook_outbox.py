@@ -46,6 +46,18 @@ attempt clears the stamp: a delivery that was touched and
 failed again re-arms, and if it sits for another stale period
 it is announced again — announced once is a property of a
 stale period, not of an entry's whole life.
+
+**The prune ledger** (round 17): the prune's report was
+returned to the caller and gone — the act that removes
+delivery history left no record of itself, so the ledger's own
+gaps were unauditable. Every prune act now appends an
+``OutboxPrune`` to the store beside the entries (PostgreSQL:
+``webhook_outbox_prunes``, migration
+``0006_webhook_outbox_prunes.sql``): who pruned, when, the
+retention age in force, the exact entry ids removed, and what
+was kept — a prune that removed nothing included, because the
+ledger records the act, not only its casualties. The ledger is
+append-only: nothing prunes the prunes.
 """
 
 from __future__ import annotations
@@ -57,7 +69,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from .config import env_int, env_str, load_dotenv
-from .schemas import WebhookAttempt, WebhookOutboxEntry
+from .schemas import OutboxPrune, WebhookAttempt, WebhookOutboxEntry
 
 RETENTION_ENV = "WEBHOOK_OUTBOX_RETENTION_DAYS"
 DEFAULT_RETENTION_DAYS = 90
@@ -83,6 +95,8 @@ class OutboxStore(Protocol):
     def get(self, outbox_id: str) -> WebhookOutboxEntry | None: ...
     def all(self) -> list[WebhookOutboxEntry]: ...
     def delete(self, outbox_id: str) -> bool: ...
+    def record_prune(self, prune: OutboxPrune) -> OutboxPrune: ...
+    def prunes(self) -> list[OutboxPrune]: ...
 
 
 class InMemoryOutboxStore:
@@ -90,6 +104,7 @@ class InMemoryOutboxStore:
 
     def __init__(self) -> None:
         self._entries: dict[str, WebhookOutboxEntry] = {}
+        self._prunes: list[OutboxPrune] = []
         self._lock = threading.Lock()
 
     def save(self, entry: WebhookOutboxEntry) -> None:
@@ -107,6 +122,16 @@ class InMemoryOutboxStore:
     def delete(self, outbox_id: str) -> bool:
         with self._lock:
             return self._entries.pop(outbox_id, None) is not None
+
+    def record_prune(self, prune: OutboxPrune) -> OutboxPrune:
+        with self._lock:
+            prune.prune_id = f"prune-{len(self._prunes) + 1}"
+            self._prunes.append(prune)
+            return prune
+
+    def prunes(self) -> list[OutboxPrune]:
+        with self._lock:
+            return list(self._prunes)
 
 
 class PostgresOutboxStore:
@@ -189,6 +214,40 @@ class PostgresOutboxStore:
             conn.commit()
         return removed > 0
 
+    def record_prune(self, prune: OutboxPrune) -> OutboxPrune:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM webhook_outbox_prunes")
+                prune.prune_id = f"prune-{cur.fetchone()[0] + 1}"
+                cur.execute(
+                    """
+                    INSERT INTO webhook_outbox_prunes (prune_id, actor, payload, pruned_at)
+                    VALUES (%s, %s, %s::jsonb, now())
+                    """,
+                    (
+                        prune.prune_id,
+                        prune.actor,
+                        json.dumps(prune.model_dump(mode="json")),
+                    ),
+                )
+            conn.commit()
+        return prune
+
+    def prunes(self) -> list[OutboxPrune]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT payload FROM webhook_outbox_prunes "
+                    "ORDER BY pruned_at, prune_id"
+                )
+                rows = cur.fetchall()
+        return [
+            OutboxPrune.model_validate(
+                json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            )
+            for row in rows
+        ]
+
 
 def default_outbox_store() -> InMemoryOutboxStore | PostgresOutboxStore:
     """PostgreSQL when ``DATABASE_URL`` is set (the production
@@ -251,6 +310,33 @@ def record_dispatch(
     )
     store.save(entry)
     return entry
+
+
+def record_prune(
+    store: OutboxStore,
+    *,
+    actor: str,
+    retention_days: int,
+    pruned_ids: list[str],
+    kept_sent: int,
+    kept_failed: int,
+) -> OutboxPrune:
+    """Append one prune act to the prune ledger (round 17): the
+    act that removes delivery history leaves its own record —
+    who pruned, when, the retention age in force, the exact ids
+    removed, and what was kept. Called for EVERY prune act,
+    including one that removed nothing: the ledger is the act's
+    record, not only its casualties'. The store assigns the
+    ``prune_id``. Returns the stored entry."""
+    prune = OutboxPrune(
+        actor=actor,
+        at=datetime.now(timezone.utc).isoformat(),
+        retention_days=retention_days,
+        pruned_ids=list(pruned_ids),
+        kept_sent=kept_sent,
+        kept_failed=kept_failed,
+    )
+    return store.record_prune(prune)
 
 
 # ---------------------------------------------------------------------------
