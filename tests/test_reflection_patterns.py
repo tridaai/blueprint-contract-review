@@ -15,6 +15,7 @@ from contract_agent.schemas import (
     EditOutcomeInput,
     EditReflection,
 )
+from contract_agent.objectstore import InMemoryObjectStore
 from contract_agent.service import ContractService
 from contract_agent.store import InMemoryStore
 from helpers import contract
@@ -140,6 +141,33 @@ def test_late_marked_outcomes_raise_the_pattern_on_refresh():
         d for d in refreshed.clause_diffs if d.clause_type == "payment_terms"
     )
     assert diff.pattern_escalated is True
+
+
+# ---------------------------------------------------------------------------
+# The brief names the pattern, with its round history
+# ---------------------------------------------------------------------------
+
+
+def test_brief_names_the_pattern_with_round_history():
+    svc = ContractService(
+        store=InMemoryStore(), checkpointer=False, object_store=InMemoryObjectStore()
+    )
+    r1 = svc.analyze(contract(_NET90, contract_id="CTR-PAT-1"))
+    _agree_payment_edit(svc, r1)
+    r2 = svc.analyze(
+        contract(_NET90, contract_id="CTR-PAT-2", supersedes="CTR-PAT-1")
+    )
+    first = svc.negotiation_brief("CTR-PAT-2")["markdown"]
+    assert "Reflection patterns" not in first  # one miss is not a pattern
+    _agree_payment_edit(svc, r2)
+    svc.analyze(contract(_NET90, contract_id="CTR-PAT-3", supersedes="CTR-PAT-2"))
+    md = svc.negotiation_brief("CTR-PAT-3")["markdown"]
+    assert "### Reflection patterns — agreed twice, reflected neither time" in md
+    assert "**payment_terms**" in md
+    assert "CTR-PAT-2 → CTR-PAT-3" in md  # the follow-ups that flagged it
+    assert "CTR-PAT-1 and CTR-PAT-2" in md  # the rounds that agreed it
+    # The since-the-last-brief delta announces the new pattern too.
+    assert "New reflection pattern: payment_terms" in md
 
 
 # ---------------------------------------------------------------------------

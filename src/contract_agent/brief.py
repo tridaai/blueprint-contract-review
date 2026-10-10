@@ -92,6 +92,9 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
         "reflection_flags": sum(
             1 for e in latest.edit_reflection if e.status == "agreed_not_reflected"
         ),
+        "reflection_patterns": sorted(
+            p.clause_type for p in latest.reflection_patterns
+        ),
     }
 
 
@@ -192,6 +195,16 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             f"{current['reflection_flags']} agreed edit(s) from the "
             "previous round are flagged agreed-but-not-reflected in "
             "the current draft (see Edit outcomes and reflection)."
+        )
+    for clause_type in sorted(
+        set(current.get("reflection_patterns", []))
+        - set(previous.get("reflection_patterns", []))
+    ):
+        lines.append(
+            f"New reflection pattern: {clause_type} — agreed edits on "
+            "this clause were flagged not reflected in two consecutive "
+            "follow-ups; the packet now proposes the walk-away line "
+            "for it (see Reflection patterns)."
         )
     if current["re_trades"] != previous["re_trades"]:
         lines.append(
@@ -436,6 +449,31 @@ def build_negotiation_brief(
                 lines.append(
                     f"- {entry.clause_type} ({entry.kind}, "
                     f"{entry.outcome}): {flag}{entry.status} — {entry.detail}"
+                )
+            lines.append("")
+        if latest.reflection_patterns:
+            lines.append(
+                "### Reflection patterns — agreed twice, reflected neither time"
+            )
+            lines.append("")
+            lines.append(
+                "One missed agreement is a drafting oversight. The "
+                "clause types below were agreed, missed, agreed again, "
+                "and missed again — flagged in two consecutive "
+                "follow-ups. That is a pattern in how this negotiation "
+                "is going, and the current packet answers it: each of "
+                "these clauses is proposed at the walk-away line."
+            )
+            lines.append("")
+            for pattern in latest.reflection_patterns:
+                lines.append(
+                    f"- **{pattern.clause_type}** — flagged "
+                    "agreed-but-not-reflected in "
+                    f"{' → '.join(pattern.flagged_in)}, checking the "
+                    "edits agreed in "
+                    f"{' and '.join(pattern.agreed_in)} "
+                    f"({pattern.flags} missed agreement(s) on record "
+                    "for this clause type across the chain)."
                 )
             lines.append("")
 
