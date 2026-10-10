@@ -28,14 +28,14 @@ ingest → extract → screen → classify → facts
 
 | Stage | What happens | Who decides |
 | --- | --- | --- |
-| ingest | Contract types normalized (msa/sow/nda/amendment/order_form + aliases); text segmented into numbered clause units in code | code |
+| ingest | Contract types normalized (msa/sow/nda/amendment/order_form/dpa + aliases); text segmented into numbered clause units in code | code |
 | extract | Per-clause type + structured facts (cap months/amounts, net days, notice periods, governing law, DPA, assignment) with confidence; optional LLM extraction cross-check; discrepancies recorded, never fatal | rules + LLM check |
 | screen | Injection screening: counterparty text is untrusted. AI-directed instructions are flagged and fenced out of prompts/drafts; the clause is still reviewed on substance | code |
 | classify | Per-clause playbook position from the deterministic matrix, cross-checked by an LLM per clause; disagreements escalate to ≥ review_required; resolution recorded per verdict | rules, LLM advises |
 | facts | Document posture counted in code: position counts, worst position, absence detection (missing standard clauses; liability cap + data protection are critical absences); exhibit consistency checks (the DPA exhibit's text vs the clause's promises); the obligations register | code |
 | retrieve | Playbook entries by keyword / semantic / hybrid (RRF fusion); query built from clause content | code |
 | assess | Risk summary composed over evidence; with a provider, a bounded tool loop (`search_playbook`, `clause_facts`, `counterparty_history`); template fallback offline | LLM over evidence |
-| options | Per flagged clause, options scored in code (position fit + posture fit + package completeness) | code |
+| options | Per flagged clause, options scored in code (position fit + posture fit + package completeness + a capped history term from the counterparty profile) | code |
 | draft | Review packet (clause table: verdict, citation, rationale, fallback language) + counterparty response asserting nothing as agreed | LLM / template |
 | verify | Grounding checklist (citations must be retrieved playbook ids; figures and foreign ids flagged) + optional LLM critique | code + LLM |
 | review | Independent reviewer — a second pass, not the drafter; can block | LLM / checklist |
@@ -160,6 +160,25 @@ bookkeeping. The verdict diff and the reflection answer different
 questions — positions vs the specific agreed words — and ride side
 by side on the result, the brief, and the webhook.
 
+**Reflection patterns** (`reflection_patterns.py`,
+`fallback_tiers.propose_tier(reflection_escalated=...)`).
+Reflection is per-edit; a pattern is per clause type across the
+chain. For each type, the two most recent *measurable* reflection
+checks in the chain (reflected / agreed-not-reflected verdicts —
+an uncheckable edit neither builds nor breaks the streak) are
+read in chain order: if both are agreed-not-reflected and no
+later check resolved the type, the type carries a pattern — a
+concession agreed in one round, missing from the next draft, then
+agreed and missing again. A flagged type's proposed tier
+escalates to the walk-away line where the playbook carries one
+(the pattern reason outranks the position and re-trade reasons),
+the clause diff records `pattern_escalated`, the result carries
+the patterns with their round history (flagged in / agreed in),
+and the brief names them under their own heading with a
+"New reflection pattern" delta line. Late-marked outcomes refresh
+the stored patterns of every affected follow-up, computed from the
+chain's records rather than the arrival record alone.
+
 **Queue SLA and ownership** (`ContractService.queue` / `assign`).
 The counsel queue is a worklist, not a report: each awaiting item
 carries an assignee recorded on the record (who holds it, assigned
@@ -228,6 +247,67 @@ last brief" (`brief_delta_lines`): new round, decision recorded,
 clauses moved / appeared / disappeared, edits proposed anew,
 outcomes recorded, obligations opened or closed — or, honestly,
 that nothing material changed.
+
+**History-aware option scoring** (`options.py`). The concession
+profile also feeds the options node as a scoring term — small,
+explicit, capped. For a flagged clause whose type the counterparty
+**concedes**, `propose_fallback_language` gains points; for a
+type they **hold**, or have **re-traded** in any chain,
+`escalate_to_senior_counsel` gains them. The term is one number
+per option (`HISTORY_TERM_CAP`, 6 of 100), lands in the option's
+`breakdown` beside the position, posture, and information terms
+(the components sum to the score), and is test-pinned to order
+close calls without ever outweighing the playbook terms. No
+profile, no tendencies, no term: cold counterparties score exactly
+as before.
+
+**Playbook proposals** (`playbook_proposals.py`,
+`proposal_store.py`, `playbook_registry.py`,
+`migrations/0003_playbook_proposals.sql`). The playbook is
+counsel's document, so its gaps are counsel's work queue. The
+coverage analytics count, per clause type, verdicts whose cited
+entries carry no fallback language; a type at or above
+`MIN_GAP_FLAGS` becomes a generation candidate.
+`draft_playbook_proposal` shapes a three-entry family (position,
+fallback, walk-away line) from the **nearest covered type** —
+deterministic by shared name tokens, then family size, then
+name — recording its basis on the proposal. Language is carried
+from the donor only when a name token is shared ("related");
+otherwise the draft is a structure-only scaffold that says
+plainly counsel drafts the substance. Proposals persist in their
+own store (Postgres in production, an in-memory double in tests)
+as PROPOSED with their evidence; generation is idempotent in
+effect — a type already proposed, in ANY state, is never drafted
+twice, so a dismissed gap stays dismissed. Activation is a named
+counsel act on the API or the console panel; it registers the
+proposal's entries into the active playbook (a process-local
+overlay over the shipped corpus, re-registered from the store
+after a restart), after which verdict citation resolution, the
+missing-fallback enrichment, tier walk-away lines, the mock
+assessment's playbook text, and the coverage counts all read the
+merged view. One honest limit: the retrieval corpus snapshots
+the shipped playbook when a retriever is built, so activated
+entries join keyword/semantic retrieval on the next rebuild —
+citations and tiers see them immediately.
+
+**Standalone DPA family** (`doc_type: "dpa"`). A data processing
+addendum arriving as the primary document is normalised from its
+names (data processing addendum/agreement, data protection
+addendum) and measured on its own absence matrix in
+`STANDARD_CLAUSES["dpa"]` — data protection, sub-processor terms,
+transfers, audit rights, deletion, confidentiality — with four
+clause types of its own (`subprocessor_terms`, `data_transfer`,
+`audit_rights`, `data_deletion`), each with extractor signals
+(objection window in days, transfer mechanisms named, audit
+excluded vs direct vs reports-only, deletion at whose choice,
+indefinite retention), deterministic verdict rules, a two-entry
+playbook family (PB-SUB/TRF/AUD/DEL), tier lines, and an
+obligations-register entry for the objection window. The samples
+carry a clean DPA (CTR-2023, aligned) and an adversarial one
+(CTR-2024: silent sub-processor changes, mechanism-free
+transfers, audit excluded, indefinite retention — plus an
+instruction planted in the transfer clause, screened and flagged
+while the clause is still judged on its substance).
 
 **Deadline dispatch sweep** (`ContractService.dispatch_obligation_sweep`).
 Per-run `obligation_due` events announce deadlines at analysis
