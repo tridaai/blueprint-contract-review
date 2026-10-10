@@ -693,6 +693,23 @@ class TraceStep(BaseModel):
     duration_ms: float = 0.0
 
 
+class DriftDispatch(BaseModel):
+    """One drift finding's webhook dispatch (round 13): when a
+    chain round is analyzed and a cross-round drift check comes
+    back a finding (``mismatch`` — a sub-processor added inside
+    its notice window, a prior invention removed from the
+    schedule), the finding is pushed to the customer's system of
+    record through the signed webhook seam, and the push is
+    recorded here so it is answerable from the record. The
+    payload carries the finding — check, status, the movement —
+    never contract text. ``dispatch`` is sent | failed."""
+
+    check: str  # subprocessor_list_drift | prior_invention_schedule_drift
+    status: str = ""  # the finding's status (mismatch — only findings are pushed)
+    prior_contract_id: str = ""
+    dispatch: str = ""  # sent | failed
+
+
 # ---------------------------------------------------------------------------
 # Final result
 # ---------------------------------------------------------------------------
@@ -719,6 +736,7 @@ class AgentResult(BaseModel):
     subprocessor_drift: list[ExhibitCheck] = Field(default_factory=list)  # the DPA annex's movement vs the prior round of the chain (subprocessor_drift.py) — cross-round, so attached by the service after the run, like round_diff
     certificate_renewal: list[ExhibitCheck] = Field(default_factory=list)  # a renewal certificate read against the ORIGINAL round's requirement set (certificate_renewal.py) — cross-round, attached by the service after the run; the renewal watch closes on this evidence or not at all
     prior_invention_drift: list[ExhibitCheck] = Field(default_factory=list)  # the prior-invention schedule's movement vs the prior round of the chain (prior_invention_drift.py) — a removal is a finding: an invention that leaves the schedule falls into the assignment
+    drift_dispatches: list[DriftDispatch] = Field(default_factory=list)  # signed webhook pushes of this round's drift findings (service.py) — findings only, recorded when ACTION_WEBHOOK_URL is configured
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""

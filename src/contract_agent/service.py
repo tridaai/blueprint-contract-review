@@ -6,7 +6,10 @@ counterparty portal call, nothing sent). The one opt-in exception is
 output routing: when ``ACTION_WEBHOOK_URL`` is configured, the
 approved packet is POSTed to that endpoint — the customer's system
 of choice — and the outcome is recorded on the result (see
-``dispatch_approval_webhook``).
+``dispatch_approval_webhook``). The same signed seam carries two
+operational event families: queue SLA breaches (see
+``dispatch_sla_breach_webhook``) and cross-round drift findings
+(see ``dispatch_drift_finding_webhook``).
 
 Records live in the record store (``store.py``): PostgreSQL in
 production, so analyses and decisions survive restarts and are
@@ -49,6 +52,7 @@ from .schemas import (
     EDIT_OUTCOMES,
     AgentResult,
     ContractInput,
+    DriftDispatch,
     EditOutcome,
     EditOutcomeInput,
     PatternTermSuspension,
@@ -177,6 +181,45 @@ def dispatch_sla_breach_webhook(record: ApprovalRecord, item: dict, notified_at:
         "assignee": item["assignee"],
         "unassigned": not item["assignee"],
         "notified_at": notified_at,
+    }
+    return _post_signed_webhook(url, payload)
+
+
+def dispatch_drift_finding_webhook(
+    result: AgentResult, check, prior_contract_id: str
+) -> str | None:
+    """POST one cross-round drift finding to ``ACTION_WEBHOOK_URL``
+    (off by default), on the approval channel's signing scheme.
+
+    The approval webhook reports counsel's decisions; the drift
+    findings are the other events a contract system of record
+    most wants pushed — a sub-processor engaged inside its
+    notice window, a prior invention removed from the schedule
+    it was protected by — because they happen BETWEEN decisions,
+    when nobody is looking at the packet. The payload carries the
+    finding (check, status, the movement the check computed) and
+    never contract text: the receiving system learns what moved
+    and why it is a finding, and reads the round itself from its
+    own record. Returns ``None`` when no URL is configured (the
+    default: the finding is announced on the event stream only),
+    ``"sent"`` / ``"failed"`` otherwise; a failed dispatch never
+    unmakes the finding or the analysis that produced it.
+    """
+    load_dotenv()
+    url = env_str("ACTION_WEBHOOK_URL")
+    if not url:
+        return None
+    payload = {
+        "event": "drift_finding",
+        "check": check.name,
+        "status": check.status,
+        "contract_id": result.contract_id,
+        "prior_contract_id": prior_contract_id,
+        "counterparty_name": result.counterparty_name,
+        "exhibit_document_id": check.exhibit_document_id,
+        "promised": check.promised,
+        "found": check.found,
+        "detail": check.detail,
     }
     return _post_signed_webhook(url, payload)
 
@@ -453,6 +496,7 @@ class ContractService:
         self._attach_subprocessor_drift(model, result)
         self._attach_certificate_renewal(model, result)
         self._attach_prior_invention_drift(model, result)
+        self._dispatch_drift_findings(model, result, event_sink=event_sink)
         self._get_store().save(
             ApprovalRecord(
                 result=result,
@@ -739,6 +783,74 @@ class ContractService:
                 details=[check.detail],
             )
         )
+
+    def _dispatch_drift_findings(
+        self,
+        model: ContractInput,
+        result: AgentResult,
+        event_sink: EventSink | None = None,
+    ) -> None:
+        """Drift findings as pushed events (round 13): a drift
+        check that came back a FINDING (``mismatch``) is announced
+        the moment the round is analyzed — a ``drift_finding``
+        event on the run's stream, and, when ``ACTION_WEBHOOK_URL``
+        is configured, a signed webhook to the customer's system
+        of record, with the outcome recorded on the result
+        (``drift_dispatches``). Movement that breaks nothing
+        (``consistent``) stays on the result and the brief: it is
+        information for the reader, not an alarm for a system
+        that was not in the room. Only the two drift families
+        push — the certificate renewal has its own watch and
+        sweep. A failed dispatch is recorded, never raised: the
+        finding stands either way."""
+        from .events import RunEvent
+        from .schemas import TraceStep
+
+        findings = [
+            check
+            for check in (
+                *result.subprocessor_drift,
+                *result.prior_invention_drift,
+            )
+            if check.status == "mismatch"
+        ]
+        if not findings:
+            return
+        prior_id = model.supersedes or ""
+        for check in findings:
+            if event_sink is not None:
+                event_sink.emit(
+                    RunEvent(
+                        type="drift_finding",
+                        contract_id=model.contract_id,
+                        detail={
+                            "check": check.name,
+                            "status": check.status,
+                            "prior_contract_id": prior_id,
+                            "found": check.found,
+                        },
+                    )
+                )
+            dispatch = dispatch_drift_finding_webhook(result, check, prior_id)
+            if dispatch is None:
+                continue
+            result.drift_dispatches.append(
+                DriftDispatch(
+                    check=check.name,
+                    status=check.status,
+                    prior_contract_id=prior_id,
+                    dispatch=dispatch,
+                )
+            )
+            result.trace.append(
+                TraceStep(
+                    name="drift_webhook",
+                    title=(
+                        f"Drift finding pushed ({check.name}): {dispatch}"
+                    ),
+                    details=[check.detail],
+                )
+            )
 
     def analyze_batch(
         self,

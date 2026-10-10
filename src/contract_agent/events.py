@@ -22,7 +22,13 @@ waited, and the queue owner, with ``unassigned`` called out),
 its stored expiry check came back consistent — expires within the
 watch window, ``CERTIFICATE_EXPIRY_WATCH_DAYS``, default 90;
 emitted by the deadline sweep, carrying the expiry date,
-days_until, and overdue flag), ``run_completed``
+days_until, and overdue flag), ``drift_finding`` (a cross-round
+drift check — sub-processor list, prior-invention schedule —
+came back a finding (``mismatch``) when a chain round was
+analyzed; carries the check name, the finding's status, and the
+prior round's id; the same finding is pushed to
+``ACTION_WEBHOOK_URL``, signed, when one is configured),
+``run_completed``
 (carries the final status), ``run_failed`` (carries the clean error
 message). Events fire in the offline fallback exactly as in provider
 mode — durations are real wall-clock measurements either way.
@@ -119,6 +125,13 @@ class PrintingSink:
                 f"certificate expires {event.detail.get('expiry_date', '')} "
                 f"({event.detail.get('days_until')}d) · "
                 f"{event.detail.get('counterparty_name', '')}"
+            )
+        elif event.type == "drift_finding":
+            parts.append(
+                f"{event.detail.get('check', '')} vs "
+                f"{event.detail.get('prior_contract_id', '')} — "
+                f"{event.detail.get('status', '')}: "
+                f"{event.detail.get('found', '')}"
             )
         elif event.type == "sla_breach":
             parts.append(
