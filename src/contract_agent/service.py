@@ -586,6 +586,7 @@ class ContractService:
         self._attach_subprocessor_drift(model, result)
         self._attach_certificate_renewal(model, result)
         self._attach_prior_invention_drift(model, result)
+        self._attach_lapsed_covenant_readings(model, result)
         self._dispatch_drift_findings(model, result, event_sink=event_sink)
         self._get_store().save(
             ApprovalRecord(
@@ -903,6 +904,66 @@ class ContractService:
                 details=[check.detail],
             )
         )
+
+    def _attach_lapsed_covenant_readings(
+        self, model: ContractInput, result: AgentResult
+    ) -> None:
+        """Lapsed-covenant readings (``covenant_history.py``):
+        when this round supersedes stored rounds, the fresh
+        covenants this letter carries are read against the
+        chain's dated covenants of the same kind — where the
+        nearest prior one has lapsed, the reading is attached:
+        the prior round and its expiry named, the lapse's
+        evidence (confirmed, notified, still open) named, and
+        the new covenant read as the new bargain it is, not a
+        continuation of the restriction that lapsed. Attached
+        after the run, like the drift readings: the comparison
+        needs the chain's stored records, follow-through acts
+        included."""
+        if not model.supersedes or model.supersedes == model.contract_id:
+            return
+        from datetime import date as _date
+
+        from .covenant_history import build_lapsed_covenant_readings
+        from .schemas import TraceStep
+
+        store = self._get_store()
+        prior_rounds: list[tuple[str, list, list]] = []
+        seen = {model.contract_id}
+        supersedes = model.supersedes
+        while supersedes and supersedes not in seen:
+            seen.add(supersedes)
+            record = store.get(supersedes)
+            if record is None:
+                break
+            prior_rounds.append(
+                (
+                    record.result.contract_id,
+                    record.result.obligations,
+                    record.covenant_follow_throughs,
+                )
+            )
+            supersedes = (record.contract or {}).get("supersedes") or ""
+        if not prior_rounds:
+            return
+        prior_rounds.reverse()
+        readings = build_lapsed_covenant_readings(
+            prior_rounds, result.obligations, _date.today()
+        )
+        if not readings:
+            return
+        result.lapsed_covenant_readings = readings
+        for reading in readings:
+            result.trace.append(
+                TraceStep(
+                    name="prior_covenant_lapsed",
+                    title=(
+                        f"Lapsed covenant read against this letter: "
+                        f"{reading.found}"
+                    ),
+                    details=[reading.detail],
+                )
+            )
 
     def _dispatch_drift_findings(
         self,

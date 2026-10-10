@@ -100,6 +100,10 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
             {"status": c.status, "found": c.found}
             for c in latest.prior_invention_drift
         ],
+        "lapsed_covenant_readings": [
+            {"status": c.status, "found": c.found, "detail": c.detail}
+            for c in latest.lapsed_covenant_readings
+        ],
         "provenance_warnings": line_provenance_warnings(chain, latest),
         "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
         "reflection_flags": sum(
@@ -245,6 +249,15 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             f"Prior-invention schedule drift vs the prior round: "
             f"{pi['found']} ({pi['status']}) — see Exhibit "
             "findings."
+        )
+    cur_lapsed = current.get("lapsed_covenant_readings", [])
+    prev_lapsed = previous.get("lapsed_covenant_readings", [])
+    if cur_lapsed and cur_lapsed != prev_lapsed:
+        lines.append(
+            "Lapsed covenant read against this round: this "
+            "letter's fresh covenant follows a lapsed one in the "
+            "chain — a new bargain, not a continuation — see "
+            "Exhibit findings."
         )
     prev_warnings = set(previous.get("provenance_warnings", []))
     for warning in current.get("provenance_warnings", []):
@@ -666,6 +679,7 @@ def build_negotiation_brief(
         + list(latest.subprocessor_drift)
         + list(latest.certificate_renewal)
         + list(latest.prior_invention_drift)
+        + list(latest.lapsed_covenant_readings)
     )
     if not exhibit_rows:
         lines.append(
