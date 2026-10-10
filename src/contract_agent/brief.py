@@ -23,6 +23,15 @@ that moved, the edits proposed anew, the obligations opened or
 closed. Both the previous and the new export stay in object
 storage under versioned keys; nothing is overwritten but the
 canonical latest copy.
+
+The delta also narrates the chain's covenant movements (round
+19): the digest carries the covenant biography's step readings
+(``covenant_biography.py``) for the steps the chain has taken,
+and the delta names the movements of the steps that arrived
+since the previous export — a covenant introduced, dropped, its
+tail changed, its expiry moved — in the biography's own summary
+sentences, so the brief and the annex-history view cannot tell
+the story two ways.
 """
 
 from __future__ import annotations
@@ -45,7 +54,11 @@ def _walk_away_count(result: AgentResult) -> int:
 # ---------------------------------------------------------------------------
 
 
-def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
+def brief_source_digest(
+    chain: list[AgentResult],
+    latest: AgentResult,
+    covenant_steps: list[dict] | None = None,
+) -> dict:
     """The facts a brief is built from, as a comparable digest.
 
     Stored with every export (in the brief lineage index, see
@@ -55,7 +68,16 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
     say?" but "what changed since the brief I already read?".
     Everything here is copied from stored results; an edit is keyed
     by a hash of its proposed language, so re-proposing the same
-    language is not news and new language is."""
+    language is not news and new language is.
+
+    ``covenant_steps`` is the covenant biography's step readings
+    for this chain (``covenant_biography.py``), carried verbatim —
+    the from/to rounds, each step's movements, and the biography's
+    own summary sentence — so the delta can narrate a renegotiated
+    covenant in the biography's words rather than re-deriving the
+    movement here. Without a biography (a chain the service read
+    no covenants from) the digest carries no steps and the delta
+    says nothing about covenants, as before."""
     edits = []
     for edit in latest.proposed_edits:
         digest = hashlib.sha1(edit.replacement_text.encode("utf-8")).hexdigest()[:10]
@@ -103,6 +125,22 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
         "lapsed_covenant_readings": [
             {"status": c.status, "found": c.found, "detail": c.detail}
             for c in latest.lapsed_covenant_readings
+        ],
+        "covenant_steps": [
+            {
+                "from_contract_id": step.get("from_contract_id", ""),
+                "to_contract_id": step.get("to_contract_id", ""),
+                "movements": [
+                    {
+                        "kind": m.get("kind", ""),
+                        "change": m.get("change", ""),
+                        "detail": m.get("detail", ""),
+                    }
+                    for m in step.get("movements", [])
+                ],
+                "summary": step.get("summary", ""),
+            }
+            for step in (covenant_steps or [])
         ],
         "provenance_warnings": line_provenance_warnings(chain, latest),
         "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
@@ -258,6 +296,31 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             "letter's fresh covenant follows a lapsed one in the "
             "chain — a new bargain, not a continuation — see "
             "Exhibit findings."
+        )
+    # Covenant movements (round 19): the steps that ARRIVED since
+    # the previous export — a step's later round sits in the chain
+    # past the round that export covered — narrated in the
+    # covenant biography's own summary sentences, so the delta
+    # and the annex-history biography cannot disagree. A step
+    # whose covenants were all carried unchanged is not news (the
+    # new round itself already leads the delta); a step that
+    # introduced, dropped, re-tailed or re-dated a covenant is.
+    chain = current.get("chain", [])
+    previous_id = previous.get("contract_id", "")
+    previous_index = chain.index(previous_id) if previous_id in chain else -1
+    for step in current.get("covenant_steps", []):
+        to_id = step.get("to_contract_id", "")
+        if to_id not in chain or chain.index(to_id) <= previous_index:
+            continue
+        if not any(
+            movement.get("change") not in ("", "carried")
+            for movement in step.get("movements", [])
+        ):
+            continue
+        lines.append(
+            f"Covenant movement since the last brief "
+            f"({step.get('from_contract_id', '')} → {to_id}): "
+            f"{step.get('summary', '')}"
         )
     prev_warnings = set(previous.get("provenance_warnings", []))
     for warning in current.get("provenance_warnings", []):

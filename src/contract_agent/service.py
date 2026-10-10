@@ -828,6 +828,39 @@ class ContractService:
         rounds.reverse()
         return rounds
 
+    def _covenant_biography_steps(self, model: ContractInput) -> list[dict]:
+        """The covenant biography's steps for the chain ending at
+        ``model`` (``covenant_biography.py``, the annex history's
+        own builder, fed the same stored registers and
+        follow-through records the history view reads): each
+        step's covenant movements between consecutive rounds, in
+        the biography's own words. The negotiation brief's digest
+        carries them so its delta narrates a renegotiated
+        covenant from the same readings the biography publishes —
+        the two surfaces share one computation, not two tellings.
+        Empty when the chain carries no covenant at all."""
+        from datetime import date as _date
+
+        from .covenant_biography import build_covenant_biography
+
+        store = self._get_store()
+        chain = [*self._chain_contracts(model), model]
+        results: dict[str, AgentResult] = {}
+        follow_throughs: dict[str, list[dict]] = {}
+        for link in chain:
+            link_record = store.get(link.contract_id)
+            if link_record is not None:
+                results[link.contract_id] = link_record.result
+                follow_throughs[link.contract_id] = list(
+                    link_record.covenant_follow_throughs
+                )
+        biography = build_covenant_biography(
+            chain, results, follow_throughs, _date.today()
+        )
+        if biography is None:
+            return []
+        return biography["steps"]
+
     def _attach_certificate_renewal(
         self, model: ContractInput, result: AgentResult
     ) -> None:
@@ -1638,7 +1671,11 @@ class ContractService:
         previous export's — whichever round that export covered —
         and the brief leads with a "Since the last brief" section:
         the new round, decisions and outcomes recorded, clauses
-        moved, edits proposed anew, obligations opened or closed.
+        moved, edits proposed anew, obligations opened or closed —
+        and the chain's covenant movements (round 19), carried in
+        the digest as the covenant biography's own step readings
+        so the delta narrates a renegotiated covenant in the same
+        words the annex history publishes.
         """
         store = self._get_store()
         record = store.get(contract_id)
@@ -1646,9 +1683,11 @@ class ContractService:
             raise KeyError(f"Unknown contract_id: {contract_id} (analyze it first)")
         from .brief import brief_delta_lines, brief_source_digest, build_negotiation_brief
 
+        covenant_steps: list[dict] = []
         if record.contract:
             model = ContractInput.model_validate(record.contract)
             chain = self._chain_rounds(model, record.result)
+            covenant_steps = self._covenant_biography_steps(model)
         else:
             chain = [record.result]
         objects = self._get_object_store()
@@ -1664,7 +1703,7 @@ class ContractService:
             except (ValueError, UnicodeDecodeError):
                 exports = []  # a corrupt index starts a new lineage, never blocks a brief
         previous = exports[-1] if exports else None
-        digest = brief_source_digest(chain, record.result)
+        digest = brief_source_digest(chain, record.result, covenant_steps)
         delta = (
             brief_delta_lines(previous["digest"], digest)
             if previous is not None
