@@ -52,7 +52,11 @@ lapse confirmed. The acts live on the approval record
 (``CovenantFollowThrough``); :func:`follow_through_state`
 reads them into the one state the register surfaces, so an
 expired restriction is never read as a live one and a lapsed
-covenant nobody followed through is named as open.
+covenant nobody followed through is named as open. The sweep
+reads the same state (round 17): a covenant whose lapse stands
+confirmed is counted closed, not announced again — the chase
+stops when the loop closes, and the acts stay on the record
+as the announced history.
 """
 
 from __future__ import annotations

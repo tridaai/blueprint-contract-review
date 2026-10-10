@@ -2066,7 +2066,21 @@ class ContractService:
         deadline is near". The event carries the covenant kind
         and ``effect: restriction_lapses``; the report counts
         covenant announcements separately and lists them under
-        ``covenants``. **Report-only by design**: the
+        ``covenants``.
+
+        The announcement is follow-through-aware (round 17): a
+        covenant whose lapse stands CONFIRMED on the record
+        (``restriction_confirmed_lifted``, round 16) has been
+        announced, acted on, and closed — the sweep does not
+        announce it again. It is counted as closed
+        (``covenant_closed_count``, listed under
+        ``closed_covenants``) rather than re-announced, while a
+        lapse still open — or only as far as the counterparty
+        being notified — keeps announcing: the announcement is a
+        chase that stops when the loop closes. The follow-through
+        acts themselves stay on the record untouched: the
+        announced history is the record's, and the sweep only
+        reads it. **Report-only by design**: the
         sweep emits events to the configured sink and returns a
         report — it sends nothing to any counterparty or counsel
         address itself. Delivery (email, ticket, queue) is the
@@ -2082,9 +2096,17 @@ class ContractService:
         due = self.obligations_due(days=days, today=today)
         sink = event_sink if event_sink is not None else NullSink()
         covenants: list[dict] = []
+        closed_covenants: list[dict] = []
         for row in due["obligations"]:
             if row["kind"] in COVENANT_KINDS:
                 covenants.append(row)
+                if row.get("follow_through_state") == (
+                    "restriction_confirmed_lifted"
+                ):
+                    # The loop is closed on the record: announced,
+                    # acted on, confirmed. Counted, not re-announced.
+                    closed_covenants.append(row)
+                    continue
                 sink.emit(
                     RunEvent(
                         type="covenant_expiring",
@@ -2101,6 +2123,9 @@ class ContractService:
                             "source_clause_id": row["source_clause_id"],
                             "counterparty_name": row["counterparty_name"],
                             "contract_status": row["status"],
+                            "follow_through_state": row.get(
+                                "follow_through_state", ""
+                            ),
                         },
                     )
                 )
@@ -2141,15 +2166,17 @@ class ContractService:
                 )
             )
         swept = len(self._get_store().all_records())
+        covenant_announced = len(covenants) - len(closed_covenants)
         return {
             "as_of": today.isoformat(),
             "window_days": days,
             "contracts_swept": swept,
             "due_count": due["count"],
-            "events_emitted": due["count"],
+            "events_emitted": due["count"] - len(closed_covenants),
             "obligation_events_emitted": due["count"] - len(covenants),
             "covenant_count": len(covenants),
-            "covenant_events_emitted": len(covenants),
+            "covenant_events_emitted": covenant_announced,
+            "covenant_closed_count": len(closed_covenants),
             "certificate_watch_window_days": watches["window_days"],
             "certificate_expiring_count": watches["count"],
             "certificate_events_emitted": watches["count"],
@@ -2161,11 +2188,15 @@ class ContractService:
                 "not a duty falling due), and one "
                 "certificate_expiring event per watched certificate "
                 "were emitted to the event sink and this report was "
-                "produced. Nothing was sent to any counterparty or "
-                "counsel address by this operation."
+                "produced. A covenant whose lapse stands confirmed "
+                "on the record is counted closed, not re-announced: "
+                "the chase stops when the loop closes. Nothing was "
+                "sent to any counterparty or counsel address by "
+                "this operation."
             ),
             "obligations": due["obligations"],
             "covenants": covenants,
+            "closed_covenants": closed_covenants,
             "certificates": watches["certificates"],
         }
 
