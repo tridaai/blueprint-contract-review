@@ -173,6 +173,30 @@ Samples CTR-2032 (schedule attached, assignment swallows it)
 and CTR-2033 (schedule attached and excluded — clean) pin the
 family, with eval cases X13–X15.
 
+**Severance arithmetic** (`exhibit_review.py`, round 12). A
+seventh family, also in the employment lineage: a letter that
+states a severance formula and a package that states a number
+must agree, and the arithmetic is code's, never the model's.
+The formula (months, or weeks converted) comes from the
+`employment_terms` extraction's structured signal or the
+clause text; the salary basis is read from the package (per
+month, per annum, or a bare base-salary figure read as
+annual); the stated figure is the severance sentence's own
+lump sum — never the salary sentence's number, which would
+make the check compare the basis against itself. Months ×
+monthly basis is compared against the stated figure at a $1
+tolerance: agreement is `consistent`; disagreement a
+`mismatch` naming both figures and the gap; a formula and a
+figure with **no salary basis anywhere** is
+`missing_in_exhibit` — the arithmetic is unverifiable, which
+is itself the finding. A formula with no stated figure is
+checked by computing it: the check reports the computed
+amount in place of a quoted one, and says that is what it
+did. Samples CTR-2034 (3 months × $186,000/yr = the stated
+$46,500) and CTR-2035 (4 months × $240,000/yr = $80,000
+computed against a schedule stating $60,000 — a $20,000 gap)
+pin the family, with eval cases X16–X17.
+
 **Sub-processor list drift** (`subprocessor_drift.py`, round
 11). The annex is a living list, so the single-round checks are
 joined by a cross-round one: consecutive rounds of a chain have
@@ -190,6 +214,40 @@ the single-round exhibit checks (attached by the service after
 the run, like the round diff — the comparison needs the prior
 round's stored package) and surfaces in the brief's exhibit
 findings and the console's exhibit table.
+
+**Prior-invention schedule drift** (`prior_invention_drift.py`,
+round 12). The schedule gets the drift treatment too, and here
+the direction of movement is the substance: an **addition**
+only widens the record of what predates the employment
+(reported, `consistent`), but a **removal** — read where the
+assignment ties its exclusion to the schedule — means the
+invention that left the schedule is no longer excluded: as
+the chain stands, the employee assigns it away. A removal is
+a `mismatch`, a transfer effected by an edit to an annex and
+named as one; a schedule that vanishes entirely is the
+loudest removal of all. Where the current assignment excludes
+pre-employment inventions generally rather than via the
+schedule, a removal changes no exclusion and is reported as
+information. Like the other cross-round checks it rides on
+the result separately and surfaces in the brief and console.
+
+**Certificate renewal evidence** (`certificate_renewal.py`,
+round 12). A renewal certificate is a cross-round fact too:
+when a later round's certificate extends cover past the prior
+round's expiry, the renewal is read against the **original**
+round's requirement set — the limits, the named insured, the
+endorsements the original clause required — not against
+whatever terms arrived with the renewal. That asymmetry is
+the point: a renewal round whose draft restates the clause
+at the thinner cover its new certificate happens to carry
+passes every single-round check while the bargained cover
+quietly evaporates, and only the comparison against the
+original terms catches it. Any original requirement the
+renewal does not evidence is named as a drop: a `mismatch`;
+full evidence is `consistent`, and the two samples pin both
+readings — CTR-2036 renews CTR-2029 in full, CTR-2037 is the
+quiet drop (professional liability $1,000,000 → $250,000, the
+waiver gone, its own checks all green).
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -471,6 +529,20 @@ production, and surface at
 `GET /options/pattern-calibration/suspensions`, in the report,
 in `/metrics`, and in the console's calibration panel.
 
+A suspension may carry a **review-by date** (round 12): a
+set-aside is a decision with a shelf life, taken on one chain's
+evidence and not meant to be inherited forever unexamined. The
+report reads each dated suspension against today —
+`scheduled`, `due` (inside `REVIEW_WINDOW_DAYS`, 30), or
+`overdue` — names the position on the suspended row ("the
+set-aside is stale until counsel re-confirms or lifts it"),
+and collects the due and overdue types in
+`suspensions_due_review`; the same alerts ride the `/queue`
+payload, since the queue is where counsel works. An overdue
+suspension still binds the scorer: staleness is counsel's
+prompt to re-confirm (lift and re-suspend) or lift — never the
+agent quietly restoring a term counsel set aside.
+
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
 `migrations/0003_playbook_proposals.sql`). The playbook is
@@ -619,6 +691,18 @@ on its own. Certificates whose checks failed are deliberately
 watch exists for the cover nobody had a reason to doubt. The
 sample CTR-2029 is the demonstration — fully consistent at
 review, expiring 2026-12-31, flagged by an autumn sweep.
+
+**Closing the watch takes evidence** (round 12). A renewal
+supersedes the earlier certificate for the watch only when the
+renewal check (`certificate_renewal.py`, above) evidences the
+original requirement set in full: a passing renewal moves the
+watch to the new expiry (the row is marked `renewed`), while a
+failed one leaves the watch open on the last relied-upon
+expiry, with the failed renewal named on the row
+(`renewal_evidence_failed`, `renewal_contract_id`) and the
+sweep still announcing the original date. Arrival is not
+evidence; the check is — CTR-2036's renewal closes CTR-2029's
+watch, CTR-2037's does not.
 
 ## Production topology
 

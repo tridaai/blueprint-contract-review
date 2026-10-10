@@ -79,11 +79,27 @@ For each contract, the pipeline:
    makes that schedule load-bearing — promised but absent is
    `exhibit_missing`, and where a schedule is attached and lists
    inventions, an assignment clause that never excludes them
-   would swallow them (a `mismatch`). And across rounds of a
-   chain, the sub-processor annex is **diffed** — processors
-   added, removed, or moved — with any addition read against the
+   would swallow them (a `mismatch`). Employment packages also
+   get **severance arithmetic**: a stated severance formula
+   (months of salary) is multiplied out in code against the
+   salary basis the package states, and the product is compared
+   with the lump sum the schedule claims — agreement,
+   a named gap, or "unverifiable: no salary basis anywhere"
+   are the three readings. And across rounds of a chain, the
+   sub-processor annex is **diffed** — processors added,
+   removed, or moved — with any addition read against the
    notice clock: one that first appears inside the promised
-   notice window is a finding, not just a change.
+   notice window is a finding, not just a change. The
+   prior-invention schedule is diffed the same way, with the
+   direction reversed: an addition is information, but a
+   **removal is a transfer** — the assignment excludes what
+   the schedule lists, so what leaves the schedule falls into
+   the assignment. A renewal certificate, finally, is read
+   against the **original** round's insurance terms, not the
+   terms that arrive with it: a renewal draft that restates
+   the clause at thinner cover passes its own checks, and
+   only the comparison against the original bargain catches
+   the dropped limit or endorsement.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -225,7 +241,11 @@ proposes; it changes nothing. Counsel can act on a candidate:
 required, reversible by a recorded lift), and the scorer stops
 applying it to the type while the report reads the type as
 suspended — who set it aside, when, and why — instead of
-re-flagging it every run.
+re-flagging it every run. A suspension can carry a **review-by
+date**: past it, the report reads the set-aside as stale and
+the queue carries it as a review alert, until counsel
+re-confirms or lifts it — a suspension is a decision with a
+shelf life, not a forgetting.
 
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
@@ -308,7 +328,13 @@ included) draw a `certificate_expiring` event and a report section
 Certificates that failed review are findings already, not watches;
 the watch exists for the cover nobody had a reason to doubt
 (sample CTR-2029: consistent at review, expiring 2026-12-31,
-flagged by an autumn sweep).
+flagged by an autumn sweep). And the watch closes on **evidence**,
+not on arrival: a renewal certificate supersedes the watched
+one only when it evidences the original requirement set in full
+— a renewal that quietly dropped a limit or an endorsement
+leaves the watch open on the original expiry, with the failed
+renewal named on the row (CTR-2036 renews CTR-2029 in full and
+closes it; CTR-2037 drops cover and does not).
 
 **Queue ownership and SLA.** The counsel queue (`GET /queue`) is a
 worklist with an owner and a clock: an operator records an assignee
@@ -377,8 +403,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 344 tests (343 run + 1 Postgres-gated skip)
-make evals                 # golden set: 82/82 (gate ≥ 95%)
+make test                  # 381 tests (380 run + 1 Postgres-gated skip)
+make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -436,7 +462,7 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 82 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 84 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
 DPA family and 8 for the employment family), 19 document-level
 (posture, per-type positions, absence detection, injection flags,
@@ -444,17 +470,18 @@ information requests, repair behaviour — the clean and
 adversarial DPAs and employment drafts among them), 1
 negotiation-round case (verdict movement between the CTR-2014/
 CTR-2015 round pair), 1 round-chain case (re-trades and cumulative
-movement across CTR-2014 → 2016), and 15 exhibit-consistency cases
+movement across CTR-2014 → 2016), and 17 exhibit-consistency cases
 (the CTR-2017 DPA mismatch pair, the CTR-2018 consistent pair,
 the no-exhibit-promises case, the CTR-2019/2020 order-form pair,
 the CTR-2021/2022 SOW pair, the CTR-2027/2028
 insurance-certificate pair, CTR-2029 — the certificate that
 passes review and is then caught by the renewal watch, the
-CTR-2030/2031 sub-processor pair, and the prior-invention trio:
+CTR-2030/2031 sub-processor pair, the prior-invention trio:
 CTR-2025's promised-but-absent schedule, CTR-2032's swallowed
-schedule, CTR-2033's clean one).
+schedule, CTR-2033's clean one, and the severance-arithmetic
+pair: CTR-2034's agreeing figures, CTR-2035's $20,000 gap).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 82/82).
+gate is ≥ 95% (currently 84/84).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
