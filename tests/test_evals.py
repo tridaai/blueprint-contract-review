@@ -22,7 +22,7 @@ def test_golden_set_shape():
     cases = _cases()
     assert len(cases) == 47
     kinds = {c["kind"] for c in cases}
-    assert kinds == {"clause", "document", "round_diff"}
+    assert kinds == {"clause", "document", "round_diff", "round_chain"}
     positions = {c["expected_position"] for c in cases if c["kind"] == "clause"}
     assert positions == {"preferred", "acceptable_fallback", "review_required", "walk_away"}
     postures = {c["expected_posture"] for c in cases if c["kind"] == "document"}
