@@ -4,8 +4,11 @@ Runs the bundled samples through the pipeline with the configured
 provider backend, then judges the drafted packet + counterparty
 response against the verified facts with an independent judge prompt
 (``JUDGE_*`` in ``prompts.py``): groundedness, invented terms, and
-prohibited content (a legal conclusion, agreement language, a
-promised outcome).
+prohibited content — precisely defined in the judge prompt as
+commitments and conclusions stated as decided (a legal conclusion,
+agreement language, an acceptability pronouncement, a promised
+outcome). Proposals and requests in a draft-for-counsel letter do
+not count; see the definition note in ``JUDGE_SYSTEM_PROMPT``.
 
 This pack needs a real provider. Without one it exits 2, loudly —
 it never silently falls back to the mock and reports that as an LLM

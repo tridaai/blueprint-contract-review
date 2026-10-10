@@ -7,8 +7,9 @@ approval and the API returns 422).
 
 The rules encode the blueprint's core promise: **the agent flags and
 explains; it never states a legal conclusion, never agrees to or
-accepts any term, never promises an outcome, and never characterises
-how material the requested changes are.** A counterparty's own words
+accepts any term, never pronounces a clause acceptable, never
+promises an outcome, and never characterises how material the
+requested changes are.** A counterparty's own words
 can violate them — a cover email pressing "confirm you accept all
 terms today" is reported pressure, not an instruction, so the
 injection screen leaves it flagged-but-present in the source; when
@@ -43,6 +44,34 @@ _CONCLUSION_PATTERNS = [
     r"\bthe contract is compliant\b",
     r"\bwe conclude\b[^.]{0,40}\b(enforceable|binding|compliant)\b",
 ]
+
+# Acceptability pronouncements — subtler than agreement language, and
+# caught live by the LLM judge (a response letter calling a cap
+# "acceptable as drafted"). The letter PROPOSES; whether any clause —
+# even a preferred one — is acceptable is counsel's decision, and the
+# draft may not pre-decide it in either direction of politeness.
+_ACCEPTABILITY_PATTERNS = [
+    r"\bacceptable as drafted\b",
+    r"\bacceptable as (it )?(stands|written)\b",
+    r"\bacceptable in its current form\b",
+    r"\bacceptable to us\b",
+    r"\b(this|the|that) (clause|draft|wording|language|provision|position) is acceptable\b",
+    r"\bclause [\w.-]+ is acceptable\b",
+    r"\bwe find (this|the clause|it|clause [\w.-]+)\b[^.]{0,30}\bacceptable\b",
+    r"\bno objection to (clause|section|§)\b",
+]
+
+
+def find_acceptability_hit(text: str) -> str | None:
+    """First affirmative acceptability pronouncement in ``text`` (the
+    matched phrase), or None. Pattern-based, like every check here: a
+    phrasing family, not a semantic detector."""
+    for pattern in _ACCEPTABILITY_PATTERNS:
+        hit = _affirmative(pattern, text or "")
+        if hit:
+            return hit
+    return None
+
 
 # Affirmative agreement/acceptance language — the counterparty draft
 # proposes changes; it must never accept anything.
@@ -198,6 +227,20 @@ def validate_drafts(
                 "the counterparty draft agrees to nothing"
                 if agreement_hit is None
                 else f"agreement language found in the counterparty draft: '{agreement_hit}' — the draft proposes changes only"
+            ),
+        )
+    )
+
+    acceptability_hit = find_acceptability_hit(response)
+    checks.append(
+        GuardrailCheck(
+            name="no_acceptability_pronouncement",
+            passed=acceptability_hit is None,
+            detail=(
+                "the counterparty draft pronounces no clause acceptable"
+                if acceptability_hit is None
+                else f"acceptability pronouncement found in the counterparty draft: '{acceptability_hit}' — "
+                "the draft proposes changes; whether a clause is acceptable is counsel's call"
             ),
         )
     )

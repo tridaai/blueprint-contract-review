@@ -124,3 +124,55 @@ def test_reviewer_checklist_blocks_packet_without_recommendation():
     )
     assert verdict == "block"
     assert any("recommended" in f for f in findings)
+
+
+def test_acceptability_pronouncement_fails():
+    # The CTR-2007 catch from the live judge pack: the letter called a
+    # cap "acceptable as drafted" — a decision that is counsel's.
+    drafts = clean_drafts()
+    drafts.counterparty_response += (
+        "\nClause 4 (limitation of liability) is acceptable as drafted."
+    )
+    validation = validate_drafts(CONTRACT, drafts, ["PB-LIA-03"], flagged_refs=[["PB-LIA-03"]])
+    assert "no_acceptability_pronouncement" in {
+        c.name for c in validation.checks if not c.passed
+    }
+    assert not validation.passed
+
+
+def test_acceptability_family_variants_fail():
+    from contract_agent.guardrails import find_acceptability_hit
+
+    for phrase in (
+        "The wording is acceptable to us.",
+        "We find this acceptable and will proceed.",
+        "Clause 7 is acceptable in its current form.",
+        "We have no objection to clause 3.",
+    ):
+        assert find_acceptability_hit(phrase), phrase
+    # Proposals and requests are the letter's legitimate function —
+    # none of these pronounce anything acceptable.
+    for phrase in (
+        "We request that clause 4 be revised as set out in the packet.",
+        "We propose the fallback wording in the packet for clause 4.",
+        "The position on clause 4 is not acceptable to us as drafted; "
+        "we request the fallback wording.",
+    ):
+        assert find_acceptability_hit(phrase) is None, phrase
+
+
+def test_mock_letters_never_pronounce_acceptability():
+    # The offline template already complies: across every sample, the
+    # guardrail passes (it runs inside validate_drafts on each run).
+    from contract_agent.samples import sample_contract_models
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+
+    service = ContractService(store=InMemoryStore(), checkpointer=False)
+    for sample in sample_contract_models():
+        result = service.analyze(sample)
+        check = next(
+            c for c in result.validation.checks
+            if c.name == "no_acceptability_pronouncement"
+        )
+        assert check.passed, (sample.contract_id, check.detail)

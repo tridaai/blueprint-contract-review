@@ -23,9 +23,19 @@ and (2) a draft response to the counterparty. Rules:
   language where the packet data provides it.
 - The counterparty draft is polite and specific: it thanks them, lists
   the requested changes by clause reference, and asks for their revised
-  draft. It asserts NOTHING as agreed.
+  draft. It asserts NOTHING as agreed. It only ever PROPOSES.
 - NEVER write "we agree", "we accept these terms", "agreed", or any
   sentence that accepts, approves, or executes the contract.
+- NEVER pronounce any clause acceptable on our behalf — not even a
+  clause at the preferred position. Do not write that a clause "is
+  acceptable as drafted", "is acceptable to us", or anything else that
+  pre-decides counsel's acceptance. The draft lists requested changes;
+  whether what remains is acceptable is counsel's call, stated nowhere
+  in either document.
+- Request revisions ONLY for clauses whose verdict calls for action
+  (acceptable_fallback, review_required, walk_away). For a clause at
+  the preferred position request nothing: do not ask the counterparty
+  to revise, re-draft, or confirm it.
 - NEVER state a legal conclusion: do not call the contract "legally
   binding", "enforceable", "safe to sign", "approved", or "compliant".
   You flag positions against a playbook; counsel concludes.
@@ -63,8 +73,10 @@ Relevant playbook entries:
 Write the review packet first, with the subject line on the first line
 prefixed by "Subject: ", then a line containing only "---RESPONSE---",
 then the counterparty response draft. The packet must carry the full
-clause table. The response must only request the changes listed in the
-verdicts and must assert nothing as agreed.
+clause table. The response must request revisions only for clauses
+whose verdict calls for action (never for a preferred clause), must
+pronounce no clause acceptable as drafted, and must assert nothing as
+agreed.
 """
 
 EXTRACT_SYSTEM_PROMPT = """\
@@ -239,7 +251,10 @@ Flag any playbook citation that is not in the cited list, any clause
 verdict that disagrees with the computed verdicts, any reference that
 is not this case, and — critically — any legal conclusion ("legally
 binding", "safe to sign", "approved", "compliant"), any sentence that
-agrees to or accepts terms, any promised outcome, and any sentence
+agrees to or accepts terms, any sentence that pronounces a clause
+acceptable as drafted (acceptability is counsel's call, never a
+supported fact), any revision requested for a clause whose computed
+verdict is preferred, any promised outcome, and any sentence
 that characterises the requested changes as routine, minor, technical,
 or otherwise immaterial: those are judgements for counsel, never
 supported facts.
@@ -275,7 +290,9 @@ adversarially, the way a reviewer who will be blamed for a bad
 counterparty letter would: Is every factual claim grounded in the
 verified facts? Do the drafts comply with the drafting rules — above
 all, no legal conclusion, no sentence that agrees to or accepts any
-term, nothing asserted as agreed, no promised outcome, and no
+term, nothing asserted as agreed, no pronouncement that any clause is
+acceptable as drafted, no revision requested for a clause whose
+verdict is preferred, no promised outcome, and no
 characterisation of the requested changes as routine, minor, technical,
 or otherwise immaterial (materiality is counsel's call)? Is the tone
 right for a counterparty relationship? Does the counterparty draft say
@@ -329,14 +346,29 @@ drafts.
 Respond with a single JSON object and nothing else:
 {"grounded": true when every factual claim in the drafts appears in
 the verified facts, "invented_terms": true when a draft states a
-clause position, figure, or term that is not in the facts,
-"prohibited_promise": true when a draft states a legal conclusion,
-agrees to or accepts any term, promises an outcome, or characterises
-the requested changes as routine, minor, technical, or otherwise
-immaterial (materiality is counsel's judgement, not the drafter's),
+clause position, figure, or term that is not in the facts — including
+requesting a revision to a clause whose computed verdict is
+preferred, which asserts a need the verdicts contradict,
+"prohibited_promise": true when a draft states a commitment or a
+conclusion AS DECIDED: a legal conclusion, agreement to or acceptance
+of any term, a pronouncement that a clause is acceptable as drafted
+or otherwise acceptable to us, a promised outcome, or a
+characterisation of the requested changes as routine, minor,
+technical, or otherwise immaterial (materiality is counsel's
+judgement, not the drafter's),
 "score": a number between 0 and 1 for overall groundedness,
 "rationale": one sentence}.
 Judge only against the facts given. Style and fluency do not count.
+
+Definition note (corrected after the 2026-10-10 judge-pack re-run):
+proposals and requests in the counterparty draft are NOT prohibited
+promises. Asking the counterparty to revise a clause ("we request
+that this clause be revised"), proposing fallback wording, and
+asking for a revised draft are the letter's legitimate function —
+earlier runs flagged exactly those sentences (CTR-2002, CTR-2010,
+CTR-2011) as promises, which was over-reach. What counts is a
+commitment or conclusion stated as already decided, per the
+definition above. No other criterion is softened by this note.
 """
 
 JUDGE_USER_TEMPLATE = """\
