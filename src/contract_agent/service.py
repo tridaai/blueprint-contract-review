@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from .checkpoints import get_checkpointer
-from .config import env_float, env_str, load_dotenv
+from .config import env_float, env_int, env_str, load_dotenv
 from .graph import resume_decision, run_contract
 from .model_backends import ModelBackend, get_backend
 from .objectstore import get_object_store
@@ -128,6 +128,63 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
             return "sent" if 200 <= response.status < 300 else "failed"
     except Exception:  # dispatch failure is recorded, never raised
         return "failed"
+
+
+# ---------------------------------------------------------------------------
+# Queue SLA: how long a contract may wait for counsel, by severity
+# ---------------------------------------------------------------------------
+
+# Budgets in BUSINESS days, keyed by the contract's worst clause
+# position — the queue's severity tier. A contract whose worst
+# position is "preferred" has nothing to decide urgently and carries
+# no budget. Operators tune the budgets via the QUEUE_SLA_* env vars;
+# the defaults are the blueprint's stated policy, not a promise made
+# to any counterparty.
+_SLA_DEFAULTS = {"walk_away": 2, "review_required": 5, "acceptable_fallback": 10}
+
+
+def sla_budget_business_days(worst_position: str) -> int | None:
+    """The SLA budget for a severity tier, or None when the tier
+    carries no budget (``preferred`` — nothing flagged)."""
+    if worst_position not in _SLA_DEFAULTS:
+        return None
+    env_name = f"QUEUE_SLA_{worst_position.upper()}_BUSINESS_DAYS"
+    return env_int(env_name, _SLA_DEFAULTS[worst_position])
+
+
+def business_days_between(start, end) -> int:
+    """Business days elapsed from ``start`` to ``end``: the Mon–Fri
+    days in (start, end] — the receipt day itself does not count, the
+    current day does. Zero when ``end`` is not after ``start``."""
+    if end <= start:
+        return 0
+    days = 0
+    cursor = start
+    from datetime import timedelta
+
+    while cursor < end:
+        cursor += timedelta(days=1)
+        if cursor.weekday() < 5:
+            days += 1
+    return days
+
+
+def _parse_received_date(raw: str):
+    """The date a contract was received, from its ISO timestamp.
+    None when intake carried nothing parseable — the queue then
+    reports no SLA state rather than inventing an age."""
+    if not raw:
+        return None
+    from datetime import date as _date
+    from datetime import datetime as _datetime
+
+    try:
+        return _datetime.fromisoformat(str(raw)).date()
+    except ValueError:
+        try:
+            return _date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            return None
 
 
 @dataclass
@@ -531,27 +588,47 @@ class ContractService:
         record = self._get_store().get(contract_id)
         return record.result if record else None
 
-    def queue(self) -> list[dict]:
+    def queue(self, today=None) -> list[dict]:
         """The counsel worklist: every contract still awaiting a
-        decision, worst first — posture severity, then worst clause
-        position, then age (oldest first). This is the order counsel
-        should work the queue in, so it is computed here, once, from
-        the stored facts rather than re-derived per surface."""
+        decision, worked in the order counsel should take them —
+        SLA breaches first (a contract that has waited past its
+        budget outranks a fresher one, whatever its posture), then
+        posture severity, worst clause position, and age. Each item
+        carries its queue ownership (``assignee``, recorded by an
+        operator — see :meth:`assign`) and its SLA state: the budget
+        for its severity tier, the business days it has waited, and
+        whether the budget is blown. Computed here, once, from the
+        stored records rather than re-derived per surface. ``today``
+        is a parameter so SLA behaviour is testable against a frozen
+        clock."""
+        from datetime import date as _date
+
         from .schemas import POSITION_SEVERITY
 
+        today = today or _date.today()
         posture_rank = {"escalation_required": 0, "negotiable": 1, "aligned": 2}
         items: list[dict] = []
         for record in self._get_store().all_records():
             result = record.result
             if result.status != "awaiting_counsel":
                 continue
+            worst = result.facts.worst_position if result.facts else ""
+            budget = sla_budget_business_days(worst)
+            received = _parse_received_date(
+                (record.contract or {}).get("received_at", "")
+            )
+            waiting = (
+                business_days_between(received, today)
+                if received is not None
+                else None
+            )
             items.append(
                 {
                     "contract_id": result.contract_id,
                     "counterparty_name": result.counterparty_name,
                     "doc_type": result.doc_type,
                     "posture": result.facts.posture if result.facts else "",
-                    "worst_position": result.facts.worst_position if result.facts else "",
+                    "worst_position": worst,
                     "received_at": (record.contract or {}).get("received_at", ""),
                     "age_days": result.facts.contract_age_days if result.facts else 0,
                     "flagged_clauses": sum(
@@ -562,10 +639,20 @@ class ContractService:
                     "autonomy_eligible": bool(
                         result.autonomy and result.autonomy.eligible_for_auto_triage
                     ),
+                    "assignee": record.assignee or "",
+                    "assigned_at": record.assigned_at or "",
+                    "sla_budget_business_days": budget,
+                    "business_days_waiting": waiting,
+                    "sla_breached": bool(
+                        budget is not None
+                        and waiting is not None
+                        and waiting > budget
+                    ),
                 }
             )
         items.sort(
             key=lambda item: (
+                not item["sla_breached"],
                 posture_rank.get(item["posture"], 1),
                 -POSITION_SEVERITY.get(item["worst_position"], 0),
                 item["received_at"] or "9999",
@@ -573,6 +660,32 @@ class ContractService:
             )
         )
         return items
+
+    def assign(self, contract_id: str, assignee: str, actor: str) -> dict:
+        """Record who on counsel's team holds an awaiting contract.
+
+        Ownership is bookkeeping for the queue: it is stored on the
+        record (with who assigned it and when), shown on every queue
+        surface, and never decides or routes anything by itself.
+        Returns the contract's queue item after the assignment."""
+        store = self._get_store()
+        record = store.get(contract_id)
+        if record is None:
+            raise KeyError(f"Unknown contract_id: {contract_id} (analyze it first)")
+        if record.result.status != "awaiting_counsel":
+            raise ValueError(
+                f"Contract {contract_id} is not awaiting counsel "
+                f"(status: {record.result.status}) — decided contracts "
+                "have no queue owner"
+            )
+        record.assignee = assignee
+        record.assigned_by = actor
+        record.assigned_at = datetime.now(timezone.utc).isoformat()
+        store.save(record)
+        for item in self.queue():
+            if item["contract_id"] == contract_id:
+                return item
+        raise AssertionError("assigned contract missing from its own queue")
 
     def obligations_due(self, days: int = 90, today=None) -> dict:
         """Obligation deadlines across every stored contract: the
@@ -757,6 +870,7 @@ class ContractService:
         diluting the averages with zeros.
         """
         results = [record.result for record in self._get_store().all_records()]
+        queue_items = self.queue()
         telemetries = [r.telemetry for r in results if r.telemetry is not None]
         provider_runs = [t for t in telemetries if t.input_tokens is not None]
         latencies = [t.latency_seconds for t in telemetries]
@@ -780,6 +894,19 @@ class ContractService:
                 "repaired": sum(1 for r in results if r.repaired),
             },
             "reviewer_blocks": sum(1 for r in results if r.reviewer_blocked),
+            "queue_sla": {
+                "awaiting": len(queue_items),
+                "sla_breached": sum(1 for i in queue_items if i["sla_breached"]),
+                "unassigned": sum(1 for i in queue_items if not i["assignee"]),
+                "unassigned_breached": sum(
+                    1
+                    for i in queue_items
+                    if i["sla_breached"] and not i["assignee"]
+                ),
+                "budgets_business_days": {
+                    tier: sla_budget_business_days(tier) for tier in _SLA_DEFAULTS
+                },
+            },
             "playbook_coverage": self.playbook_coverage(results),
             "telemetry": {
                 "runs_with_telemetry": len(telemetries),

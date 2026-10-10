@@ -45,7 +45,7 @@ from .errors import ProviderError
 from .events import CallbackSink, RunEvent
 from .playbook_data import PLAYBOOK
 from .samples import load_sample_contracts
-from .schemas import AgentResult, ContractInput, DecisionRequest
+from .schemas import AgentResult, AssignRequest, ContractInput, DecisionRequest
 from .wiring import build_service_from_env
 
 # Load the repo-root .env at startup (real environment variables win), so
@@ -241,9 +241,10 @@ def metrics() -> dict:
 
 @app.get("/queue", dependencies=_AUTH)
 def counsel_queue() -> dict:
-    """The counsel worklist: contracts awaiting a decision, sorted
-    worst-first (posture severity, worst clause position, age), each
-    with its autonomy recommendation flag."""
+    """The counsel worklist: contracts awaiting a decision — SLA
+    breaches first, then worst-first (posture severity, worst clause
+    position, age) — each with its autonomy flag, queue owner, and
+    SLA state (budget by severity tier, business days waited)."""
     items = service.queue()
     return {"count": len(items), "queue": items}
 
@@ -417,6 +418,26 @@ def reject(contract_id: str, request: DecisionRequest) -> AgentResult:
         return service.reject(
             contract_id, reviewer=_decision_actor(request), reason=request.reason or ""
         )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/contracts/{contract_id}/assign", dependencies=_AUTH)
+def assign(contract_id: str, request: AssignRequest) -> dict:
+    """Record queue ownership: which member of counsel's team holds
+    this awaiting contract. Bookkeeping only — assignment decides
+    nothing and routes nothing. Returns the updated queue item."""
+    actor = (request.actor or "").strip()
+    assignee = (request.assignee or "").strip()
+    if not actor or not assignee:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' (who is assigning) and 'assignee' (who holds the contract).",
+        )
+    try:
+        return service.assign(contract_id, assignee=assignee, actor=actor)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

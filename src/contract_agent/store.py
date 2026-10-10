@@ -37,6 +37,12 @@ class ApprovalRecord:
     rejected_by: str = ""
     reject_reason: str = ""
     dispatch_status: str | None = None
+    # Queue ownership (round 5): who on counsel's team holds this
+    # contract while it awaits a decision. Set by an operator via
+    # the service's assign(); recorded, never acted on by the agent.
+    assignee: str = ""
+    assigned_by: str = ""
+    assigned_at: str = ""
 
 
 def history_entry(record: ApprovalRecord) -> dict:
@@ -100,6 +106,9 @@ def _dump_record(record: ApprovalRecord) -> str:
             "rejected_by": record.rejected_by,
             "reject_reason": record.reject_reason,
             "dispatch_status": record.dispatch_status,
+            "assignee": record.assignee,
+            "assigned_by": record.assigned_by,
+            "assigned_at": record.assigned_at,
         }
     )
 
@@ -115,6 +124,9 @@ def _load_record(payload: str | dict) -> ApprovalRecord:
         rejected_by=data.get("rejected_by", ""),
         reject_reason=data.get("reject_reason", ""),
         dispatch_status=data.get("dispatch_status"),
+        assignee=data.get("assignee", ""),
+        assigned_by=data.get("assigned_by", ""),
+        assigned_at=data.get("assigned_at", ""),
     )
 
 

@@ -584,3 +584,12 @@ class DecisionRequest(BaseModel):
 
     def actor_name(self) -> Optional[str]:
         return self.actor or self.approver or self.reviewer
+
+
+class AssignRequest(BaseModel):
+    """Queue ownership: an operator (``actor``) records which member
+    of counsel's team (``assignee``) holds an awaiting contract.
+    Assignment is bookkeeping — it never decides anything."""
+
+    actor: Optional[str] = None
+    assignee: Optional[str] = None

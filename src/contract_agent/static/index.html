@@ -174,18 +174,34 @@ async function loadQueue() {
       $('queue').innerHTML = '<span class="empty">Queue is clear — nothing awaiting counsel.</span>';
       return;
     }
-    $('queue').innerHTML = `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th></th></tr></thead><tbody>
+    $('queue').innerHTML = `<table><thead><tr><th>Contract</th><th>Posture</th><th>Worst</th><th>Age</th><th>SLA</th><th>Owner</th><th></th></tr></thead><tbody>
       ${data.queue.map(q => `<tr data-contract="${esc(q.contract_id)}" style="cursor:pointer">
         <td>${esc(q.contract_id)}<br><span class="note">${esc(q.counterparty_name || '')}</span></td>
         <td>${pill(q.posture, q.posture === 'aligned' ? 'good' : q.posture === 'negotiable' ? 'warn' : 'bad')}</td>
         <td>${posPill(q.worst_position)}</td>
         <td>${esc(q.age_days)}d</td>
+        <td>${q.sla_budget_business_days == null ? '<span class="note">no budget</span>' : esc(q.business_days_waiting) + '/' + esc(q.sla_budget_business_days) + ' bd'}${q.sla_breached ? '<br>' + pill('SLA BREACH', 'bad') : ''}</td>
+        <td>${q.assignee ? esc(q.assignee) : '<span class="note">unassigned</span>'}<br><button data-assign="${esc(q.contract_id)}" style="margin-top:4px;padding:3px 9px;font-size:12px">Assign</button></td>
         <td>${q.reviewer_blocked ? pill('BLOCKED', 'bad') : q.autonomy_eligible ? pill('auto-triage ok', 'good') : q.needs_information ? pill('needs info', 'warn') : ''}</td></tr>`).join('')}
       </tbody></table>`;
     $('queue').querySelectorAll('tr[data-contract]').forEach(row => {
       row.addEventListener('click', async () => {
         const res = await fetch('/contracts/' + row.dataset.contract, {headers: headers()});
         if (res.ok) render(await res.json());
+      });
+    });
+    $('queue').querySelectorAll('button[data-assign]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const assignee = prompt('Assign ' + btn.dataset.assign + ' to (name):');
+        if (!assignee) return;
+        const actor = ($('actor').value.trim() || 'console operator');
+        const res = await fetch('/contracts/' + btn.dataset.assign + '/assign', {
+          method: 'POST', headers: headers(),
+          body: JSON.stringify({actor, assignee})
+        });
+        if (res.ok) loadQueue();
+        else alert('Assign failed: ' + res.status + ' ' + (await res.text()).slice(0, 200));
       });
     });
   } catch (e) {
