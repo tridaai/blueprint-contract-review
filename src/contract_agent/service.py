@@ -303,6 +303,58 @@ def dispatch_stale_failure_webhook(rows: list[dict], announced_at: str) -> str |
     return _post_signed_webhook(url, build_stale_failure_payload(rows, announced_at))
 
 
+def build_certificate_stale_chase_payload(rows: list[dict], announced_at: str) -> dict:
+    """The signed stale-certificate-chase announcement payload: one
+    document per sweep naming every watch whose renewal chase has
+    gone quiet (round 19) — who chased each renewal and when, how
+    long it has waited, and the expiry it guards. An announcement,
+    not a notification per contract: the receiving system routes
+    the list, the same shape as the stale-failure announcement."""
+    return {
+        "event": "certificate_watch_stale_chase",
+        "announced_at": announced_at,
+        "stale_chase_count": len(rows),
+        "watches": [
+            {
+                "contract_id": row["contract_id"],
+                "counterparty_name": row["counterparty_name"],
+                "expiry_date": row["expiry_date"],
+                "days_until": row["days_until"],
+                "chased_by": (row.get("follow_through_ageing") or {}).get(
+                    "chased_by", ""
+                ),
+                "chased_at": (row.get("follow_through_ageing") or {}).get(
+                    "chased_at", ""
+                ),
+                "age_days": (row.get("follow_through_ageing") or {}).get(
+                    "age_days"
+                ),
+            }
+            for row in rows
+        ],
+    }
+
+
+def dispatch_certificate_stale_chase_webhook(
+    rows: list[dict], announced_at: str
+) -> str | None:
+    """POST the stale-chase announcement to ``ACTION_WEBHOOK_URL``,
+    signed with ``ACTION_WEBHOOK_SECRET`` when configured. Returns
+    "sent" / "failed", or None when no endpoint is configured.
+
+    Deliberately NOT recorded in the outbox, for the stale-failure
+    announcement's reason: a failed announcement is not an
+    obligation — the announcement itself reconciles nothing — and
+    the chase act's ``stale_announced_at`` stamp is the record of
+    the announcement, written whether or not the POST lands."""
+    url = env_str("ACTION_WEBHOOK_URL")
+    if not url:
+        return None
+    return _post_signed_webhook(
+        url, build_certificate_stale_chase_payload(rows, announced_at)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Queue SLA: how long a contract may wait for counsel, by severity
 # ---------------------------------------------------------------------------
@@ -2452,7 +2504,26 @@ class ContractService:
         chase that stops when the loop closes. The follow-through
         acts themselves stay on the record untouched: the
         announced history is the record's, and the sweep only
-        reads it. **Report-only by design**: the
+        reads it.
+
+        The certificate announcements are follow-through-aware
+        the same way (round 19): the ``certificate_expiring``
+        event carries the watch's follow-through state, so an
+        unacted watch announces differently from a chased one; a
+        watch whose renewal chase has gone stale (round 18's
+        ageing reading) draws one ``certificate_watch_stale_chase``
+        event and a place in the sweep's single signed stale-chase
+        announcement webhook, and the chase act is stamped
+        (``stale_announced_at``) so the chase is announced once
+        per stale period — unlike the covenant acts above, the
+        stamp IS written by the sweep, because unlike a lapse
+        follow-through the announcement has no other record: it
+        lives on the act it announces; and a watch whose risk
+        counsel accepted stops announcing altogether — the
+        decision closed the loop the announcement was chasing —
+        counted instead under ``certificate_risk_accepted_count``
+        and listed under ``certificates_risk_accepted``.
+        **Report-only by design**: the
         sweep emits events to the configured sink and returns a
         report — it sends nothing to any counterparty or counsel
         address itself. Delivery (email, ticket, queue) is the
@@ -2521,7 +2592,23 @@ class ContractService:
                 )
             )
         watches = self.certificate_watches(today=today)
+        from .certificates import chase_act, stale_chase_due
+
+        risk_accepted: list[dict] = []
+        stale_announced: list[dict] = []
+        stale_already_announced = 0
+        expiring_emitted = 0
+        announced_at = datetime.now(timezone.utc).isoformat()
+        store = self._get_store()
         for row in watches["certificates"]:
+            state = row.get("follow_through_state") or "open"
+            if state == "risk_accepted":
+                # Counsel decided: the announcement was chasing
+                # a decision that has been made. Counted, never
+                # announced — the loop is closed on the record.
+                risk_accepted.append(row)
+                continue
+            ageing = row.get("follow_through_ageing") or {}
             sink.emit(
                 RunEvent(
                     type="certificate_expiring",
@@ -2534,10 +2621,49 @@ class ContractService:
                         "counterparty_name": row["counterparty_name"],
                         "contract_status": row["status"],
                         "exhibit_document_id": row["exhibit_document_id"],
+                        "follow_through_state": state,
+                        "chase_stale": bool(ageing.get("stale")),
                     },
                 )
             )
-        swept = len(self._get_store().all_records())
+            expiring_emitted += 1
+            if ageing.get("stale"):
+                if stale_chase_due(row):
+                    sink.emit(
+                        RunEvent(
+                            type="certificate_watch_stale_chase",
+                            contract_id=row["contract_id"],
+                            detail={
+                                "via": "deadline_sweep",
+                                "expiry_date": row["expiry_date"],
+                                "days_until": row["days_until"],
+                                "counterparty_name": row["counterparty_name"],
+                                "chased_by": ageing.get("chased_by", ""),
+                                "chased_at": ageing.get("chased_at", ""),
+                                "age_days": ageing.get("age_days"),
+                                "announced_at": announced_at,
+                            },
+                        )
+                    )
+                    record = store.get(row["contract_id"])
+                    if record is not None:
+                        act = chase_act(
+                            record.certificate_watch_follow_throughs
+                        )
+                        if act is not None:
+                            act["stale_announced_at"] = announced_at
+                            store.save(record)
+                    stale_announced.append(
+                        {**row, "stale_announced_at": announced_at}
+                    )
+                else:
+                    stale_already_announced += 1
+        stale_chase_dispatch = None
+        if stale_announced:
+            stale_chase_dispatch = dispatch_certificate_stale_chase_webhook(
+                stale_announced, announced_at
+            )
+        swept = len(store.all_records())
         covenant_announced = len(covenants) - len(closed_covenants)
         return {
             "as_of": today.isoformat(),
@@ -2551,7 +2677,19 @@ class ContractService:
             "covenant_closed_count": len(closed_covenants),
             "certificate_watch_window_days": watches["window_days"],
             "certificate_expiring_count": watches["count"],
-            "certificate_events_emitted": watches["count"],
+            "certificate_events_emitted": expiring_emitted,
+            "certificate_risk_accepted_count": len(risk_accepted),
+            "certificates_risk_accepted": risk_accepted,
+            "certificate_stale_chase_count": len(stale_announced),
+            "certificate_stale_chase_already_announced": (
+                stale_already_announced
+            ),
+            "certificate_stale_chases": stale_announced,
+            "certificate_stale_chase_webhooks": {
+                "configured": bool(env_str("ACTION_WEBHOOK_URL")),
+                "sent": 1 if stale_chase_dispatch == "sent" else 0,
+                "failed": 1 if stale_chase_dispatch == "failed" else 0,
+            },
             "report_only": True,
             "note": (
                 "Report-only sweep: one obligation_due event per due "
@@ -2562,9 +2700,17 @@ class ContractService:
                 "were emitted to the event sink and this report was "
                 "produced. A covenant whose lapse stands confirmed "
                 "on the record is counted closed, not re-announced: "
-                "the chase stops when the loop closes. Nothing was "
-                "sent to any counterparty or counsel address by "
-                "this operation."
+                "the chase stops when the loop closes. Certificate "
+                "announcements are follow-through-aware the same "
+                "way: the event carries the watch's follow-through "
+                "state, a watch whose risk counsel accepted is "
+                "counted, not announced, and a renewal chase that "
+                "has gone stale is announced once per stale period "
+                "as a certificate_watch_stale_chase event (plus "
+                "one signed announcement webhook naming them all "
+                "when a webhook endpoint is configured). Nothing "
+                "was sent to any counterparty or counsel address "
+                "by this operation."
             ),
             "obligations": due["obligations"],
             "covenants": covenants,

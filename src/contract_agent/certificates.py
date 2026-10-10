@@ -65,6 +65,23 @@ attention lists. An accepted risk never goes stale — accepting
 was the answer, not a question — and a watch nobody has acted
 on is not a stale chase either: it is an open watch, which the
 row already says.
+
+**The announcements are follow-through-aware** (round 19):
+the deadline sweep announced every watched certificate the
+same way on every run — a watch nobody had acted on, a watch
+whose renewal stood chased, and a watch counsel had accepted
+the risk on all drew the identical ``certificate_expiring``
+event, forever. The sweep now announces what is true: the
+event carries the watch's follow-through state; a stale chase
+draws its own announcement (``certificate_watch_stale_chase``,
+:func:`stale_chase_due`) — one signed event per stale chase and
+one signed webhook per sweep naming them all, the chase act
+stamped (``stale_announced_at``) so it is announced once per
+stale period, the outbox stale sweep's discipline — and a
+watch whose risk counsel accepted stops announcing at all:
+the decision closed the loop the announcement was chasing,
+so the sweep counts it accepted instead, the way the covenant
+sweep counts a confirmed lapse closed.
 """
 
 from __future__ import annotations
@@ -168,6 +185,34 @@ def follow_through_ageing(
             and age >= threshold
         ),
     }
+
+
+def chase_act(acts: list[dict]) -> dict | None:
+    """The ``renewal_chased`` act among a watch's follow-through
+    acts, or None when the renewal was never chased. The chase
+    act is the stale period's identity (round 19): it carries
+    the announcement stamp, so a chase is announced once, and
+    a chase recorded later — on the record a renewal moved the
+    watch to — is a new period with its own announcement."""
+    return next(
+        (a for a in acts if a.get("state") == "renewal_chased"), None
+    )
+
+
+def stale_chase_due(row: dict) -> bool:
+    """Whether a watch row's stale chase is due its announcement
+    (round 19): the row's ageing reads the chase stale, and the
+    chase act carries no ``stale_announced_at`` stamp yet. A
+    stamped chase was announced for this stale period — the
+    outbox stale sweep's dedupe, on the act whose period it is.
+    Rows are the watch view's (``ContractService.
+    certificate_watches``): follow-through acts and ageing
+    attached."""
+    ageing = row.get("follow_through_ageing") or {}
+    if not ageing.get("stale"):
+        return False
+    act = chase_act(row.get("follow_through") or [])
+    return act is not None and not act.get("stale_announced_at")
 
 
 def _relied_upon_expiry(record: ApprovalRecord):

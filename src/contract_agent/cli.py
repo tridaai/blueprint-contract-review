@@ -162,7 +162,32 @@ def _run_sweep(contracts: list[ContractInput], days: int) -> None:
         print(
             f"  {row['expiry_date']} [{state}] {row['contract_id']} "
             f"({row['counterparty_name']}): certificate of insurance"
+            f" — follow-through: {row.get('follow_through_state') or 'open'}"
         )
+    if report.get("certificate_risk_accepted_count"):
+        print(
+            f"Certificate watch risk accepted: "
+            f"{report['certificate_risk_accepted_count']} watch(es) "
+            "counsel accepted the risk on — counted, not announced"
+        )
+    if report.get("certificate_stale_chase_count") or report.get(
+        "certificate_stale_chase_already_announced"
+    ):
+        print(
+            f"Certificate watch stale chases: "
+            f"{report['certificate_stale_chase_count']} newly "
+            f"announced · "
+            f"{report['certificate_stale_chase_already_announced']} "
+            "already announced (once per stale period)"
+        )
+        for row in report.get("certificate_stale_chases", []):
+            ageing = row.get("follow_through_ageing") or {}
+            print(
+                f"  {row['contract_id']} ({row['counterparty_name']}): "
+                f"chased by {ageing.get('chased_by', '')} "
+                f"{ageing.get('age_days')}d ago, certificate expires "
+                f"{row['expiry_date']}"
+            )
     print(f"Report-only: {report['note']}")
 
 

@@ -109,7 +109,7 @@
       </div>
       <div id="certificates" class="empty" style="margin-top:14px">Loading…</div>
       <div class="row" style="margin-top:10px">
-        <span class="note">certificate renewal watch: relied-upon certificates of insurance (their review raised no finding) expiring within the watch window — the deadline sweep announces them as certificate_expiring events</span>
+        <span class="note">certificate renewal watch: relied-upon certificates of insurance (their review raised no finding) expiring within the watch window — the deadline sweep announces them as certificate_expiring events carrying the watch's follow-through state; a chase that has gone stale is announced once per stale period (certificate_watch_stale_chase + one signed webhook naming them all), and a watch whose risk counsel accepted stops announcing — the decision closed the loop</span>
       </div>
     </section>
     <section>
@@ -342,9 +342,13 @@ async function loadCertificates() {
     const watchCell = (c) => {
       const label = {open: 'follow-through open — nobody has acted on this watch', renewal_chased: 'renewal chased', risk_accepted: 'risk accepted by counsel (see the record)'}[c.follow_through_state] || c.follow_through_state || 'open';
       const ageing = c.follow_through_ageing || {};
-      const ageNote = ageing.stale
+      const chaseAct = (c.follow_through || []).find(a => a.state === 'renewal_chased') || {};
+      const announcedNote = chaseAct.stale_announced_at
+        ? ` · <span class="note">stale chase announced ${esc(chaseAct.stale_announced_at.slice(0, 10))} (once per stale period)</span>`
+        : '';
+      const ageNote = (ageing.stale
         ? ` · <span class="flag">STALE — chased ${esc(ageing.age_days)} day(s) ago by ${esc(ageing.chased_by)}, no evidenced renewal since</span>`
-        : (ageing.age_days !== null && ageing.age_days !== undefined && c.follow_through_state === 'renewal_chased' ? ` · chased ${esc(ageing.age_days)} day(s) ago` : '');
+        : (ageing.age_days !== null && ageing.age_days !== undefined && c.follow_through_state === 'renewal_chased' ? ` · chased ${esc(ageing.age_days)} day(s) ago` : '')) + announcedNote;
       let html = `<br><span class="${c.follow_through_state === 'open' || !c.follow_through_state ? 'flag' : 'note'}">watch follow-through: ${esc(label)}</span>${ageNote}`;
       if (!c.follow_through_state || c.follow_through_state === 'open') html += ` <button data-watch-chase="${esc(c.contract_id)}" style="padding:3px 9px;font-size:12px">Renewal chased</button>`;
       if (c.follow_through_state !== 'risk_accepted') html += ` <button data-watch-accept="${esc(c.contract_id)}" style="padding:3px 9px;font-size:12px">Accept risk</button>`;

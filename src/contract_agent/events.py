@@ -27,7 +27,16 @@ all), ``certificate_expiring`` (a relied-upon certificate of insurance —
 its stored expiry check came back consistent — expires within the
 watch window, ``CERTIFICATE_EXPIRY_WATCH_DAYS``, default 90;
 emitted by the deadline sweep, carrying the expiry date,
-days_until, and overdue flag), ``drift_finding`` (a cross-round
+days_until, overdue flag, and — since round 19 — the watch's
+follow-through state, so an unacted watch announces differently
+from a chased one, and a watch whose risk counsel accepted is
+not announced at all), ``certificate_watch_stale_chase`` (a
+watch's renewal was chased and the chase went quiet — no
+evidenced renewal for ``CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS``,
+default 30 — emitted by the deadline sweep, once per stale
+period per chase, the chase act stamped as the dedupe; carries
+who chased, when, and the chase's age, and the sweep's one
+signed announcement webhook names them all), ``drift_finding`` (a cross-round
 drift check — sub-processor list, prior-invention schedule —
 came back a finding (``mismatch``) when a chain round was
 analyzed; carries the check name, the finding's status, and the
@@ -129,7 +138,15 @@ class PrintingSink:
             parts.append(
                 f"certificate expires {event.detail.get('expiry_date', '')} "
                 f"({event.detail.get('days_until')}d) · "
-                f"{event.detail.get('counterparty_name', '')}"
+                f"{event.detail.get('counterparty_name', '')} · "
+                f"follow-through: {event.detail.get('follow_through_state', '')}"
+            )
+        elif event.type == "certificate_watch_stale_chase":
+            parts.append(
+                f"renewal chased by {event.detail.get('chased_by', '')} "
+                f"{event.detail.get('age_days')}d ago, no evidenced "
+                f"renewal since (certificate expires "
+                f"{event.detail.get('expiry_date', '')})"
             )
         elif event.type == "drift_finding":
             parts.append(
