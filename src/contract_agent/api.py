@@ -400,6 +400,29 @@ def get_result(contract_id: str) -> AgentResult:
     return result
 
 
+@app.get("/contracts/{contract_id}/brief", dependencies=_AUTH)
+def negotiation_brief(contract_id: str):
+    """The negotiation brief as a markdown download: chain history,
+    re-trades, open positions by tier, proposed edits, exhibit
+    findings, and obligations — assembled in code from the stored
+    records and exported via the object-store port. Draft for
+    counsel review; the agent sends it nowhere."""
+    try:
+        brief = service.negotiation_brief(contract_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PlainTextResponse(
+        brief["markdown"],
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename={contract_id}-negotiation-brief.md"
+            ),
+            "X-Object-Key": brief["key"],
+        },
+    )
+
+
 @app.post("/contracts/{contract_id}/approve", response_model=AgentResult, dependencies=_AUTH)
 def approve(contract_id: str, request: DecisionRequest) -> AgentResult:
     try:

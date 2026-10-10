@@ -588,6 +588,33 @@ class ContractService:
         record = self._get_store().get(contract_id)
         return record.result if record else None
 
+    def negotiation_brief(self, contract_id: str) -> dict:
+        """The negotiation brief for a contract's chain: one
+        markdown document assembled in code from the stored records
+        (chain movement and re-trades, open positions by tier, the
+        proposed edits, exhibit findings, obligations — see
+        ``brief.py``), exported through the object-store port under
+        ``contracts/<id>/negotiation-brief.md`` and returned with its
+        key. Counsel downloads it and takes it into the negotiation;
+        the agent sends it nowhere."""
+        store = self._get_store()
+        record = store.get(contract_id)
+        if record is None:
+            raise KeyError(f"Unknown contract_id: {contract_id} (analyze it first)")
+        from .brief import build_negotiation_brief
+
+        if record.contract:
+            model = ContractInput.model_validate(record.contract)
+            chain = self._chain_rounds(model, record.result)
+        else:
+            chain = [record.result]
+        markdown = build_negotiation_brief(chain, record.result)
+        key = f"contracts/{contract_id}/negotiation-brief.md"
+        self._get_object_store().put(
+            key, markdown.encode("utf-8"), content_type="text/markdown"
+        )
+        return {"contract_id": contract_id, "key": key, "markdown": markdown}
+
     def queue(self, today=None) -> list[dict]:
         """The counsel worklist: every contract still awaiting a
         decision, worked in the order counsel should take them —
