@@ -88,6 +88,7 @@
         <button id="proposals-refresh">Refresh</button>
         <span class="note" id="proposals-status">candidate entries for clause types that keep arriving flagged with no fallback language. Drafts only — a proposal joins the playbook only when counsel activates it here.</span>
       </div>
+      <p class="note" id="calibration" style="margin-top:8px"></p>
     </section>
     <section>
       <h2>Obligations due soon</h2>
@@ -298,7 +299,12 @@ async function loadProposals() {
           <button data-activate="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Activate (counsel)</button>
           <button data-dismiss="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Dismiss</button>
         </div>` : `<p class="note" style="margin:6px 0">${esc(p.status)} by ${esc(p.decided_by || '—')}${p.decided_at ? ' · ' + esc(p.decided_at) : ''}${p.decision_note ? ' — ' + esc(p.decision_note) : ''}</p>
-        ${p.effectiveness ? `<p class="note" style="margin:6px 0">since activation: ${esc(p.effectiveness.runs_since_activation)} run(s) · verdicts citing its entries: ${esc(p.effectiveness.verdicts_citing_entries)} · flagged without fallback since: ${esc(p.effectiveness.flagged_without_fallback_since)} ${p.effectiveness.gap_recurring ? '<span class="flag">— the gap recurred</span>' : '<span class="check-pass">— the gap has not recurred</span>'}</p>` : ''}`}
+        ${p.status === 'retired' ? `<p class="note" style="margin:6px 0">retired by ${esc(p.retired_by || '—')}${p.retired_at ? ' · ' + esc(p.retired_at) : ''} — ${esc(p.retire_reason || '')}</p>` : ''}
+        ${p.effectiveness ? `<p class="note" style="margin:6px 0">since activation: ${esc(p.effectiveness.runs_since_activation)} run(s) · verdicts citing its entries: ${esc(p.effectiveness.verdicts_citing_entries)} · flagged without fallback since: ${esc(p.effectiveness.flagged_without_fallback_since)} ${p.effectiveness.gap_recurring ? '<span class="flag">— the gap recurred</span>' : '<span class="check-pass">— the gap has not recurred</span>'}</p>` : ''}
+        ${p.effectiveness && p.effectiveness.post_retirement ? `<p class="note" style="margin:6px 0">since retirement: ${esc(p.effectiveness.post_retirement.runs)} run(s) · flagged without fallback: ${esc(p.effectiveness.post_retirement.flagged_without_fallback)} ${p.effectiveness.post_retirement.gap_reopened ? '<span class="flag">— the gap re-opened</span>' : '<span class="check-pass">— the gap has stayed closed</span>'}</p>` : ''}
+        ${p.status === 'activated' ? `<div class="row" style="margin-top:8px">
+          <button data-retire="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Retire (counsel)</button>
+        </div>` : ''}`}
       </div>`).join('');
     const decide = async (id, action) => {
       const actor = $('actor').value.trim();
@@ -313,8 +319,39 @@ async function loadProposals() {
       btn.addEventListener('click', () => decide(btn.dataset.activate, 'activate')));
     $('proposals').querySelectorAll('button[data-dismiss]').forEach(btn =>
       btn.addEventListener('click', () => decide(btn.dataset.dismiss, 'dismiss')));
+    $('proposals').querySelectorAll('button[data-retire]').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        const actor = $('actor').value.trim();
+        if (!actor) { $('proposals-status').textContent = 'Enter counsel name (section 3) first — a retirement carries a name.'; return; }
+        const reason = (window.prompt('Reason for retiring this proposal (recorded on the proposal):') || '').trim();
+        if (!reason) { $('proposals-status').textContent = 'Retirement needs a reason — nothing was retired.'; return; }
+        const res = await fetch('/playbook/proposals/' + encodeURIComponent(btn.dataset.retire) + '/retire', {
+          method: 'POST', headers: headers(), body: JSON.stringify({actor, note: reason})
+        });
+        if (res.ok) { $('proposals-status').textContent = 'Retired — its entries have left the playbook; the record stays.'; loadProposals(); }
+        else alert('Proposal retire failed: ' + res.status + ' ' + (await res.text()).slice(0, 200));
+      }));
+    loadCalibration();
   } catch (e) {
     $('proposals').innerHTML = '<span class="empty">Proposals unavailable.</span>';
+  }
+}
+
+async function loadCalibration() {
+  try {
+    const res = await fetch('/options/pattern-calibration', {headers: headers()});
+    if (!res.ok) throw new Error('none');
+    const data = await res.json();
+    if (!data.applications) {
+      $('calibration').textContent = 'Pattern-term calibration: the reflection-pattern score term has not been applied to any scored option yet.';
+      return;
+    }
+    const candidates = (data.calibration_candidates || []).join(', ');
+    $('calibration').innerHTML = `Pattern-term calibration: applied ${esc(data.applications)}× · decided ${esc(data.decisive)}×` +
+      (candidates ? ` · <span class="flag">calibration candidate(s) for counsel: ${esc(candidates)} — applied repeatedly, never decisive</span>` : ' · no calibration candidates') +
+      ' · the report proposes; the cap moves only when counsel moves it.';
+  } catch (e) {
+    $('calibration').textContent = '';
   }
 }
 

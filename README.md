@@ -66,7 +66,14 @@ For each contract, the pipeline:
    required coverage must be stated at or above its limit, the
    certificate must be in force, and the additional-insured and
    waiver-of-subrogation endorsements the agreement requires must
-   be shown, not merely mentioned.
+   be shown, not merely mentioned. The newest family reads a
+   DPA's own **sub-processor list** annex against the terms that
+   govern it: the notice period the clause promises for changes
+   must be carried by the annex that maintains the list, every
+   processor the list engages must be one the clause authorises
+   (a processor the clause never named is undeclared), and where
+   the transfer clause confines processing to the EEA/EU, no
+   listed processor may sit outside it.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -183,7 +190,22 @@ of an acceptable position. **Dropped**: the text still sits
 beyond the line. The profile tallies held / softened / dropped /
 pending per clause type and speaks them as an evidence line, so
 the next review knows not only how this counterparty moves, but
-whether the lines counsel drew actually survived contact.
+whether the lines counsel drew actually survived contact. Each
+line also carries its **origin** — the join with the decision's
+own edit outcomes: sent intact, modified by counsel, or rejected
+at counsel's desk before the counterparty ever saw it — and the
+profile aggregates held rates by origin, so "the line keeps being
+lost" resolves into whose desk loses it.
+
+**Pattern-term calibration.** The pattern term's six points are a
+stated guess, so the guess is audited: a calibration report
+(`GET /options/pattern-calibration`, headline in `/metrics`)
+counts, per clause type, where the term was applied, whether it
+ever actually decided which option the packet recommended, and
+what counsel did with those escalations on decided records. A
+type whose term was applied repeatedly and decided nothing is
+flagged a calibration candidate — for counsel. The report
+proposes; it changes nothing.
 
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
@@ -210,7 +232,13 @@ The view rides on the proposal record, at
 `GET /playbook/proposals/{id}/effectiveness`, and in `/metrics`
 beside the coverage analytics. It is honest in both directions: a
 structure-only activation whose entries carry no language yet
-reports the gap still recurring, not a success.
+reports the gap still recurring, not a success. And activation is
+no longer a one-way door: counsel may **retire** an activated
+proposal (`POST /playbook/proposals/{id}/retire` — a named act,
+a reason required) — the entries leave the playbook and
+retrieval, the lifecycle closes, and the effectiveness view keeps
+the live window and adds a post-retirement window that reports
+whether the gap re-opened.
 
 **Standalone DPA reviews.** A data processing addendum sent as
 the primary document (`doc_type: "dpa"`) is reviewed on its own
@@ -329,7 +357,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 276 tests (275 run + 1 Postgres-gated skip)
+make test                  # 307 tests (306 run + 1 Postgres-gated skip)
 make evals                 # golden set: 76/76 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
@@ -403,7 +431,7 @@ the CTR-2021/2022 SOW pair, the CTR-2027/2028
 insurance-certificate pair, and CTR-2029 — the certificate that
 passes review and is then caught by the renewal watch).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 77/77).
+gate is ≥ 95% (currently 79/79).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.

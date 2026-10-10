@@ -133,6 +133,27 @@ be shown, not merely mentioned to be withheld. The information request names the
 missing exhibit by family (`facts.exhibit_missing_checks`), so a
 missing order form is never requested as a missing DPA.
 
+**Sub-processor list exhibits** (`exhibit_review.py`, round 10).
+A fifth family reads a DPA's own annex — the list of
+sub-processors the processor engages — against the data-processing
+terms that govern it. A list is operative: it is where engagements
+actually change, so its contents are checked, not just its
+existence. Three checks, generated only when a list annex is
+attached and the governing clause states the machinery:
+`subprocessor_notice_period` (the notice period the clause
+promises for changes to the list must be carried by the annex that
+maintains it — absent there, `missing_in_exhibit`; shorter there,
+a `mismatch`), `subprocessor_authorised_list` (where the clause
+authorises sub-processors by name, every processor the list
+engages must be among them — one that is not is undeclared,
+however tidy the list looks), and `subprocessor_transfer_terms`
+(where the transfer clause confines processing to the EEA/EU, no
+listed processor may state a location outside it; a list that
+states no locations cannot be checked and reports
+`missing_in_exhibit`). Samples CTR-2030 (an annex that breaks all
+three of its own DPA's terms) and CTR-2031 (an annex that honours
+them) pin the family in the CTR-2023/2024 lineage.
+
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
 can paste. Each flagged clause's tier language is aligned against
@@ -261,6 +282,27 @@ clause type — as `walk_away_lines`, speaks them as an evidence
 line, and the console shows both the profile tallies and each
 decided packet's lines with their resolutions.
 
+**Who drops the line?** (`walkaway.py`, `concessions.py`, round
+10). A resolved outcome says what the counterparty's draft did
+with a line; it does not say what counsel's own desk did with it
+first. Each captured line is therefore joined to the decision
+record's per-edit outcomes for the edits that carried it (the
+clause's tier-2 edits): `sent_intact` (every edit accepted as
+proposed), `modified_by_counsel` (counsel settled their own
+language for the line before it went out), `rejected_by_counsel`
+(counsel rejected at least one of the line's edits — the line as
+proposed never reached the counterparty), `unmarked`, or
+`no_edit_on_record`. The origin is stamped at capture and
+re-classified at every resolution, so outcomes marked late never
+leave a stale origin blaming the wrong desk. The profile
+aggregates held rates by origin (`walk_away_lines.by_origin`) and,
+when both sides have resolved lines, speaks the contrast — lines
+sent intact against lines counsel modified or rejected first, and
+which desk the losses concentrate at. That is the calibration
+fact behind every future tier policy: a line the counterparty
+keeps moving and a line counsel keeps giving up look identical in
+the outcome counts until the origin is joined.
+
 **Negotiation brief** (`brief.py`). One markdown document per
 chain, assembled in code from the stored results — never
 model-composed, so every figure traces to a record: the
@@ -339,6 +381,23 @@ round's tiers at once, and this term from the next round onward —
 stated, not backdated. Patterns are chain-scoped: another chain
 of the same counterparty does not leak in.
 
+**Pattern-term calibration** (`pattern_calibration.py`, round
+10). The pattern term's size — six points — is a stated guess,
+and a guess never measured becomes a fact nobody chose. The
+calibration report audits the term against the stored record,
+per clause type: how many scored options it was **applied** to;
+how many it **decided** (the option it rode on is the packet's
+recommendation, and without the term it would not have been);
+and, on decided records, what counsel did with the escalations —
+the clause's walk-away-line edits settled, rejected at counsel's
+desk, or never marked. A clause type whose term has been applied
+at least twice and decided nothing is flagged a **calibration
+candidate** — for counsel, at `GET /options/pattern-calibration`
+with the headline in `/metrics`. The report proposes; it changes
+nothing. The cap moves only when a human moves it, with this
+evidence on the table — the playbook-proposal discipline applied
+to the scorer itself.
+
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
 `migrations/0003_playbook_proposals.sql`). The playbook is
@@ -391,6 +450,22 @@ scaffold, whose entries carry no language for counsel to have
 written yet) reports the gap still recurring rather than dressing
 the decision up, and records saved before the stamp existed are
 counted as unstamped, never silently backdated into a window.
+
+**Proposal retirement** (`ContractService.retire_playbook_proposal`,
+round 10). Activation is no longer a one-way door. Counsel may
+retire an activated proposal — a named act requiring a reason,
+both stamped on the proposal beside the activation record they do
+not rewrite — and the lifecycle closes: proposed → activated →
+retired. The entries leave the active playbook and retrieval at
+once (the registry drops them and the retriever refreshes, the
+mirror image of activation), and a fresh process does not
+re-register them: the store's status is the durable fact. The
+proposal is never deleted. Its effectiveness view keeps measuring
+the activation → retirement window exactly as before, and gains a
+post-retirement window: verdicts for the clause type since the
+entries left, and whether the coverage gap the activation had
+closed has **re-opened** — the honest price of retiring, stated
+on the record rather than discovered at the next flagged contract.
 
 **Standalone DPA family** (`doc_type: "dpa"`). A data processing
 addendum arriving as the primary document is normalised from its
