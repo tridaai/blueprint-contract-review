@@ -135,7 +135,14 @@ For each contract, the pipeline:
    **stale**: counted on the outbox view and in `/metrics`,
    and listed on the counsel queue beside the suspension
    alerts, so a delivery that died last week is a number legal
-   ops manages to. And the renewal check's
+   ops manages to — and stale failures are now **announced**,
+   not just surfaced: the stale-failure sweep
+   (`POST /webhooks/outbox/announce-stale`) fires one signed
+   webhook per sweep naming every stale failure not yet
+   announced, each entry stamped so it is announced once per
+   stale period; a re-send attempt clears the stamp, so a
+   delivery touched and failed again is announced anew when it
+   crosses the threshold again. And the renewal check's
    requirement set is **composed across the whole chain**: each
    requirement from the round that last set it — a round sets a
    limit when it first states it or states it changed, a
@@ -152,6 +159,14 @@ For each contract, the pipeline:
    reading on every removal, a vanished schedule named as the
    loudest step of all — computed with the drift modules' own
    readings, so the timeline and the findings cannot disagree.
+   The same view carries the **certificate biography**: the
+   certificate chain is the third living document, and it gets
+   the same treatment — each round's requirement set and the
+   certificate it carried, each step's renewal verdict with
+   its drops named against the composed requirement set, and
+   the watch's operative reading for the chain — so a renewal
+   that failed the evidence check reads in the timeline as
+   what it was, and the expiry the watch stands on is named.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -318,7 +333,12 @@ from the original act to the latest renewal, and the full
 history on its row — and a set-aside renewed three or more
 times is named in the headline (`serially_renewed_types`, in
 `/metrics` and the console too) as what it is: a standing
-decision wearing a review date, not a fresh suspension.
+decision wearing a review date, not a fresh suspension. The
+series also rides the **queue** (`serial_renewal_alerts` in
+the `/queue` payload, beside the due-review alerts, with the
+count and span attached): the queue is where counsel works
+and where the next re-confirmation would be signed, so the
+pattern is named there too, not only in the report.
 Naming changes nothing — the scorer honours the set-aside
 exactly as before — but a "temporary" suspension renewed
 across seven months is a fact counsel should see stated, not
@@ -403,7 +423,17 @@ operational opposite of a duty falling due, so a due
 event (kind and `effect: restriction_lapses` on the event),
 counted separately in the report and listed under `covenants`
 — consumers route "a former employee may now be hired"
-differently from "a notice deadline is near". The same
+differently from "a notice deadline is near". And a lapse has
+a **follow-through**: once a covenant's expiry is reached, a
+named act records that the counterparty was notified the
+restriction lifted, and a second confirms the lapse
+(`POST /contracts/{id}/covenant-follow-through`) — the acts
+live on the record, each state recorded once, and the
+register reads the covenant in its true state (`open`,
+`counterparty_notified`, `restriction_confirmed_lifted`) on
+the due view and at `GET /contracts/{id}/covenant-follow-through`,
+so an expired restriction is never read as a live one and a
+lapse nobody closed is named as open. The same
 sweep runs the **certificate renewal watch**: a certificate of
 insurance that passed its review (the cover the agreement relies
 on) still expires mid-term, so relied-upon certificates expiring
@@ -488,7 +518,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 470 tests (469 run + 1 Postgres-gated skip)
+make test                  # 497 tests (496 run + 1 Postgres-gated skip)
 make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```

@@ -246,6 +246,27 @@ consumers route "a restriction expired" differently from "a
 deadline is near". Every other due entry keeps the
 `obligation_due` reading, and the sweep stays report-only.
 
+**Covenant-lapse follow-through** (`ContractService.
+record_covenant_follow_through`, round 16). An announcement
+says a restriction lifted; nothing downstream remembered it,
+and a lapsed covenant still read like any other register row.
+The follow-through closes the loop on the record: once a
+dated covenant's expiry is reached, a named act records that
+the counterparty was notified the restriction lifted
+(`counterparty_notified`) and a second confirms the lapse
+(`restriction_confirmed_lifted`), each stamped with its actor
+on the approval record (`CovenantFollowThrough`). The acts
+bind to reality — the covenant must be dated and lapsed, the
+refusal naming the day it lifts; each state is recorded once,
+because the record is the loop's state, not a log of
+reminders. `follow_through_state` reads the acts into the one
+state the surfaces carry (`pending_lapse` / `open` /
+`counterparty_notified` / `restriction_confirmed_lifted`),
+and it rides the due view's covenant rows and
+`GET /contracts/{id}/covenant-follow-through`: an expired
+restriction is never read as a live one, and a lapse nobody
+closed is named `open` until somebody closes it.
+
 **Sub-processor list drift** (`subprocessor_drift.py`, round
 11). The annex is a living list, so the single-round checks are
 joined by a cross-round one: consecutive rounds of a chain have
@@ -348,6 +369,30 @@ and reliance readings, so the biography cannot disagree with
 the findings it summarises. `GET /contracts/{id}/annex-history`
 serves it and the console renders it beside the brief.
 
+**Certificate biography** (`certificate_history.py`, round
+16). The certificate chain is the third living document, and
+it read only round by round: each round's own checks, the
+renewal check on the latest step, the watch on its operative
+expiry. The biography gives it the annex history's shape —
+one row per round (the requirement set its own agreement
+stated; the certificate it carried, read with the exhibit
+checks' own readings — expiry, stated limits, named insured,
+endorsements shown; and the stored single-round verdicts),
+one step per round pair (cover extended or not; the renewal
+check's verdict; the drops named compactly — the composed
+requirement set of `certificate_renewal.py` read against the
+renewal's certificate, each drop carrying its provenance, so
+the timeline's drops are the check's drops in timeline form),
+and a summary (renewals arrived, renewals failed on evidence,
+rounds that required insurance they never evidenced). The
+watch's operative reading for the chain rides on the view as
+`watch`, computed by `certificates.py`'s own rule over an
+unbounded window — the biography names which expiry the watch
+stands on whatever its distance, because the window is the
+watch's concern, not the timeline's. It rides the same
+`GET /contracts/{id}/annex-history` payload, closing the set:
+all three living documents now read as timelines.
+
 **Drift findings on the wire** (`ContractService.
 dispatch_drift_finding_webhook`, round 13). Drift findings
 used to wait on the record for someone to open the brief; the
@@ -407,6 +452,26 @@ carries the count beside the outbox totals, and the `/queue`
 payload lists the stale failures beside the suspension
 review alerts — a delivery that died is operational attention
 of the same kind as a contract nobody has picked up.
+
+**Stale-failure announcement** (`ContractService.
+dispatch_stale_failure_sweep`, round 16). Surfacing is not
+announcing — a stale failure waited for someone to open a
+surface. The sweep announces the crossings: for every failed
+entry past the stale threshold and not yet announced, one
+`webhook_stale_failure` event on the stream, and one signed
+webhook per sweep naming them all (`POST
+/webhooks/outbox/announce-stale`, CLI
+`--sweep-stale-failures`) — then each entry is stamped
+(`stale_announced_at`), the SLA breach sweep's dedupe
+discipline: announced once per stale period. A re-send
+attempt clears the stamp, so a delivery that was touched and
+failed again re-arms — if it sits for another stale period it
+is announced anew, because announced-once is a property of a
+stale period, not of an entry's whole life. The announcement
+dispatch is deliberately not recorded in the outbox: it is an
+ops meta-event about the ledger, and a failed announcement
+recorded as a failed entry would go stale and announce
+itself forever — the stamps are its record.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -755,6 +820,18 @@ counsel is looking at. A lifted suspension's renewals are
 history, not a standing pattern, and are not named. Naming
 changes nothing about the scorer — the suspension binds
 exactly as before.
+
+**Serial renewals on the queue** (`pattern_calibration.
+serial_renewal_alerts`, round 16). The report named the
+pattern everywhere except where counsel works. The `/queue`
+payload now carries `serial_renewal_alerts` beside the
+due-review alerts: each active suspension past the serial
+threshold, with its renewal count, span, and the latest
+renewal's act — the same attention as a due review, in the
+room where the next re-confirmation would be signed, rendered
+on the console's queue panel. The reading is the report's own
+series (`renewal_series`), so the queue and the report cannot
+disagree about what counts as serial.
 
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
