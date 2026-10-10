@@ -45,7 +45,13 @@ from .errors import ProviderError
 from .events import CallbackSink, RunEvent
 from .playbook_data import PLAYBOOK
 from .samples import load_sample_contracts
-from .schemas import AgentResult, AssignRequest, ContractInput, DecisionRequest
+from .schemas import (
+    AgentResult,
+    AssignRequest,
+    ContractInput,
+    DecisionRequest,
+    EditOutcomesRequest,
+)
 from .wiring import build_service_from_env
 
 # Load the repo-root .env at startup (real environment variables win), so
@@ -427,8 +433,34 @@ def negotiation_brief(contract_id: str):
 def approve(contract_id: str, request: DecisionRequest) -> AgentResult:
     try:
         return service.approve(
-            contract_id, approver=_decision_actor(request), reason=request.reason or ""
+            contract_id,
+            approver=_decision_actor(request),
+            reason=request.reason or "",
+            edit_outcomes=request.edit_outcomes,
         )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/contracts/{contract_id}/edits", response_model=AgentResult, dependencies=_AUTH)
+def record_edit_outcomes(contract_id: str, request: EditOutcomesRequest) -> AgentResult:
+    """Record counsel's per-edit outcomes (accepted / modified /
+    rejected, with a note) on a stored record. Bookkeeping for the
+    negotiation — the follow-up round's reflection check reads the
+    accepted/modified outcomes and flags agreed language the new
+    draft does not show."""
+    actor = request.actor_name()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — counsel's name ('approver'/'reviewer' are accepted legacy aliases).",
+        )
+    if not request.outcomes:
+        raise HTTPException(status_code=422, detail="Provide at least one outcome.")
+    try:
+        return service.record_edit_outcomes(contract_id, request.outcomes, actor)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

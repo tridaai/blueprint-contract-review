@@ -168,7 +168,8 @@ def build_negotiation_brief(chain: list[AgentResult], latest: AgentResult) -> st
     if not latest.proposed_edits:
         lines.append("No edits proposed — there are no flagged clauses to map edits onto.")
     else:
-        for edit in latest.proposed_edits:
+        outcomes_by_index = {o.edit_index: o for o in latest.edit_outcomes}
+        for index, edit in enumerate(latest.proposed_edits):
             lines.append(f"### {edit.clause_id} — {edit.clause_type} ({edit.kind})")
             lines.append("")
             if edit.original_sentence:
@@ -178,6 +179,63 @@ def build_negotiation_brief(chain: list[AgentResult], latest: AgentResult) -> st
             if edit.replacement_text:
                 lines.append(f"- In: {edit.replacement_text}")
             lines.append(f"- Note: {edit.note}")
+            outcome = outcomes_by_index.get(index)
+            if outcome is not None:
+                lines.append(
+                    f"- Counsel outcome: **{outcome.outcome}**"
+                    + (f" — {outcome.note}" if outcome.note else "")
+                    + (f" (marked by {outcome.marked_by})" if outcome.marked_by else "")
+                )
+                if outcome.modified_text:
+                    lines.append(f"- Settled language: {outcome.modified_text}")
+            lines.append("")
+
+    # -- Edit outcomes across the chain + reflection ------------------------
+    lines.append("## Edit outcomes and reflection")
+    lines.append("")
+    rounds_with_outcomes = [r for r in chain if r.edit_outcomes]
+    if not rounds_with_outcomes and not latest.edit_reflection:
+        lines.append(
+            "No per-edit outcomes are on record yet. Counsel marks "
+            "each proposed edit accepted, modified, or rejected as the "
+            "negotiation settles it; the next round's brief then checks "
+            "the agreed edits against the new draft's text."
+        )
+        lines.append("")
+    else:
+        for result in rounds_with_outcomes:
+            lines.append(f"### Outcomes recorded on {result.contract_id}")
+            lines.append("")
+            for outcome in result.edit_outcomes:
+                lines.append(
+                    f"- Edit {outcome.edit_index} — {outcome.clause_id} "
+                    f"{outcome.clause_type} ({outcome.kind}): "
+                    f"**{outcome.outcome}**"
+                    + (f" — {outcome.note}" if outcome.note else "")
+                )
+            lines.append("")
+        if latest.edit_reflection:
+            lines.append(
+                f"### Reflection — agreed edits checked against {latest.contract_id}"
+            )
+            lines.append("")
+            lines.append(
+                "The check is textual: how much of each agreed edit's "
+                "new language appears in the new draft's aligned "
+                "clause. Counsel judges substance; this flags where "
+                "to look."
+            )
+            lines.append("")
+            for entry in latest.edit_reflection:
+                flag = (
+                    "**AGREED BUT NOT REFLECTED** — "
+                    if entry.status == "agreed_not_reflected"
+                    else ""
+                )
+                lines.append(
+                    f"- {entry.clause_type} ({entry.kind}, "
+                    f"{entry.outcome}): {flag}{entry.status} — {entry.detail}"
+                )
             lines.append("")
 
     # -- Exhibit findings ---------------------------------------------------

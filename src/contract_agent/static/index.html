@@ -107,8 +107,10 @@
       <div class="row" style="margin-top:12px">
         <button class="primary" id="approve">Approve packet</button>
         <button id="reject">Reject</button>
+        <button id="record-outcomes">Record edit outcomes</button>
         <span class="note" id="gate-status"></span>
       </div>
+      <p class="note">Edit outcomes: mark each proposed edit in the clause table above (accepted / modified / rejected), then record them under your name — they ride into the brief, and the next round's reflection check reads the agreed ones.</p>
       <p class="note">Approval records counsel's decision on the packet. Nothing is emailed, sent, or filed by the agent; with ACTION_WEBHOOK_URL configured, the approved packet is routed to that endpoint instead.</p>
     </section>
   </div>
@@ -273,10 +275,25 @@ function render(result) {
       <td>${h.re_traded ? pill('RE-TRADED', 'bad') + '<br><span class="note">' + esc(h.re_trade_detail) + '</span>' : ''}</td></tr>`).join('')}
     </tbody></table>`;
   }
+  if (result.edit_reflection && result.edit_reflection.length) {
+    const reflPill = s => s === 'reflected' ? pill('reflected', 'good') : s === 'agreed_not_reflected' ? pill('AGREED — NOT IN TEXT', 'bad') : pill('not checkable', 'warn');
+    html += `<h3>Edit reflection <span class="note">(the previous round's agreed edits, checked against this draft's text — textual check; counsel judges substance)</span></h3>
+    <table><thead><tr><th>Clause</th><th>Edit</th><th>Outcome</th><th>Reflection</th><th>Detail</th></tr></thead><tbody>
+    ${result.edit_reflection.map(r => `<tr>
+      <td>${esc(r.clause_type)}<br><span class="note">${esc(r.prior_clause_id)} → ${esc(r.clause_id || '—')}</span></td>
+      <td>${pill(r.kind)}</td>
+      <td>${esc(r.outcome)}</td>
+      <td>${reflPill(r.status)}${r.coverage !== null && r.coverage !== undefined ? '<br><span class="note">coverage ' + esc(Math.round(r.coverage * 100)) + '%</span>' : ''}</td>
+      <td>${esc(r.detail)}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
   const diffsByClause = {};
   (result.clause_diffs || []).forEach(d => { diffsByClause[d.clause_id] = d; });
   const editsByClause = {};
-  (result.proposed_edits || []).forEach(e => { (editsByClause[e.clause_id] = editsByClause[e.clause_id] || []).push(e); });
+  (result.proposed_edits || []).forEach((e, idx) => { (editsByClause[e.clause_id] = editsByClause[e.clause_id] || []).push({edit: e, idx}); });
+  const outcomesByIndex = {};
+  (result.edit_outcomes || []).forEach(o => { outcomesByIndex[o.edit_index] = o; });
+  const outcomePill = o => o === 'accepted' ? pill('accepted', 'good') : o === 'modified' ? pill('modified', 'warn') : pill('rejected', 'bad');
   html += `<h3>Clause-by-clause review</h3><table><thead><tr><th>Clause</th><th>Type</th><th>Verdict</th><th>Playbook</th><th>Rationale</th></tr></thead><tbody>
     ${result.clause_verdicts.map(v => { const u = units[v.clause_id] || {}; const diff = diffsByClause[v.clause_id]; return `<tr>
       <td>${esc(v.clause_id)}${u.ref ? ' (§' + esc(u.ref) + ')' : ''}<br><span class="note">${esc(u.heading || '')}</span></td>
@@ -289,12 +306,13 @@ function render(result) {
           <div><strong>Counterparty text</strong><pre style="max-height:200px">${esc(diff.counterparty_text || '(no text captured)')}</pre></div>
           <div><strong>Playbook fallback ${(diff.playbook_refs || []).map(r => '[' + esc(r) + ']').join(' ')}</strong><pre style="max-height:200px">${esc(diff.playbook_fallback || 'None in the playbook — counsel to draft.')}</pre></div>
         </div>${diff.proposed_tier ? `<p class="note" style="margin-top:8px">Proposed tier: <strong>tier ${diff.proposed_tier} — ${esc(diff.tier_name)}</strong> · ${esc(diff.tier_reason)}${diff.tier_language && diff.proposed_tier === 2 ? '<br>Tier language: ' + esc(diff.tier_language) : ''}</p>` : ''}
-        ${(editsByClause[v.clause_id] || []).length ? `<p class="note" style="margin-top:8px"><strong>Proposed edits — draft for counsel review</strong> (computed in code from the tier language; never sent)</p>
-        <table><thead><tr><th>Edit</th><th>Counterparty sentence</th><th>Proposed language</th></tr></thead><tbody>
-        ${editsByClause[v.clause_id].map(e => `<tr>
+        ${(editsByClause[v.clause_id] || []).length ? `<p class="note" style="margin-top:8px"><strong>Proposed edits — draft for counsel review</strong> (computed in code from the tier language; never sent). Mark each edit's outcome as the negotiation settles it — the next round checks agreed edits against its text.</p>
+        <table><thead><tr><th>Edit</th><th>Counterparty sentence</th><th>Proposed language</th><th>Counsel outcome</th></tr></thead><tbody>
+        ${editsByClause[v.clause_id].map(({edit: e, idx}) => { const outcome = outcomesByIndex[idx]; return `<tr>
           <td>${pill(e.kind)}</td>
           <td>${e.kind === 'insert_after' ? '<span class="note">insert after:</span> ' + esc(e.anchor_sentence) : e.kind === 'counsel_draft' ? '<span class="note">— counsel drafts; the playbook proposes no language —</span>' : esc(e.original_sentence)}</td>
-          <td>${esc(e.replacement_text || '—')}<br><span class="note">${esc(e.note)}</span></td></tr>`).join('')}
+          <td>${esc(e.replacement_text || '—')}<br><span class="note">${esc(e.note)}</span></td>
+          <td>${outcome ? outcomePill(outcome.outcome) + (outcome.note ? '<br><span class="note">' + esc(outcome.note) + '</span>' : '') + (outcome.modified_text ? '<br><span class="note">settled: ' + esc(outcome.modified_text) + '</span>' : '') : `<select data-edit-outcome="${idx}" style="width:auto;padding:4px 6px"><option value="">— mark —</option><option value="accepted">accepted</option><option value="modified">modified</option><option value="rejected">rejected</option></select>`}</td></tr>`; }).join('')}
         </tbody></table>` : ''}</details></td></tr>` : ''); }).join('')}
   </tbody></table>`;
   html += `<h3>Computed facts (code, never the model)</h3><dl class="kv">
@@ -406,9 +424,28 @@ async function decide(path) {
   $('gate-section').style.display = 'none';
 }
 
+async function recordOutcomes() {
+  const actor = $('actor').value.trim();
+  if (!actor) { $('gate-status').textContent = 'Enter counsel name first.'; return; }
+  const outcomes = [];
+  document.querySelectorAll('select[data-edit-outcome]').forEach(sel => {
+    if (sel.value) outcomes.push({edit_index: Number(sel.dataset.editOutcome), outcome: sel.value});
+  });
+  if (!outcomes.length) { $('gate-status').textContent = 'No edit outcomes marked — use the outcome dropdowns in the clause table.'; return; }
+  const res = await fetch(`/contracts/${currentId}/edits`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({actor, outcomes})
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) { $('gate-status').textContent = 'Error ' + res.status + ': ' + (body.detail || ''); return; }
+  $('gate-status').textContent = `Recorded ${outcomes.length} edit outcome(s) by ${actor}.`;
+  render(body);
+}
+
 $('analyze').addEventListener('click', analyze);
 $('approve').addEventListener('click', () => decide('approve'));
 $('reject').addEventListener('click', () => decide('reject'));
+$('record-outcomes').addEventListener('click', recordOutcomes);
 $('due-refresh').addEventListener('click', loadDue);
 $('queue-refresh').addEventListener('click', loadQueue);
 loadSamples();

@@ -43,7 +43,13 @@ from .model_backends import ModelBackend, get_backend
 from .objectstore import get_object_store
 from .ports import Checkpointer, EventSink, ObjectStore
 from .retriever import Retriever, get_retriever
-from .schemas import AgentResult, ContractInput
+from .schemas import (
+    EDIT_OUTCOMES,
+    AgentResult,
+    ContractInput,
+    EditOutcome,
+    EditOutcomeInput,
+)
 from .store import ApprovalRecord, counterparty_summary, default_store
 
 __all__ = ["ApprovalRecord", "BatchItem", "ContractService", "Store"]
@@ -91,6 +97,8 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
         "clause_verdicts": [v.model_dump(mode="json") for v in result.clause_verdicts],
         "clause_diffs": [d.model_dump(mode="json") for d in result.clause_diffs],
         "proposed_edits": [e.model_dump(mode="json") for e in result.proposed_edits],
+        "edit_outcomes": [o.model_dump(mode="json") for o in result.edit_outcomes],
+        "edit_reflection": [r.model_dump(mode="json") for r in result.edit_reflection],
         "round_diff": (
             result.round_diff.model_dump(mode="json") if result.round_diff else None
         ),
@@ -382,6 +390,33 @@ class ContractService:
                 ],
             )
         )
+        # Edit reflection: the edits counsel marked accepted/modified
+        # on the superseded round, checked against THIS draft's text
+        # (see edit_reflection.py). Computed whenever the prior round
+        # carries outcomes — the chain walk below is separate.
+        if prior.result.edit_outcomes:
+            from .edit_reflection import build_edit_reflection
+
+            result.edit_reflection = build_edit_reflection(prior.result, result)
+            flagged = sum(
+                1
+                for entry in result.edit_reflection
+                if entry.status == "agreed_not_reflected"
+            )
+            result.trace.append(
+                TraceStep(
+                    name="edit_reflection",
+                    title=(
+                        f"Edit reflection vs {prior.result.contract_id}: "
+                        f"{len(result.edit_reflection)} agreed edit(s) checked · "
+                        f"{flagged} agreed but not reflected"
+                    ),
+                    details=[
+                        f"{entry.clause_type} [{entry.kind}]: {entry.status} — {entry.detail}"
+                        for entry in result.edit_reflection
+                    ],
+                )
+            )
         rounds = self._chain_rounds(model, result)
         if len(rounds) >= 3:
             chain = build_round_chain(rounds)
@@ -512,7 +547,11 @@ class ContractService:
         return summary
 
     def approve(
-        self, contract_id: str, approver: str, reason: str = ""
+        self,
+        contract_id: str,
+        approver: str,
+        reason: str = "",
+        edit_outcomes: list[EditOutcomeInput] | None = None,
     ) -> AgentResult:
         store = self._get_store()
         record = store.get(contract_id)
@@ -532,6 +571,11 @@ class ContractService:
             raise ValueError(
                 "Draft failed guardrail validation and cannot be approved: " + failed
             )
+        # Per-edit outcomes settled together with the approval are
+        # recorded BEFORE dispatch, so the routed packet carries what
+        # counsel actually agreed, edit by edit.
+        if edit_outcomes:
+            self._apply_edit_outcomes(record, edit_outcomes, approver)
         record.approved = True
         record.approver = approver
         record.approve_reason = reason
@@ -557,6 +601,8 @@ class ContractService:
             contract_id,
             {"decision": "approved", "actor": approver, "reason": reason},
         )
+        if edit_outcomes:
+            self._refresh_successor_reflection(contract_id)
         return record.result
 
     def reject(self, contract_id: str, reviewer: str, reason: str = "") -> AgentResult:
@@ -583,6 +629,95 @@ class ContractService:
             {"decision": "rejected", "actor": reviewer, "reason": reason},
         )
         return record.result
+
+    # ------------------------------------------------------------------
+    # Per-edit acceptance tracking (round 6)
+    # ------------------------------------------------------------------
+
+    def _apply_edit_outcomes(
+        self,
+        record: ApprovalRecord,
+        outcomes: list[EditOutcomeInput],
+        actor: str,
+    ) -> None:
+        """Upsert counsel's per-edit outcomes onto a record's result.
+
+        Each outcome names an edit by its index in the stored
+        result's ``proposed_edits`` — the snapshot fields (clause,
+        type, kind) are copied from the edit itself so the outcome
+        stays readable even if renders change. Re-marking an edit
+        replaces its outcome. Validation failures name the edit,
+        because a silent drop here would corrupt the negotiation's
+        memory of what was agreed."""
+        result = record.result
+        by_index = {o.edit_index: o for o in result.edit_outcomes}
+        for item in outcomes:
+            if item.outcome not in EDIT_OUTCOMES:
+                raise ValueError(
+                    f"Edit outcome must be one of {EDIT_OUTCOMES}, "
+                    f"got {item.outcome!r}"
+                )
+            if item.edit_index < 0 or item.edit_index >= len(result.proposed_edits):
+                raise ValueError(
+                    f"edit_index {item.edit_index} is out of range — "
+                    f"contract {result.contract_id} has "
+                    f"{len(result.proposed_edits)} proposed edit(s)"
+                )
+            edit = result.proposed_edits[item.edit_index]
+            by_index[item.edit_index] = EditOutcome(
+                edit_index=item.edit_index,
+                clause_id=edit.clause_id,
+                clause_type=edit.clause_type,
+                kind=edit.kind,
+                outcome=item.outcome,
+                note=item.note or "",
+                modified_text=item.modified_text or "",
+                marked_by=actor,
+                marked_at=datetime.now(timezone.utc).isoformat(),
+            )
+        result.edit_outcomes = [by_index[i] for i in sorted(by_index)]
+
+    def record_edit_outcomes(
+        self,
+        contract_id: str,
+        outcomes: list[EditOutcomeInput],
+        actor: str,
+    ) -> AgentResult:
+        """Record counsel's per-edit outcomes on a stored record —
+        ahead of, or together with, the packet-level gate decision.
+
+        Outcomes are negotiation bookkeeping: they decide nothing,
+        but the follow-up round's reflection check reads the
+        accepted/modified ones. When a successor round is already in
+        the store, its reflection is recomputed against the outcomes
+        just recorded."""
+        store = self._get_store()
+        record = store.get(contract_id)
+        if record is None:
+            raise KeyError(f"Unknown contract_id: {contract_id} (analyze it first)")
+        self._apply_edit_outcomes(record, outcomes, actor)
+        store.save(record)
+        self._refresh_successor_reflection(contract_id)
+        return record.result
+
+    def _refresh_successor_reflection(self, contract_id: str) -> None:
+        """Recompute the reflection of any stored round that
+        supersedes ``contract_id`` — outcomes are often marked after
+        the follow-up draft has already been analysed, and its
+        stored reflection must not go stale against them."""
+        from .edit_reflection import build_edit_reflection
+
+        store = self._get_store()
+        prior = store.get(contract_id)
+        if prior is None:
+            return
+        for record in store.all_records():
+            if (record.contract or {}).get("supersedes") != contract_id:
+                continue
+            refreshed = build_edit_reflection(prior.result, record.result)
+            if refreshed != record.result.edit_reflection:
+                record.result.edit_reflection = refreshed
+                store.save(record)
 
     def get(self, contract_id: str) -> AgentResult | None:
         record = self._get_store().get(contract_id)

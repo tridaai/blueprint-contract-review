@@ -262,6 +262,68 @@ class ProposedEdit(BaseModel):
     note: str = ""
 
 
+EDIT_OUTCOMES = ["accepted", "modified", "rejected"]
+
+
+class EditOutcome(BaseModel):
+    """Counsel's per-edit decision on one proposed edit, recorded on
+    the record (round 6): the packet-level gate decision says whether
+    the packet may go out; this says, edit by edit, what counsel
+    settled with the counterparty — accepted as proposed, modified
+    (``modified_text`` carries the language actually settled on, when
+    counsel records it), or rejected. Outcomes are bookkeeping for
+    the negotiation: they decide nothing by themselves, but the next
+    round's reflection check reads the accepted/modified ones (see
+    ``EditReflection``)."""
+
+    edit_index: int  # position in the result's proposed_edits list
+    clause_id: str = ""  # snapshot from the edit, for display robustness
+    clause_type: str = "other"
+    kind: str = ""
+    outcome: str = ""  # accepted | modified | rejected
+    note: str = ""  # counsel's note ("agreed on the call, 12 Oct")
+    modified_text: str = ""  # the settled language, when outcome == modified
+    marked_by: str = ""
+    marked_at: str = ""  # ISO timestamp
+
+
+class EditOutcomeInput(BaseModel):
+    """One outcome as submitted by counsel (API / gate payload)."""
+
+    edit_index: int
+    outcome: str  # accepted | modified | rejected
+    note: str = ""
+    modified_text: str = ""
+
+
+class EditReflection(BaseModel):
+    """One accepted/modified edit from the previous round, checked
+    against the follow-up round's draft text (``edit_reflection.py``):
+    did the language counsel agreed actually land in the new draft?
+
+    The check is textual and says so: the agreed language is
+    checked sentence by sentence against the aligned clause of the
+    new draft, each sentence measured on its NEW content (the words
+    the edit would change relative to the prior draft).
+    ``reflected`` = the agreed sentences are there;
+    ``agreed_not_reflected`` = they are not — counsel agreed this on
+    the call and the draft does not show it, the classic
+    agreed-but-not-reflected trap; ``not_checkable`` = there is no
+    agreed language on record to check (a counsel-draft edit, or
+    language with no measurable content). Counsel judges substance;
+    this flags where to look."""
+
+    clause_type: str = "other"
+    edit_index: int = -1  # index into the PREVIOUS round's proposed_edits
+    prior_clause_id: str = ""
+    clause_id: str = ""  # the aligned clause in this round ("" when the clause is gone)
+    kind: str = ""
+    outcome: str = ""  # accepted | modified
+    status: str = ""  # reflected | agreed_not_reflected | not_checkable
+    coverage: Optional[float] = None  # share of the agreed language's checkable sentences that landed, 0..1
+    detail: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Negotiation-round diff (computed in code — verdict movement)
 # ---------------------------------------------------------------------------
@@ -541,6 +603,8 @@ class AgentResult(BaseModel):
     clause_verdicts: list[ClauseVerdict] = Field(default_factory=list)
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
     proposed_edits: list[ProposedEdit] = Field(default_factory=list)
+    edit_outcomes: list[EditOutcome] = Field(default_factory=list)  # counsel's per-edit decisions (recorded post-analysis)
+    edit_reflection: list[EditReflection] = Field(default_factory=list)  # prior round's accepted edits, checked against this draft
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
     round_chain: Optional[RoundChain] = None  # set when the chain has 3+ rounds
     exhibit_checks: list[ExhibitCheck] = Field(default_factory=list)
@@ -581,6 +645,22 @@ class DecisionRequest(BaseModel):
     approver: Optional[str] = None
     reviewer: Optional[str] = None
     reason: Optional[str] = None
+    # Per-edit outcomes recorded together with an approval — counsel
+    # settles the packet and marks what was agreed in one motion.
+    edit_outcomes: Optional[list[EditOutcomeInput]] = None
+
+    def actor_name(self) -> Optional[str]:
+        return self.actor or self.approver or self.reviewer
+
+
+class EditOutcomesRequest(BaseModel):
+    """Counsel marking per-edit outcomes on a stored record, outside
+    (or ahead of) the packet-level gate decision."""
+
+    actor: Optional[str] = None
+    approver: Optional[str] = None
+    reviewer: Optional[str] = None
+    outcomes: list[EditOutcomeInput] = Field(default_factory=list)
 
     def actor_name(self) -> Optional[str]:
         return self.actor or self.approver or self.reviewer
