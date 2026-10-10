@@ -154,6 +154,7 @@
 const $ = id => document.getElementById(id);
 let currentId = null;
 let currentValid = false;
+let currentMatter = '';
 
 function headers() {
   const h = {'Content-Type': 'application/json'};
@@ -611,17 +612,20 @@ async function loadConcessionProfile(counterparty) {
   const host = $('concession-profile');
   if (!host || !counterparty) return;
   try {
-    const res = await fetch('/counterparties/' + encodeURIComponent(counterparty) + '/profile', {headers: headers()});
+    // A matter-tagged analysis reads its own matter's profile —
+    // the counterparty's other matters do not bleed in.
+    const url = '/counterparties/' + encodeURIComponent(counterparty) + '/profile' + (currentMatter ? '?matter=' + encodeURIComponent(currentMatter) : '');
+    const res = await fetch(url, {headers: headers()});
     if (!res.ok) { host.innerHTML = ''; return; }
     const p = await res.json();
     if (!p.multi_round_chains) {
-      host.innerHTML = `<p class="note" style="margin-top:10px">Counterparty profile: ${esc(p.contracts)} contract(s) on record for ${esc(counterparty)} — no multi-round negotiation yet, so no concession pattern.</p>`;
+      host.innerHTML = `<p class="note" style="margin-top:10px">Counterparty profile: ${esc(p.contracts)} contract(s) on record for ${esc(counterparty)}${p.matter ? ' on matter ' + esc(p.matter) : ''} — no multi-round negotiation yet, so no concession pattern.</p>`;
       return;
     }
     const rowFor = t => p.clause_types.find(r => r.clause_type === t);
     const chip = (t, cls) => { const r = rowFor(t); return pill(t + (r && r.re_trades ? ' (re-traded ×' + r.re_trades + ')' : ''), cls); };
     host.innerHTML = `<div style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--soft)">
-      <strong style="font-size:13px">Counterparty concessions — ${esc(counterparty)}</strong>
+      <strong style="font-size:13px">Counterparty concessions — ${esc(counterparty)}${p.matter ? ' · matter: ' + esc(p.matter) : ''}</strong>
       <span class="note">computed from ${esc(p.contracts)} stored contract(s) in ${esc(p.chains)} chain(s) · re-trades ${esc(p.re_trades)}${p.best_rounds_to_no_walk_away ? ' · walk-away cleared by round ' + esc(p.best_rounds_to_no_walk_away) : ''} · counsel decisions: ${esc(p.decisions.approved)} approved / ${esc(p.decisions.rejected)} rejected</span>
       <div class="row" style="margin-top:6px"><span class="note">Concedes:</span> ${p.concedes.length ? p.concedes.map(t => chip(t, 'good')).join(' ') : '<span class="note">none observed</span>'}</div>
       <div class="row" style="margin-top:4px"><span class="note">Holds:</span> ${p.holds.length ? p.holds.map(t => chip(t, 'bad')).join(' ') : '<span class="note">none observed</span>'}${p.mixed.length ? '<span class="note">Mixed:</span> ' + p.mixed.map(t => chip(t, 'warn')).join(' ') : ''}</div>
@@ -640,6 +644,7 @@ async function analyze() {
   const res = await fetch('/contracts/analyze', {method: 'POST', headers: headers(), body: JSON.stringify(payload)});
   if (!res.ok) { $('run-status').textContent = 'Error ' + res.status + ': ' + (await res.text()).slice(0, 300); return; }
   const result = await res.json();
+  currentMatter = payload.matter || '';
   $('run-status').textContent = 'Done — awaiting counsel.';
   render(result);
   loadDue();

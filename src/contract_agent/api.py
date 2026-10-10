@@ -599,17 +599,22 @@ def resend_webhook(outbox_id: str, body: WebhookResendRequest) -> dict:
 
 
 @app.get("/counterparties/{counterparty}/profile", dependencies=_AUTH)
-def counterparty_profile(counterparty: str) -> dict:
+def counterparty_profile(counterparty: str, matter: str | None = None) -> dict:
     """The counterparty concession profile: clause types they
     concede vs hold across their stored negotiation chains,
     re-trade counts, rounds to clear walk-away positions, and
     counsel's decision tallies — computed in code from the records.
-    404 when the store holds nothing for this counterparty."""
-    profile = service.counterparty_profile(counterparty)
+    ``?matter=<tag>`` scopes the profile to that matter's records;
+    the all-matters profile is the default. 404 when the store
+    holds nothing for this counterparty (in that scope)."""
+    profile = service.counterparty_profile(counterparty, matter=matter)
     if profile["contracts"] == 0:
         raise HTTPException(
             status_code=404,
-            detail=f"No stored contracts for counterparty: {counterparty}",
+            detail=(
+                f"No stored contracts for counterparty: {counterparty}"
+                + (f" on matter: {matter}" if matter else "")
+            ),
         )
     return profile
 

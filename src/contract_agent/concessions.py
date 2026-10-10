@@ -20,6 +20,16 @@ The profile surfaces two ways: as a view (``GET
 as evidence lines in the next review of the same counterparty, so
 the assessment counsel reads is informed by how this counterparty
 has actually moved — facts, offered as priors, never as verdicts.
+
+The profile can be scoped to one matter (round 14): pass a
+matter tag and only the records carrying it count — chains,
+decisions, walk-away lines, all of it — so a counterparty's
+behaviour on the platform renewal does not bleed into the
+profile counsel reads for their employment dispute. The
+all-matters profile stays the default, and an analysis that
+carries a matter tag reads its priors from its own matter's
+profile: a matter with no multi-round history yet yields no
+pattern lines, rather than borrowing another matter's.
 """
 
 from __future__ import annotations
@@ -62,17 +72,23 @@ def _chains(records: list[ApprovalRecord]) -> list[list[ApprovalRecord]]:
 
 
 def build_concession_profile(
-    counterparty: str, records: list[ApprovalRecord]
+    counterparty: str, records: list[ApprovalRecord], matter: str | None = None
 ) -> dict:
     """The concession profile for one counterparty over its stored
     records. ``records`` is the counterparty's full record set (the
-    caller filters); an empty set yields a zero profile."""
+    caller filters); an empty set yields a zero profile. With a
+    ``matter`` tag, only records carrying that tag count — the
+    chains are threaded within the scoped set, so a chain that
+    crosses matters contributes each matter's rounds to that
+    matter's profile alone."""
     mine = [
         r
         for r in records
         if (r.result.counterparty_name or (r.contract or {}).get("counterparty_name", ""))
         == counterparty
     ]
+    if matter:
+        mine = [r for r in mine if (r.contract or {}).get("matter") == matter]
     chains = _chains(mine)
     multi = [chain for chain in chains if len(chain) >= 2]
 
@@ -229,6 +245,8 @@ def build_concession_profile(
     }
     return {
         "counterparty": counterparty,
+        "matter": matter or "",
+        "scope": "matter" if matter else "all",
         "contracts": len(mine),
         "chains": len(chains),
         "multi_round_chains": len(multi),
@@ -261,7 +279,9 @@ def concession_evidence_lines(profile: dict) -> list[str]:
     if not profile or profile.get("multi_round_chains", 0) == 0:
         return []
     lines = [
-        f"concession profile: {profile['counterparty']} — "
+        f"concession profile: {profile['counterparty']}"
+        + (f" on matter {profile['matter']}" if profile.get("matter") else "")
+        + f" — "
         f"{profile['contracts']} contract(s) in {profile['chains']} chain(s), "
         f"{profile['multi_round_chains']} multi-round; re-trades: "
         f"{profile['re_trades']}"

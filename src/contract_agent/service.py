@@ -988,24 +988,32 @@ class ContractService:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             return list(pool.map(guarded, contracts))
 
-    def counterparty_profile(self, counterparty: str) -> dict:
+    def counterparty_profile(
+        self, counterparty: str, matter: str | None = None
+    ) -> dict:
         """The concession profile for one counterparty, computed
         from every stored record (see ``concessions.py``): clause
         types conceded vs held across their negotiation chains,
         re-trade counts, rounds to clear walk-away positions, and
-        counsel's decision tallies. An unknown counterparty yields a
-        zero profile — the caller decides whether that is a 404."""
+        counsel's decision tallies. With a ``matter`` tag the
+        profile is scoped to that matter's records alone — the
+        all-matters profile stays the default. An unknown
+        counterparty yields a zero profile — the caller decides
+        whether that is a 404."""
         from .concessions import build_concession_profile
 
         return build_concession_profile(
-            counterparty, self._get_store().all_records()
+            counterparty, self._get_store().all_records(), matter=matter
         )
 
     def _concession_lines(self, contract: ContractInput) -> list[str]:
         """The counterparty's concession profile as evidence lines
         for a new analysis, excluding the contract being analysed.
         Empty when there is no multi-round history — a pattern needs
-        at least one negotiation, not one contract."""
+        at least one negotiation, not one contract. A contract
+        carrying a matter tag reads its own matter's profile: the
+        counterparty's behaviour on other matters does not bleed
+        into this one's priors."""
         if not contract.counterparty_name:
             return []
         from .concessions import build_concession_profile, concession_evidence_lines
@@ -1015,7 +1023,9 @@ class ContractService:
             for record in self._get_store().all_records()
             if record.result.contract_id != contract.contract_id
         ]
-        profile = build_concession_profile(contract.counterparty_name, records)
+        profile = build_concession_profile(
+            contract.counterparty_name, records, matter=contract.matter or None
+        )
         return concession_evidence_lines(profile)
 
     def _concession_tendencies(self, contract: ContractInput) -> dict:
@@ -1025,7 +1035,9 @@ class ContractService:
         held type, or any type they have re-traded). Computed from
         the stored records only — the current contract is not in the
         store yet, and a counterparty with no multi-round chain has
-        no tendencies: the history term is then simply absent."""
+        no tendencies: the history term is then simply absent. A
+        matter-tagged contract scores on its own matter's
+        tendencies, for the same reason its evidence lines do."""
         from .concessions import build_concession_profile
 
         records = [
@@ -1033,7 +1045,9 @@ class ContractService:
             for record in self._get_store().all_records()
             if record.result.contract_id != contract.contract_id
         ]
-        profile = build_concession_profile(contract.counterparty_name, records)
+        profile = build_concession_profile(
+            contract.counterparty_name, records, matter=contract.matter or None
+        )
         tendencies: dict[str, dict] = {}
         for row in profile["clause_types"]:
             if row["tendency"] in ("concedes", "holds") or row["re_trades"]:
