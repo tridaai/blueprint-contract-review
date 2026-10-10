@@ -267,6 +267,21 @@ and it rides the due view's covenant rows and
 restriction is never read as a live one, and a lapse nobody
 closed is named `open` until somebody closes it.
 
+**Follow-through-aware covenant announcements**
+(`dispatch_obligation_sweep`, round 17). The sweep had no
+dedupe: it announced every due covenant on every run, including
+lapses already announced, acted on, and confirmed closed. The
+sweep now reads the state the follow-through created: a
+covenant at `restriction_confirmed_lifted` draws no event and
+is counted as closed (`covenant_closed_count`, listed under
+`closed_covenants`), while an `open` or merely
+`counterparty_notified` lapse keeps announcing, its state on
+the event. The announcement is a chase that stops when the
+loop closes; the acts stay on the record untouched — the
+announced history is the record's, and the sweep only reads
+it. Counts otherwise keep their round-15 meanings, so a sweep
+with no closed lapses reports exactly what it reported before.
+
 **Sub-processor list drift** (`subprocessor_drift.py`, round
 11). The annex is a living list, so the single-round checks are
 joined by a cross-round one: consecutive rounds of a chain have
@@ -300,6 +315,27 @@ pre-employment inventions generally rather than via the
 schedule, a removal changes no exclusion and is reported as
 information. Like the other cross-round checks it rides on
 the result separately and surfaces in the brief and console.
+
+**Lapsed-covenant readings** (`covenant_history.py`, round
+17). A later letter in an employment chain is read against the
+restrictions that already lapsed in it. For each covenant kind
+the new letter carries afresh, the nearest prior round with a
+DATED covenant of that kind governs: if it has lapsed by the
+analysis date, a reading rides on the new result
+(`lapsed_covenant_readings`, attached by the service after the
+run, like the drift checks) naming the prior round, the expiry,
+and the lapse's evidence — confirmed lifted on the record (by
+whom, when), notified but unconfirmed, or still standing open —
+and reads the fresh covenant as a **new bargain**: a fresh
+promise priced on its own terms, not a continuation of the
+restriction that lapsed. The reading is information
+(`consistent`), never a finding — nothing is wrong with a new
+bargain; it is wrong only to mistake it for the old one. A
+prior covenant still running draws no reading (a continuation
+question, for counsel's own read of the register), and neither
+does a letter carrying no fresh covenant of the kind. The
+readings surface in the negotiation brief's exhibit findings
+and its since-the-last-brief delta, beside the drift checks.
 
 **Certificate renewal evidence** (`certificate_renewal.py`,
 round 12). A renewal certificate is a cross-round fact too:
@@ -472,6 +508,20 @@ dispatch is deliberately not recorded in the outbox: it is an
 ops meta-event about the ledger, and a failed announcement
 recorded as a failed entry would go stale and announce
 itself forever — the stamps are its record.
+
+**The prune ledger** (`webhook_outbox.py`, round 17). The
+prune removed delivery history and its report was returned and
+gone: the ledger's own gaps were unauditable. Every prune act
+now appends an `OutboxPrune` to the store beside the entries
+(PostgreSQL `webhook_outbox_prunes`, migration 0006) — who
+pruned, when, the retention age in force, the exact entry ids
+removed, and the sent/failed counts kept — a prune that removed
+nothing included, because the ledger records the act, not only
+its casualties. It reads back at
+`GET /webhooks/outbox/prunes` and in the console's outbox
+panel, and it is append-only: nothing prunes the prunes, so
+"what delivery history do we no longer hold, and who removed
+it?" always has an answer.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -993,6 +1043,24 @@ expiry, with the failed renewal named on the row
 sweep still announcing the original date. Arrival is not
 evidence; the check is — CTR-2036's renewal closes CTR-2029's
 watch, CTR-2037's does not.
+
+**The watch's follow-through** (round 17). The watch announced,
+and nothing recorded that anyone acted — the same open loop the
+covenant lapse closed in round 16. A named act on the record
+the watch stands on (`CertificateWatchFollowThrough`, recorded
+by `ContractService.record_certificate_watch_follow_through`)
+now records `renewal_chased` — counsel chased the renewal —
+or `risk_accepted` — counsel accepted the lapsing cover, the
+note carrying the reason; an acceptance without a note is
+refused, because the note is the record counsel defends later.
+The act binds to reality as the covenant acts do: the contract
+must currently stand on the watch (no running watch, no
+follow-through), and each state is recorded once.
+`watch_follow_through_state` reads the acts into the state the
+watch rows, `GET /contracts/{id}/certificate-watch`, and the
+certificate biography carry. The acts close the question of
+whether anyone acted; they do not close the watch — only an
+evidenced renewal does that.
 
 ## Production topology
 

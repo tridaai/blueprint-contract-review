@@ -142,7 +142,13 @@ For each contract, the pipeline:
    announced, each entry stamped so it is announced once per
    stale period; a re-send attempt clears the stamp, so a
    delivery touched and failed again is announced anew when it
-   crosses the threshold again. And the renewal check's
+   crosses the threshold again. Every prune is itself recorded
+   in a **prune ledger** (`GET /webhooks/outbox/prunes`): who
+   pruned, when, the retention age in force, and the exact ids
+   removed — a prune that removed nothing included — so the
+   act that removes delivery history leaves a record and the
+   ledger's own gaps are auditable; nothing prunes the prunes.
+   And the renewal check's
    requirement set is **composed across the whole chain**: each
    requirement from the round that last set it — a round sets a
    limit when it first states it or states it changed, a
@@ -167,6 +173,17 @@ For each contract, the pipeline:
    the watch's operative reading for the chain — so a renewal
    that failed the evidence check reads in the timeline as
    what it was, and the expiry the watch stands on is named.
+   And a later employment letter in a chain is read against
+   the **covenants that already lapsed**: where the nearest
+   prior round's dated covenant of a kind the new letter
+   carries afresh has expired, the new letter's result names
+   the prior round, the expiry, and the lapse's evidence
+   (confirmed lifted, notified only, or still open) — the
+   fresh covenant is read as the **new bargain** it is, a new
+   promise priced on its own terms, not a continuation of
+   the restriction that lapsed; the readings ride the
+   negotiation brief's exhibit findings beside the drift
+   checks.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -433,7 +450,14 @@ register reads the covenant in its true state (`open`,
 `counterparty_notified`, `restriction_confirmed_lifted`) on
 the due view and at `GET /contracts/{id}/covenant-follow-through`,
 so an expired restriction is never read as a live one and a
-lapse nobody closed is named as open. The same
+lapse nobody closed is named as open. The sweep reads that
+state too: a covenant whose lapse stands **confirmed** is
+counted closed in the sweep report (`covenant_closed_count`,
+listed under `closed_covenants`), not announced again — the
+announcement is a chase that stops when the loop closes —
+while an open or merely notified lapse keeps announcing, and
+the acts themselves stay on the record as the announced
+history. The same
 sweep runs the **certificate renewal watch**: a certificate of
 insurance that passed its review (the cover the agreement relies
 on) still expires mid-term, so relied-upon certificates expiring
@@ -449,7 +473,19 @@ one only when it evidences the original requirement set in full
 — a renewal that quietly dropped a limit or an endorsement
 leaves the watch open on the original expiry, with the failed
 renewal named on the row (CTR-2036 renews CTR-2029 in full and
-closes it; CTR-2037 drops cover and does not).
+closes it; CTR-2037 drops cover and does not). The watch has
+a **follow-through** of its own, on the covenant pattern: a
+named act on the record the watch stands on records that the
+renewal was **chased**, or that counsel **accepted the risk**
+of the lapsing cover — the note carrying the reason, an
+acceptance without one refused
+(`POST /contracts/{id}/certificate-watch/follow-through`) —
+and the watch rows, the per-contract reading
+(`GET /contracts/{id}/certificate-watch`), and the certificate
+biography read the acts back as a state, so a watch nobody
+acted on reads as open. The acts close the question of
+whether anyone acted; only an evidenced renewal closes the
+watch itself.
 
 **Queue ownership and SLA.** The counsel queue (`GET /queue`) is a
 worklist with an owner and a clock: an operator records an assignee
@@ -518,7 +554,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 497 tests (496 run + 1 Postgres-gated skip)
+make test                  # 527 tests (526 run + 1 Postgres-gated skip)
 make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
@@ -605,7 +641,7 @@ drafts and calling that an LLM result.
 
 ```
 src/contract_agent/   the package (pipeline, AI layer, guardrails, infra)
-migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions, webhook outbox)
+migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions, webhook outbox, prune ledger)
 evals/                golden set + deterministic runner + opt-in judge pack
 tests/                hermetic pytest suite (in-memory doubles)
 docs/architecture.md  the full pipeline + production topology
