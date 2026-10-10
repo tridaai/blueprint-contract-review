@@ -9,7 +9,11 @@ of choice — and the outcome is recorded on the result (see
 ``dispatch_approval_webhook``). The same signed seam carries two
 operational event families: queue SLA breaches (see
 ``dispatch_sla_breach_webhook``) and cross-round drift findings
-(see ``dispatch_drift_finding_webhook``).
+(see ``dispatch_drift_finding_webhook``). Every dispatch the seam
+attempts is recorded in the webhook outbox (``webhook_outbox.py``)
+with its exact payload, and a failed delivery is repaired there
+by a recorded re-send (see ``resend_webhook``) — never by
+regenerating the event.
 
 Records live in the record store (``store.py``): PostgreSQL in
 production, so analyses and decisions survive restarts and are
@@ -47,6 +51,7 @@ from .objectstore import get_object_store
 from .ports import Checkpointer, EventSink, ObjectStore
 from .calibration_store import CalibrationStore, default_calibration_store
 from .proposal_store import PlaybookProposalStore, default_proposal_store
+from .webhook_outbox import OutboxStore, default_outbox_store, record_dispatch
 from .retriever import Retriever, get_retriever
 from .schemas import (
     EDIT_OUTCOMES,
@@ -58,6 +63,7 @@ from .schemas import (
     PatternTermSuspension,
     PlaybookProposal,
     SuspensionReconfirmation,
+    WebhookAttempt,
 )
 from .store import ApprovalRecord, counterparty_summary, default_store
 
@@ -78,26 +84,14 @@ class BatchItem:
     error: str | None = None
 
 
-def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
-    """POST the approved packet to ``ACTION_WEBHOOK_URL`` (off by default).
-
-    This is the output-routing seam — the thin adapter between an
-    approval and the customer's system of choice (their CLM, a work
-    queue, an automation endpoint). When ``ACTION_WEBHOOK_SECRET`` is
-    also set, the request is HMAC-signed (``X-Trida-Signature``).
-    Returns ``None`` when no URL is
-    configured (the default: no external action at all), ``"sent"``
-    on a 2xx response, and ``"failed"`` on any error or non-2xx — a
-    failed dispatch never undoes the approval; it is recorded on the
-    result for follow-up. Short timeout on purpose: an approval must
-    not hang on a downstream system.
-    """
-    load_dotenv()
-    url = env_str("ACTION_WEBHOOK_URL")
-    if not url:
-        return None
+def build_approval_payload(record: ApprovalRecord) -> dict:
+    """The approved packet as a webhook payload: the decision,
+    the verdicts and diffs it rests on, the per-edit outcomes
+    counsel recorded, and the drafts. Built from the record
+    alone, so the outbox can store the exact payload posted and
+    a re-send never has to regenerate it."""
     result = record.result
-    payload = {
+    return {
         "contract_id": result.contract_id,
         "status": result.status,
         "decided_by": result.decided_by,
@@ -122,7 +116,27 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
             "review_packet": result.drafts.review_packet if result.drafts else "",
         },
     }
-    return _post_signed_webhook(url, payload)
+
+
+def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
+    """POST the approved packet to ``ACTION_WEBHOOK_URL`` (off by default).
+
+    This is the output-routing seam — the thin adapter between an
+    approval and the customer's system of choice (their CLM, a work
+    queue, an automation endpoint). When ``ACTION_WEBHOOK_SECRET`` is
+    also set, the request is HMAC-signed (``X-Trida-Signature``).
+    Returns ``None`` when no URL is
+    configured (the default: no external action at all), ``"sent"``
+    on a 2xx response, and ``"failed"`` on any error or non-2xx — a
+    failed dispatch never undoes the approval; it is recorded on the
+    result for follow-up. Short timeout on purpose: an approval must
+    not hang on a downstream system.
+    """
+    load_dotenv()
+    url = env_str("ACTION_WEBHOOK_URL")
+    if not url:
+        return None
+    return _post_signed_webhook(url, build_approval_payload(record))
 
 
 def _post_signed_webhook(url: str, payload: dict) -> str:
@@ -171,7 +185,16 @@ def dispatch_sla_breach_webhook(record: ApprovalRecord, item: dict, notified_at:
     url = env_str("ACTION_WEBHOOK_URL")
     if not url:
         return None
-    payload = {
+    return _post_signed_webhook(
+        url, build_sla_breach_payload(item, notified_at)
+    )
+
+
+def build_sla_breach_payload(item: dict, notified_at: str) -> dict:
+    """One queue SLA breach as a webhook payload: the queue facts
+    a receiving system routes on. Built from the queue item alone,
+    so the outbox stores the exact payload posted."""
+    return {
         "event": "sla_breach",
         "contract_id": item["contract_id"],
         "counterparty_name": item["counterparty_name"],
@@ -183,7 +206,6 @@ def dispatch_sla_breach_webhook(record: ApprovalRecord, item: dict, notified_at:
         "unassigned": not item["assignee"],
         "notified_at": notified_at,
     }
-    return _post_signed_webhook(url, payload)
 
 
 def dispatch_drift_finding_webhook(
@@ -210,7 +232,18 @@ def dispatch_drift_finding_webhook(
     url = env_str("ACTION_WEBHOOK_URL")
     if not url:
         return None
-    payload = {
+    return _post_signed_webhook(
+        url, build_drift_finding_payload(result, check, prior_contract_id)
+    )
+
+
+def build_drift_finding_payload(
+    result: AgentResult, check, prior_contract_id: str
+) -> dict:
+    """One drift finding as a webhook payload: the finding and
+    the movement it computed, never contract text. Built from the
+    check alone, so the outbox stores the exact payload posted."""
+    return {
         "event": "drift_finding",
         "check": check.name,
         "status": check.status,
@@ -222,7 +255,6 @@ def dispatch_drift_finding_webhook(
         "found": check.found,
         "detail": check.detail,
     }
-    return _post_signed_webhook(url, payload)
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +327,7 @@ class ContractService:
     object_store: ObjectStore | None = None
     proposal_store: PlaybookProposalStore | None = None
     calibration_store: CalibrationStore | None = None
+    outbox_store: OutboxStore | None = None
     _resolved_store: Store | None = field(default=None, repr=False)
     _resolved_checkpointer: Checkpointer | None = field(default=None, repr=False)
     _checkpointer_resolved: bool = field(default=False, repr=False)
@@ -304,6 +337,9 @@ class ContractService:
     )
     _proposals_registered: bool = field(default=False, repr=False)
     _resolved_calibration_store: CalibrationStore | None = field(
+        default=None, repr=False
+    )
+    _resolved_outbox_store: OutboxStore | None = field(
         default=None, repr=False
     )
 
@@ -338,6 +374,13 @@ class ContractService:
                 self.calibration_store or default_calibration_store()
             )
         return self._resolved_calibration_store
+
+    def _get_outbox_store(self) -> OutboxStore:
+        if self._resolved_outbox_store is None:
+            self._resolved_outbox_store = (
+                self.outbox_store or default_outbox_store()
+            )
+        return self._resolved_outbox_store
 
     def _refresh_retriever(self) -> None:
         """Push newly registered playbook entries into the held
@@ -835,6 +878,14 @@ class ContractService:
             dispatch = dispatch_drift_finding_webhook(result, check, prior_id)
             if dispatch is None:
                 continue
+            record_dispatch(
+                self._get_outbox_store(),
+                family="drift_finding",
+                contract_id=result.contract_id,
+                label=check.name,
+                payload=build_drift_finding_payload(result, check, prior_id),
+                outcome=dispatch,
+            )
             result.drift_dispatches.append(
                 DriftDispatch(
                     check=check.name,
@@ -1057,6 +1108,14 @@ class ContractService:
             record.result.dispatch_status = dispatch
             if dispatch == "sent":
                 record.result.external_action_taken = True
+            record_dispatch(
+                self._get_outbox_store(),
+                family="approval",
+                contract_id=record.result.contract_id,
+                label="approved packet",
+                payload=build_approval_payload(record),
+                outcome=dispatch,
+            )
         store.save(record)
         self._resume_thread(
             contract_id,
@@ -1790,6 +1849,14 @@ class ContractService:
             dispatch = dispatch_sla_breach_webhook(record, item, notified_at)
             if dispatch is not None:
                 webhooks[dispatch] += 1
+                record_dispatch(
+                    self._get_outbox_store(),
+                    family="sla_breach",
+                    contract_id=item["contract_id"],
+                    label="queue SLA breach",
+                    payload=build_sla_breach_payload(item, notified_at),
+                    outcome=dispatch,
+                )
             record.sla_breach_notified_at = notified_at
             store.save(record)
             newly.append(
@@ -1823,6 +1890,125 @@ class ContractService:
                 "ACTION_WEBHOOK_SECRET is set) — otherwise the "
                 "breach is announced on the event stream alone."
             ),
+        }
+
+    # ------------------------------------------------------------------
+    # Webhook outbox (round 14): the delivery ledger + re-send act
+    # ------------------------------------------------------------------
+
+    def webhook_outbox(self, status: str | None = None) -> dict:
+        """The webhook outbox view: every signed dispatch the
+        service has attempted — approved packets, SLA breaches,
+        drift findings — with its family, its target contract,
+        its latest outcome, and its full attempt history. The
+        stored payloads are NOT in this view (they carry drafts);
+        the view answers the operational questions: what left,
+        what landed, what is still failed and waiting on a
+        re-send. ``status`` filters to one outcome (``failed``
+        is the worklist)."""
+        entries = self._get_outbox_store().all()
+        entries.sort(key=lambda e: (e.created_at, e.outbox_id))
+        counts = {
+            "total": len(entries),
+            "sent": sum(1 for e in entries if e.status == "sent"),
+            "failed": sum(1 for e in entries if e.status == "failed"),
+            "resends": sum(max(0, len(e.attempts) - 1) for e in entries),
+            "by_family": dict(Counter(e.family for e in entries)),
+        }
+        shown = [
+            e for e in entries if status is None or e.status == status
+        ]
+        return {
+            "counts": counts,
+            "entries": [
+                {
+                    "outbox_id": e.outbox_id,
+                    "family": e.family,
+                    "contract_id": e.contract_id,
+                    "label": e.label,
+                    "status": e.status,
+                    "attempts": [a.model_dump(mode="json") for a in e.attempts],
+                    "created_at": e.created_at,
+                    "updated_at": e.updated_at,
+                }
+                for e in shown
+            ],
+            "note": (
+                "One entry per dispatch, recorded as it happened, "
+                "with the exact payload stored for repair. A failed "
+                "entry is re-sent deliberately (POST "
+                "/webhooks/outbox/{id}/resend, actor required) — "
+                "the event is never regenerated to recover a "
+                "delivery."
+            ),
+        }
+
+    def resend_webhook(
+        self, outbox_id: str, actor: str, note: str = ""
+    ) -> dict:
+        """Re-send one FAILED outbox entry: the stored payload,
+        posted again through the same signed seam, with the
+        attempt recorded under the operator's name.
+
+        The repair is an act on the delivery, not a replay of
+        the event: the approval is not re-decided, the contract
+        is not re-analysed, the breach is not re-announced — the
+        bytes that failed to arrive are sent again, and the
+        outbox entry keeps both attempts. Only a failed entry
+        can be re-sent (a delivered one needs no repair, and
+        re-posting it would double-deliver). The originating
+        records keep their first outcome as their history; the
+        outbox is the delivery ledger of record. Raises
+        ``KeyError`` for an unknown entry and ``ValueError``
+        when the entry is not failed, the actor is missing, or
+        ``ACTION_WEBHOOK_URL`` is no longer configured (fix the
+        endpoint first — a re-send to nowhere would only spend
+        the attempt)."""
+        actor = (actor or "").strip()
+        if not actor:
+            raise ValueError(
+                "A re-send needs a named actor: it is a deliberate "
+                "act on the delivery record."
+            )
+        store = self._get_outbox_store()
+        entry = store.get(outbox_id)
+        if entry is None:
+            raise KeyError(f"Unknown outbox entry: {outbox_id}")
+        if entry.status != "failed":
+            raise ValueError(
+                f"Outbox entry {outbox_id} is {entry.status} — only a "
+                "failed delivery can be re-sent; re-posting a "
+                "delivered payload would double-deliver it."
+            )
+        load_dotenv()
+        url = env_str("ACTION_WEBHOOK_URL")
+        if not url:
+            raise ValueError(
+                "ACTION_WEBHOOK_URL is not configured — set the "
+                "endpoint before re-sending, or the attempt is spent "
+                "on a destination that does not exist."
+            )
+        outcome = _post_signed_webhook(url, entry.payload)
+        entry.attempts.append(
+            WebhookAttempt(
+                at=datetime.now(timezone.utc).isoformat(),
+                outcome=outcome,
+                actor=actor,
+                note=note or "",
+            )
+        )
+        entry.status = outcome
+        entry.updated_at = entry.attempts[-1].at
+        store.save(entry)
+        return {
+            "outbox_id": entry.outbox_id,
+            "family": entry.family,
+            "contract_id": entry.contract_id,
+            "label": entry.label,
+            "status": entry.status,
+            "attempts": [a.model_dump(mode="json") for a in entry.attempts],
+            "resent_by": actor,
+            "outcome": outcome,
         }
 
     def audit_rows(self) -> list[dict]:
@@ -2352,6 +2538,7 @@ class ContractService:
                     tier: sla_budget_business_days(tier) for tier in _SLA_DEFAULTS
                 },
             },
+            "webhooks": self.webhook_outbox()["counts"],
             "playbook_coverage": self.playbook_coverage(results),
             "proposal_effectiveness": [
                 self.proposal_effectiveness(proposal.proposal_id)

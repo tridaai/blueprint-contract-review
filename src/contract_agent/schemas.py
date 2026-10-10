@@ -713,6 +713,57 @@ class DriftDispatch(BaseModel):
     dispatch: str = ""  # sent | failed
 
 
+class WebhookAttempt(BaseModel):
+    """One delivery attempt on a webhook outbox entry (round
+    14): the original dispatch (``actor`` empty — the system
+    sent it as part of the act that created it) and every
+    operator re-send after it, each with its outcome. The
+    attempt list is the delivery history; it is appended to,
+    never rewritten."""
+
+    at: str = ""
+    outcome: str = ""  # sent | failed
+    actor: str = ""  # "" = the original automatic dispatch
+    note: str = ""
+
+
+class WebhookOutboxEntry(BaseModel):
+    """One webhook dispatch in the outbox (round 14): every
+    signed dispatch the service attempts — an approved packet,
+    a queue SLA breach, a drift finding — is recorded here
+    with the EXACT payload that was posted, its family, and
+    its attempt history. Until now the three families' outcomes
+    lived scattered (a status field on the decision record, a
+    stamp on the breached record, a list on the analysis
+    result), and a failed delivery could only be recovered by
+    re-running whatever produced it — re-analysing a contract
+    to regenerate a drift event, re-deciding a packet that was
+    already decided. The outbox is the one delivery ledger:
+    a failed entry is repaired by a deliberate, recorded
+    re-send of the stored payload, not by regenerating the
+    event. ``status`` is the latest attempt's outcome."""
+
+    outbox_id: str
+    family: str  # approval | sla_breach | drift_finding
+    contract_id: str = ""
+    label: str = ""  # what was dispatched: the decision / the breach / the drift check name
+    payload: dict[str, Any] = Field(default_factory=dict)
+    status: str = "failed"  # sent | failed — the latest attempt's outcome
+    attempts: list[WebhookAttempt] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class WebhookResendRequest(BaseModel):
+    """An operator's re-send of a failed outbox entry. The
+    actor is required: re-sending is a deliberate act on the
+    delivery record, with a name on it, like every other act
+    in this blueprint."""
+
+    actor: Optional[str] = None
+    note: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Final result
 # ---------------------------------------------------------------------------

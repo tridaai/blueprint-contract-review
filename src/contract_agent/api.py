@@ -53,6 +53,7 @@ from .schemas import (
     EditOutcomesRequest,
     PatternSuspensionRequest,
     ProposalDecisionRequest,
+    WebhookResendRequest,
 )
 from .wiring import build_service_from_env
 
@@ -568,6 +569,33 @@ def retire_playbook_proposal(proposal_id: str, request: ProposalDecisionRequest)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return proposal.model_dump(mode="json")
+
+
+@app.get("/webhooks/outbox", dependencies=_AUTH)
+def webhook_outbox(status: str | None = None) -> dict:
+    """The webhook outbox: every signed dispatch attempted —
+    approved packets, SLA breaches, drift findings — with its
+    family, target contract, latest outcome and attempt history
+    (payloads are not listed; they carry drafts). ``?status=failed``
+    is the repair worklist."""
+    return service.webhook_outbox(status=status)
+
+
+@app.post("/webhooks/outbox/{outbox_id}/resend", dependencies=_AUTH)
+def resend_webhook(outbox_id: str, body: WebhookResendRequest) -> dict:
+    """Re-send one failed outbox entry: the stored payload,
+    posted again through the signed seam, the attempt recorded
+    under the operator's name. 404 on an unknown entry, 422
+    when the entry is not failed, the actor is missing, or the
+    webhook endpoint is not configured."""
+    try:
+        return service.resend_webhook(
+            outbox_id, actor=body.actor or "", note=body.note or ""
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/counterparties/{counterparty}/profile", dependencies=_AUTH)

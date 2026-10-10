@@ -81,6 +81,14 @@
       </div>
     </section>
     <section>
+      <h2>Webhook outbox</h2>
+      <div id="outbox" class="empty">Loading…</div>
+      <div class="row" style="margin-top:10px">
+        <button id="outbox-refresh">Refresh</button>
+        <span class="note" id="outbox-status">every signed dispatch — approved packets, SLA breaches, drift findings — with its delivery state. A failed delivery is re-sent from the stored payload, under a named operator; the event is never regenerated.</span>
+      </div>
+    </section>
+    <section>
       <h2>Playbook proposals</h2>
       <div id="proposals" class="empty">Loading…</div>
       <div class="row" style="margin-top:10px">
@@ -235,6 +243,28 @@ async function loadQueue() {
   } catch (e) {
     $('queue').innerHTML = '<span class="empty">Queue unavailable.</span>';
   }
+}
+
+async function loadOutbox() {
+  const host = $('outbox');
+  const res = await fetch('/webhooks/outbox', {headers: headers()});
+  if (!res.ok) { host.textContent = 'Outbox unavailable: ' + res.status; return; }
+  const view = await res.json();
+  const counts = view.counts || {};
+  if (!view.entries.length) { host.innerHTML = '<p class="note">No dispatches recorded — a dispatch is recorded only when a webhook endpoint is configured and a packet is approved, a breach is swept, or a drift finding fires.</p>'; return; }
+  host.innerHTML = `<p class="note" style="margin-bottom:8px">${counts.total} dispatch(es) · ${counts.sent} sent · ${counts.failed} failed · ${counts.resends} re-send(s)</p>` +
+    view.entries.map(e => `<div class="row" style="justify-content:space-between;border-top:1px solid #e5e5e0;padding:6px 0">
+      <span><strong>${esc(e.family)}</strong> · ${esc(e.contract_id)} · ${esc(e.label)} — <strong>${esc(e.status)}</strong> · ${e.attempts.length} attempt(s)${e.attempts.length > 1 ? ', last by ' + esc(e.attempts[e.attempts.length - 1].actor || 'system') : ''}</span>
+      ${e.status === 'failed' ? `<button data-resend="${esc(e.outbox_id)}">Re-send</button>` : ''}
+    </div>`).join('');
+  host.querySelectorAll('[data-resend]').forEach(btn => btn.addEventListener('click', async () => {
+    const actor = (prompt('Re-send this delivery as (your name — it goes on the attempt record):') || '').trim();
+    if (!actor) return;
+    const r = await fetch('/webhooks/outbox/' + encodeURIComponent(btn.dataset.resend) + '/resend', {method: 'POST', headers: headers(), body: JSON.stringify({actor})});
+    const body = await r.json().catch(() => ({}));
+    $('outbox-status').textContent = r.ok ? `Re-send ${body.outcome} — the attempt is recorded under ${actor}.` : 'Re-send refused: ' + (body.detail || r.status);
+    loadOutbox();
+  }));
 }
 
 async function loadDue() {
@@ -677,6 +707,7 @@ $('matter-brief-btn').addEventListener('click', async () => {
 });
 $('due-refresh').addEventListener('click', () => { loadDue(); loadCertificates(); });
 $('queue-refresh').addEventListener('click', loadQueue);
+$('outbox-refresh').addEventListener('click', loadOutbox);
 $('sla-sweep').addEventListener('click', slaSweep);
 $('proposals-refresh').addEventListener('click', loadProposals);
 $('proposals-generate').addEventListener('click', async () => {
@@ -692,6 +723,7 @@ loadEvals();
 loadDue();
 loadCertificates();
 loadQueue();
+loadOutbox();
 loadProposals();
 </script>
 </body>
