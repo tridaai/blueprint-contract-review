@@ -20,7 +20,7 @@ def _cases() -> list[dict]:
 
 def test_golden_set_shape():
     cases = _cases()
-    assert len(cases) == 76
+    assert len(cases) == 77
     kinds = {c["kind"] for c in cases}
     assert kinds == {"clause", "document", "round_diff", "round_chain", "exhibit"}
     positions = {c["expected_position"] for c in cases if c["kind"] == "clause"}
@@ -34,7 +34,7 @@ def test_deterministic_runner_scores_full_marks():
     import run_evals
 
     scored = run_evals.evaluate(_cases())
-    assert scored["correct"] == scored["total"] == 76
+    assert scored["correct"] == scored["total"] == 77
     assert scored["failures"] == []
 
 
