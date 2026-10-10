@@ -449,7 +449,7 @@ function render(result) {
   const units = {};
   (result.clauses || []).forEach(u => { units[u.clause_id] = u; });
   let html = '';
-  html += `<div class="row" style="margin-bottom:10px"><button id="brief-btn">Download negotiation brief (.md)</button><button id="annex-btn">Annex history</button><span class="note">one document for the negotiation: chain history, open positions by tier, proposed edits, exhibit findings, obligations — assembled from the stored records. Annex history: the sub-processor list's and prior-invention schedule's whole timeline across the chain, not just the latest drift step.</span></div><div id="annex-history"></div>`;
+  html += `<div class="row" style="margin-bottom:10px"><button id="brief-btn">Download negotiation brief (.md)</button><button id="annex-btn">Annex history</button><span class="note">one document for the negotiation: chain history, open positions by tier, proposed edits, exhibit findings, obligations — assembled from the stored records. Annex history: the sub-processor list's, prior-invention schedule's and certificate chain's whole timeline across the chain, not just the latest drift step.</span></div><div id="annex-history"></div>`;
   html += `<div class="row">${pill(result.status, result.status === 'awaiting_counsel' ? 'warn' : 'good')}
     ${pill('posture: ' + f.posture, f.posture === 'aligned' ? 'good' : f.posture === 'negotiable' ? 'warn' : 'bad')}
     ${pill('worst: ' + f.worst_position)} ${result.reviewer_blocked ? pill('REVIEWER BLOCKED', 'bad') : ''}</div>
@@ -621,9 +621,23 @@ function render(result) {
       const summary = fam.summary.map(line => `<div>${esc(line)}</div>`).join('');
       return `<div style="margin-top:8px"><strong>${title}</strong><p class="note">${rounds}</p><ul>${steps}</ul>${summary}</div>`;
     };
+    const certFamily = (fam) => {
+      if (!fam) return `<p class="note" style="margin-top:8px">Certificates of insurance: no round of this chain carries a certificate or an insurance verdict.</p>`;
+      const rounds = fam.rounds.map(r => {
+        const req = (r.requirements.limits || []).map(l => `${esc(l.label)} ${esc(l.amount)}`).join(', ');
+        const cert = r.certificate ? `certificate expiring ${esc(r.certificate.expiry || 'unstated')}` : 'no certificate attached';
+        const verdict = r.renewal ? ` · renewal check: ${esc(r.renewal.status)}` : '';
+        return `${esc(r.contract_id)}: requires ${req || 'no stated limits'} — ${cert}${verdict}`;
+      }).join('<br>');
+      const steps = fam.steps.map(s => `<li>${esc(s.from_contract_id)} → ${esc(s.to_contract_id)}: ${esc(s.summary)}</li>`).join('');
+      const summary = fam.summary.map(line => `<div>${esc(line)}</div>`).join('');
+      const watch = fam.watch ? `<div style="margin-top:4px">Watch: stands on ${esc(fam.watch.contract_id)}'s expiry ${esc(fam.watch.expiry_date)}${fam.watch.renewal_evidence_failed ? ` — the renewal in ${esc(fam.watch.renewal_contract_id)} failed the evidence check, so the watch did not close on it` : fam.watch.renewed ? ' — moved here on a renewal that evidenced the original set in full' : ''}.</div>` : '';
+      return `<div style="margin-top:8px"><strong>Certificates of insurance</strong><p class="note">${rounds}</p><ul>${steps}</ul>${summary}${watch}</div>`;
+    };
     host.innerHTML = `<div style="border-top:1px solid #e5e5e0;padding-top:8px;margin-top:8px"><strong>Annex history — chain ${data.chain.map(esc).join(' → ')}</strong>` +
       family('Sub-processor list', data.subprocessor) +
       family('Schedule of prior inventions', data.prior_inventions) +
+      certFamily(data.certificates) +
       `<p class="note">${esc(data.note)}</p></div>`;
   });
   $('gate-section').style.display = '';

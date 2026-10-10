@@ -944,18 +944,57 @@ class ContractService:
         only the latest step. Computed from the stored intake
         packages with the drift modules' own readings, so the
         biography and the findings cannot disagree. Raises
-        ``KeyError`` for a contract the store does not hold."""
+        ``KeyError`` for a contract the store does not hold.
+
+        The certificate chain's biography rides on the same view
+        (``certificate_history.py``, round 16): each round's
+        requirement set and certificate, each step's renewal
+        verdict with its drops named — and the renewal watch's
+        operative reading for the chain (``watch``), computed by
+        the watch's own rule over an unbounded window: the
+        biography names which expiry the watch stands on
+        whatever its distance, because the window is the watch's
+        concern, not the timeline's."""
         store = self._get_store()
         record = store.get(contract_id)
         if record is None or not record.contract:
             raise KeyError(
                 f"Unknown contract_id: {contract_id} (analyze it first)"
             )
+        from datetime import date as _date
+
         from .annex_history import build_annex_history
+        from .certificate_history import build_certificate_history
+        from .certificates import certificate_watches
 
         model = ContractInput.model_validate(record.contract)
         chain = [*self._chain_contracts(model), model]
-        return build_annex_history(chain)
+        history = build_annex_history(chain)
+        results = {}
+        for link in chain:
+            link_record = store.get(link.contract_id)
+            if link_record is not None:
+                results[link.contract_id] = link_record.result
+        certificates = build_certificate_history(chain, results)
+        if certificates is not None:
+            chain_ids = {c.contract_id for c in chain}
+            watch_rows = certificate_watches(
+                store.all_records(), _date.today(), 36500
+            )
+            watch = next(
+                (row for row in watch_rows if row["contract_id"] in chain_ids),
+                None,
+            )
+            if watch is not None:
+                certificates["watch"] = watch
+            history["note"] += (
+                " The certificate chain's biography rides under "
+                "'certificates', computed with the renewal "
+                "check's own readings; its 'watch' is the renewal "
+                "watch's operative reading for this chain."
+            )
+        history["certificates"] = certificates
+        return history
 
     def analyze_batch(
         self,

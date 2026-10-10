@@ -741,7 +741,11 @@ def annex_history(contract_id: str) -> dict:
     whole timelines — each round's annex, each step's movement,
     the notice clock on every addition, the transfer reading on
     every removal — where the drift checks on the result give
-    only the latest step. 404 for a contract not yet analyzed."""
+    only the latest step. The payload also carries
+    ``certificates``: the certificate chain's biography — each
+    round's requirement set and certificate, each renewal's
+    verdict and drops, and the watch's operative reading for
+    the chain. 404 for a contract not yet analyzed."""
     try:
         return service.annex_history(contract_id)
     except KeyError as exc:
