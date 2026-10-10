@@ -82,6 +82,15 @@ For each contract, the pipeline:
 Missing exhibits or signature pages trigger a composed (never sent)
 information request listing exactly what is absent.
 
+**Negotiation rounds.** A revised draft is not a new contract: when
+intake names the round it supersedes (`supersedes`), the new review
+is diffed against the stored earlier round — clauses aligned by type
+and heading, verdict movement (`walk_away → preferred`, …) reported
+per clause on the result, in the console, and in the approval
+webhook. Counsel sees what the last round won, what it gave up, and
+which clauses appeared or disappeared. The bundled samples include
+a round pair (CTR-2014 → CTR-2015) that shows all five movements.
+
 ## Quickstart
 
 Runs the **production topology locally** — a stateless API backed by
@@ -134,11 +143,18 @@ is a labelled offline fallback, never the story.
   graceful shutdown. Replicas share state through the services.
 - **Operable**: `/metrics` summarises the stored runs (status and
   posture counts, decision tallies, guardrail/repair/reviewer
-  outcomes, token/cost/latency aggregates); `/audit/export`
-  (JSON, or `?format=csv`) emits the audit trail — one row per
-  contract with counsel's decision, timestamp, and reason. The
-  approval webhook is HMAC-signed when `ACTION_WEBHOOK_SECRET`
-  is set (`X-Trida-Signature: sha256=…`).
+  outcomes, token/cost/latency aggregates) and adds **playbook
+  coverage analytics** — which playbook entries fire, which clause
+  types most often lack fallback language, position distribution
+  per counterparty. `/queue` is the counsel worklist (awaiting
+  contracts, worst first); `/obligations/due?days=N` aggregates
+  register deadlines across contracts, and runs announce due
+  entries on the event stream as `obligation_due` events (window:
+  `OBLIGATION_DUE_WINDOW_DAYS`). `/audit/export` (JSON, or
+  `?format=csv`) emits the audit trail — one row per contract with
+  counsel's decision, timestamp, and reason. The approval webhook
+  is HMAC-signed when `ACTION_WEBHOOK_SECRET` is set
+  (`X-Trida-Signature: sha256=…`).
 - **Tests stay hermetic**: in-memory doubles inside the test suite;
   Postgres integration tests are gated on `DATABASE_URL` and skip
   without it. The Dockerfile/compose are maintained in-repo and
@@ -146,11 +162,13 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 43 synthetic cases: 30 clause-level (clause
-type + expected playbook position) and 12 document-level (posture,
+`evals/golden.jsonl` — 46 synthetic cases: 30 clause-level (clause
+type + expected playbook position), 15 document-level (posture,
 per-type positions, absence detection, injection flags, information
-requests, repair behaviour). `python evals/run_evals.py` runs the
-deterministic pipeline; the gate is ≥ 95% (currently 42/42).
+requests, repair behaviour), and 1 negotiation-round case (verdict
+movement between the CTR-2014/CTR-2015 round pair). `python
+evals/run_evals.py` runs the deterministic pipeline; the gate is
+≥ 95% (currently 46/46).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.

@@ -103,6 +103,20 @@ The application container is stateless. All state lives in services:
 - **Ports everywhere** (`ports.py`): model backend, retriever,
   store, checkpointer, object store, event sink. `wiring.py`
   assembles them from the environment.
+- **Worklist surfaces** — the store doubles as the operations
+  queue: `/queue` (awaiting contracts sorted by posture severity,
+  worst position, then age), `/obligations/due` (register deadlines
+  across contracts; runs also emit `obligation_due` stream events),
+  and `/metrics` playbook-coverage analytics (entry firing counts,
+  clause types lacking fallback language, per-counterparty position
+  distribution). All are pure reads over stored results — no new
+  state.
+- **Negotiation rounds** — intake may name a superseded round
+  (`supersedes`); the service then aligns clauses across the two
+  rounds in code (`round_diff.py`: by clause type, heading match
+  before document order) and attaches the verdict movement to the
+  new result. The pipeline itself stays single-contract; the diff
+  is a store-level composition of two finished reviews.
 
 In-memory implementations of the store/checkpointer/vector index
 exist **only as test doubles** inside the test suite, so tests stay
