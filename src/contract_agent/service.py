@@ -1797,24 +1797,42 @@ class ContractService:
         register entries carrying a date that fall due within
         ``days`` (overdue included), soonest first. This is the
         operational surface of the obligations register — a computed
-        notice deadline counsel can act on, not just read."""
+        notice deadline counsel can act on, not just read.
+
+        Restrictive-covenant rows carry their follow-through
+        (round 16): whether the covenant has lapsed, the acts
+        recorded against it, and its state — so the register
+        never reads an expired restriction as a live one, and a
+        lapse nobody closed is named ``open`` on the row."""
         from datetime import date as _date
 
-        from .obligations import due_obligations
+        from .obligations import COVENANT_KINDS, due_obligations, follow_through_state
 
         today = today or _date.today()
         rows: list[dict] = []
         for record in self._get_store().all_records():
             result = record.result
             for row in due_obligations(result.obligations, today, days):
-                rows.append(
-                    {
-                        "contract_id": result.contract_id,
-                        "counterparty_name": result.counterparty_name,
-                        "status": result.status,
-                        **row,
-                    }
-                )
+                row = {
+                    "contract_id": result.contract_id,
+                    "counterparty_name": result.counterparty_name,
+                    "status": result.status,
+                    **row,
+                }
+                if row["kind"] in COVENANT_KINDS:
+                    lapsed = row["days_until"] <= 0
+                    acts = [
+                        act
+                        for act in record.covenant_follow_throughs
+                        if act.get("kind") == row["kind"]
+                    ]
+                    row["lapsed"] = lapsed
+                    row["follow_through"] = acts
+                    row["follow_through_state"] = follow_through_state(
+                        record.covenant_follow_throughs, row["kind"],
+                        lapsed=lapsed,
+                    )
+                rows.append(row)
         rows.sort(key=lambda row: (row["date"], row["contract_id"]))
         return {
             "as_of": today.isoformat(),
@@ -1822,6 +1840,175 @@ class ContractService:
             "count": len(rows),
             "obligations": rows,
         }
+
+    def covenant_follow_through(self, contract_id: str, today=None) -> dict:
+        """One contract's covenant register, read back with its
+        follow-through (round 16): for each dated restrictive
+        covenant on the contract's register — its expiry,
+        whether it has lapsed, the acts recorded against it,
+        and its state. Undated covenants are absent: their clock
+        never started, so there is no lapse to follow through.
+        Raises ``KeyError`` for a contract the store does not
+        hold."""
+        from datetime import date as _date
+
+        from .obligations import COVENANT_KINDS, follow_through_state
+
+        today = today or _date.today()
+        record = self._get_store().get(contract_id)
+        if record is None:
+            raise KeyError(
+                f"Unknown contract_id: {contract_id} (analyze it first)"
+            )
+        rows: list[dict] = []
+        for obligation in record.result.obligations:
+            if obligation.kind not in COVENANT_KINDS or not obligation.date:
+                continue
+            try:
+                expiry = _date.fromisoformat(obligation.date)
+            except ValueError:
+                continue
+            lapsed = expiry <= today
+            acts = [
+                act
+                for act in record.covenant_follow_throughs
+                if act.get("kind") == obligation.kind
+            ]
+            rows.append(
+                {
+                    "kind": obligation.kind,
+                    "date": obligation.date,
+                    "computed": obligation.computed,
+                    "description": obligation.description,
+                    "detail": obligation.detail,
+                    "source_clause_id": obligation.source_clause_id,
+                    "lapsed": lapsed,
+                    "follow_through": acts,
+                    "follow_through_state": follow_through_state(
+                        record.covenant_follow_throughs, obligation.kind,
+                        lapsed=lapsed,
+                    ),
+                }
+            )
+        rows.sort(key=lambda row: (row["date"], row["kind"]))
+        return {
+            "contract_id": contract_id,
+            "counterparty_name": record.result.counterparty_name,
+            "as_of": today.isoformat(),
+            "covenants": rows,
+            "open_lapses": sum(
+                1 for row in rows if row["follow_through_state"] == "open"
+            ),
+            "note": (
+                "A covenant's expiry is the day its restriction "
+                "lifts. The sweep announces the lapse; the loop "
+                "closes on the record — counterparty notified, "
+                "then the restriction confirmed lifted — by the "
+                "named acts in follow_through."
+            ),
+        }
+
+    def record_covenant_follow_through(
+        self, contract_id: str, kind: str, state: str, actor: str,
+        note: str = "", today=None,
+    ) -> dict:
+        """Record one follow-through act on a lapsed covenant
+        (round 16): the announcement said a restriction lifted;
+        this is the act that closes the loop — the counterparty
+        was notified, or the lapse stands confirmed — stamped
+        with its actor on the contract's record.
+
+        The act binds to reality: the contract must carry a
+        DATED covenant of that kind, and the covenant must have
+        lapsed (its expiry date reached) — there is no
+        follow-through on a restriction still running, and the
+        refusal names the date it lifts. Each state is recorded
+        once per covenant: the record is the loop's state, and
+        a repeat is refused naming the act already on it.
+        Returns the contract's covenant register reading
+        (:meth:`covenant_follow_through`)."""
+        from datetime import date as _date
+
+        from .obligations import COVENANT_FOLLOW_THROUGH_STATES, COVENANT_KINDS
+        from .schemas import CovenantFollowThrough
+
+        actor = (actor or "").strip()
+        if not actor:
+            raise ValueError(
+                "A covenant follow-through act needs a named actor: "
+                "it closes a lapse, and the record carries the name."
+            )
+        kind = (kind or "").strip()
+        if kind not in COVENANT_KINDS:
+            raise ValueError(
+                f"kind {kind!r} is not a restrictive covenant — the "
+                f"follow-through closes non_compete / non_solicit "
+                "lapses, the register's covenant kinds."
+            )
+        state = (state or "").strip()
+        if state not in COVENANT_FOLLOW_THROUGH_STATES:
+            raise ValueError(
+                f"state {state!r} is not a follow-through state — "
+                "the loop closes as counterparty_notified, then "
+                "restriction_confirmed_lifted."
+            )
+        store = self._get_store()
+        record = store.get(contract_id)
+        if record is None:
+            raise KeyError(
+                f"Unknown contract_id: {contract_id} (analyze it first)"
+            )
+        today = today or _date.today()
+        covenant = next(
+            (
+                o
+                for o in record.result.obligations
+                if o.kind == kind and o.date
+            ),
+            None,
+        )
+        if covenant is None:
+            raise ValueError(
+                f"Contract {contract_id} carries no dated {kind} "
+                "covenant on its register — an undated covenant's "
+                "clock never started, so there is no lapse to "
+                "follow through."
+            )
+        expiry = _date.fromisoformat(covenant.date)
+        if expiry > today:
+            raise ValueError(
+                f"The {kind} covenant on {contract_id} does not "
+                f"lapse until {covenant.date} — the restriction is "
+                "still running, and there is no lapse to follow "
+                "through yet."
+            )
+        existing = next(
+            (
+                act
+                for act in record.covenant_follow_throughs
+                if act.get("kind") == kind and act.get("state") == state
+            ),
+            None,
+        )
+        if existing is not None:
+            raise ValueError(
+                f"The {kind} covenant on {contract_id} already "
+                f"carries a {state} act (by {existing.get('actor', '')} "
+                f"on {existing.get('at', '')}) — a follow-through "
+                "state is recorded once; the record is the loop's "
+                "state, not a log of reminders."
+            )
+        record.covenant_follow_throughs.append(
+            CovenantFollowThrough(
+                kind=kind,
+                state=state,
+                actor=actor,
+                at=datetime.now(timezone.utc).isoformat(),
+                note=note or "",
+            ).model_dump(mode="json")
+        )
+        store.save(record)
+        return self.covenant_follow_through(contract_id, today=today)
 
     def certificate_watches(self, window_days: int | None = None, today=None) -> dict:
         """The certificate renewal watch (``certificates.py``):

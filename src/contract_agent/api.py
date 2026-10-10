@@ -53,6 +53,7 @@ from .schemas import (
     EditOutcomesRequest,
     PatternSuspensionRequest,
     ProposalDecisionRequest,
+    CovenantFollowThroughRequest,
     WebhookResendRequest,
 )
 from .wiring import build_service_from_env
@@ -400,6 +401,45 @@ def obligations_due(days: int = 90) -> dict:
     if days < 0:
         raise HTTPException(status_code=422, detail="days must be >= 0.")
     return service.obligations_due(days=days)
+
+
+@app.get("/contracts/{contract_id}/covenant-follow-through", dependencies=_AUTH)
+def covenant_follow_through(contract_id: str) -> dict:
+    """One contract's dated restrictive covenants read back
+    with their follow-through: expiry, lapsed or not, the acts
+    recorded against each, and its state — an expired
+    restriction is never read as a live one, and a lapse nobody
+    closed reads ``open``. 404 for a contract not yet analyzed."""
+    try:
+        return service.covenant_follow_through(contract_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/contracts/{contract_id}/covenant-follow-through", dependencies=_AUTH)
+def record_covenant_follow_through(
+    contract_id: str, body: CovenantFollowThroughRequest
+) -> dict:
+    """Record one follow-through act on a lapsed covenant: the
+    counterparty was notified the restriction lifted, or the
+    lapse stands confirmed — a named act on the record, closing
+    the loop the deadline sweep's announcement opened. 404 on
+    an unknown contract; 422 when the actor is missing, the
+    kind or state is not the register's, the covenant is
+    undated or has not lapsed yet, or that state is already
+    recorded. Returns the contract's covenant register reading."""
+    try:
+        return service.record_covenant_follow_through(
+            contract_id,
+            kind=body.kind or "",
+            state=body.state or "",
+            actor=body.actor or "",
+            note=body.note or "",
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/obligations/sweep", dependencies=_AUTH)

@@ -43,6 +43,16 @@ the expiry is that date plus the duration, computed in code
 and flagged ``computed`` — the employment register closes over
 the whole letter the way the commercial register closes over
 the MSA.
+
+A lapsed covenant has a follow-through (round 16): the sweep's
+``covenant_expiring`` announcement says a restriction lifted,
+and the loop closes only when the acts are on the record —
+the counterparty notified that the restriction lifted, the
+lapse confirmed. The acts live on the approval record
+(``CovenantFollowThrough``); :func:`follow_through_state`
+reads them into the one state the register surfaces, so an
+expired restriction is never read as a live one and a lapsed
+covenant nobody followed through is named as open.
 """
 
 from __future__ import annotations
@@ -69,6 +79,34 @@ _MONTHS = {
 # deadline sweep announces them distinctly from duties falling
 # due (round 15).
 COVENANT_KINDS = ("non_compete", "non_solicit")
+
+# The follow-through states a lapsed covenant can be in, in
+# the order the loop closes (round 16): the counterparty is
+# notified the restriction lifted, then the lapse is confirmed
+# on the record. An act is recorded under one of these names;
+# the register's reading of a covenant is the furthest state
+# its acts have reached.
+COVENANT_FOLLOW_THROUGH_STATES = (
+    "counterparty_notified",
+    "restriction_confirmed_lifted",
+)
+
+
+def follow_through_state(acts: list[dict], kind: str, *, lapsed: bool) -> str:
+    """One covenant's follow-through state, read from the acts
+    recorded against its kind: the furthest closing state
+    reached, or — with no acts — ``open`` once the covenant
+    has lapsed (the announcement fired and nobody has closed
+    the loop) and ``pending_lapse`` before it (there is not
+    yet a lapse to follow through). The state names what is
+    true of the record, so a lapsed covenant with no acts is
+    never read as a live restriction or a closed file."""
+    states = [a.get("state", "") for a in acts if a.get("kind") == kind]
+    if "restriction_confirmed_lifted" in states:
+        return "restriction_confirmed_lifted"
+    if "counterparty_notified" in states:
+        return "counterparty_notified"
+    return "open" if lapsed else "pending_lapse"
 
 _ISO_DATE = re.compile(r"\b(20\d{2})-(0[1-9]|1[0-2])-([0-3]\d)\b")
 _LONG_DATE = re.compile(

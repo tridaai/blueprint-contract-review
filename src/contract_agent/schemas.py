@@ -765,6 +765,40 @@ class WebhookResendRequest(BaseModel):
     note: Optional[str] = None
 
 
+class CovenantFollowThrough(BaseModel):
+    """One follow-through act on a lapsed restrictive covenant
+    (round 16). The deadline sweep announces a covenant's
+    expiry — a restriction lifting — but an announcement is not
+    a closed loop: someone must tell the counterparty (or their
+    counsel) the restriction has lifted, and someone must
+    confirm the register no longer reads it as live. Each act
+    is recorded on the approval record, stamped with its actor,
+    beside the covenant it closes: ``counterparty_notified``
+    (the counterparty was told the restriction lifted) and
+    ``restriction_confirmed_lifted`` (the lapse is confirmed on
+    the record — the covenant's follow-through is complete).
+    An act is recorded once per covenant per state: the record
+    is the loop's state, not a log of reminders."""
+
+    kind: str  # non_compete | non_solicit
+    state: str  # counterparty_notified | restriction_confirmed_lifted
+    actor: str = ""
+    at: str = ""
+    note: str = ""
+
+
+class CovenantFollowThroughRequest(BaseModel):
+    """A follow-through act recorded against one lapsed
+    covenant on one contract's register. The actor is
+    required: closing a lapse is a deliberate act with a name
+    on it, like every other act in this blueprint."""
+
+    kind: Optional[str] = None
+    state: Optional[str] = None
+    actor: Optional[str] = None
+    note: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Final result
 # ---------------------------------------------------------------------------

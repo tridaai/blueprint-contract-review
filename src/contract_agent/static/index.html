@@ -284,12 +284,34 @@ async function loadDue() {
       $('due').innerHTML = '<span class="empty">No dated obligations due within 90 days.</span>';
       return;
     }
+    const covenantCell = (o) => {
+      if (o.follow_through_state === undefined) return '';
+      const label = {pending_lapse: 'restriction still running', open: 'LAPSED — follow-through open', counterparty_notified: 'lapsed — counterparty notified', restriction_confirmed_lifted: 'lapsed — confirmed lifted'}[o.follow_through_state] || o.follow_through_state;
+      let html = `<br><span class="${o.follow_through_state === 'open' ? 'flag' : 'note'}">covenant follow-through: ${esc(label)}</span>`;
+      if (o.follow_through_state === 'open') html += ` <button data-covenant-notify="${esc(o.contract_id)}|${esc(o.kind)}" style="padding:3px 9px;font-size:12px">Counterparty notified</button>`;
+      if (o.follow_through_state === 'counterparty_notified') html += ` <button data-covenant-confirm="${esc(o.contract_id)}|${esc(o.kind)}" style="padding:3px 9px;font-size:12px">Confirm lifted</button>`;
+      return html;
+    };
     $('due').innerHTML = `<table><thead><tr><th>When</th><th>Contract</th><th>Obligation</th></tr></thead><tbody>
       ${data.obligations.map(o => `<tr>
         <td>${o.overdue ? '<span class="flag">overdue ' + esc(-o.days_until) + 'd</span>' : esc(o.date) + '<br><span class="note">in ' + esc(o.days_until) + 'd' + (o.computed ? ' · computed' : '') + '</span>'}</td>
         <td>${esc(o.contract_id)}<br><span class="note">${esc(o.counterparty_name || '')}</span></td>
-        <td>${pill(o.kind)} ${esc(o.detail || o.description)}</td></tr>`).join('')}
+        <td>${pill(o.kind)} ${esc(o.detail || o.description)}${covenantCell(o)}</td></tr>`).join('')}
       </tbody></table>`;
+    const recordAct = async (btn, state) => {
+      const [contractId, kind] = btn.dataset.covenantNotify ? btn.dataset.covenantNotify.split('|') : btn.dataset.covenantConfirm.split('|');
+      const actor = $('actor').value.trim();
+      if (!actor) { alert('Enter counsel name (section 3) first — a follow-through act carries a name.'); return; }
+      const r = await fetch('/contracts/' + contractId + '/covenant-follow-through', {
+        method: 'POST', headers: headers(), body: JSON.stringify({kind, state, actor})
+      });
+      if (r.ok) loadDue();
+      else alert('Follow-through failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));
+    };
+    $('due').querySelectorAll('button[data-covenant-notify]').forEach(btn =>
+      btn.addEventListener('click', () => recordAct(btn, 'counterparty_notified')));
+    $('due').querySelectorAll('button[data-covenant-confirm]').forEach(btn =>
+      btn.addEventListener('click', () => recordAct(btn, 'restriction_confirmed_lifted')));
   } catch (e) {
     $('due').innerHTML = '<span class="empty">Due view unavailable.</span>';
   }

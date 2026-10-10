@@ -55,6 +55,13 @@ class ApprovalRecord:
     # saved before the stamp existed carry "" and are counted as
     # unstamped by those readers, never silently backdated.
     analyzed_at: str = ""
+    # Covenant-lapse follow-through (round 16): the acts recorded
+    # against this contract's restrictive covenants once they
+    # lapsed — counterparty notified, restriction confirmed
+    # lifted — as CovenantFollowThrough dumps. The register's
+    # announcement (the sweep) opens the loop; these acts are
+    # what closes it, on the record.
+    covenant_follow_throughs: list = field(default_factory=list)
 
 
 def history_entry(record: ApprovalRecord) -> dict:
@@ -123,6 +130,7 @@ def _dump_record(record: ApprovalRecord) -> str:
             "assigned_at": record.assigned_at,
             "sla_breach_notified_at": record.sla_breach_notified_at,
             "analyzed_at": record.analyzed_at,
+            "covenant_follow_throughs": record.covenant_follow_throughs,
         }
     )
 
@@ -143,6 +151,7 @@ def _load_record(payload: str | dict) -> ApprovalRecord:
         assigned_at=data.get("assigned_at", ""),
         sla_breach_notified_at=data.get("sla_breach_notified_at", ""),
         analyzed_at=data.get("analyzed_at", ""),
+        covenant_follow_throughs=data.get("covenant_follow_throughs", []),
     )
 
 
