@@ -639,6 +639,7 @@ class ContractService:
         self._attach_certificate_renewal(model, result)
         self._attach_prior_invention_drift(model, result)
         self._attach_lapsed_covenant_readings(model, result)
+        self._attach_sow_covenant_conflicts(model, result)
         self._dispatch_drift_findings(model, result, event_sink=event_sink)
         self._get_store().save(
             ApprovalRecord(
@@ -1047,6 +1048,64 @@ class ContractService:
                         f"{reading.found}"
                     ),
                     details=[reading.detail],
+                )
+            )
+
+    def _attach_sow_covenant_conflicts(
+        self, model: ContractInput, result: AgentResult
+    ) -> None:
+        """SOW-vs-MSA covenant conflicts (``sow_covenants.py``):
+        when this round is a statement of work whose own text
+        names its master agreement — and the master is in the
+        store — the SOW's covenant register is read against the
+        master's: a duration or scope conflict is flagged with
+        both sources named and the stated order of precedence
+        read in code; an aligned, incorporated, or SOW-only
+        covenant is a consistent reading, on record because it
+        was checked. Attached after the run, like the drift
+        readings: the comparison needs the master's stored
+        package. An SOW that names no master, or names one the
+        store does not hold, draws no checks — there is no second
+        document to conflict with, and inventing one would be
+        worse than silence."""
+        if model.doc_type != "sow":
+            return
+        from .schemas import TraceStep
+        from .sow_covenants import (
+            agreement_text,
+            build_sow_covenant_checks,
+            master_agreement_id,
+        )
+
+        master_id = master_agreement_id(agreement_text(model))
+        if not master_id or master_id == model.contract_id:
+            return
+        record = self._get_store().get(master_id)
+        if record is None or not record.contract:
+            return
+        master = ContractInput.model_validate(record.contract)
+        checks = build_sow_covenant_checks(
+            model, master, result.obligations, record.result.obligations
+        )
+        if not checks:
+            return
+        result.sow_covenant_conflicts = checks
+        conflicts = [c for c in checks if c.status != "consistent"]
+        for check in checks:
+            result.trace.append(
+                TraceStep(
+                    name="sow_covenant_conflict",
+                    title=(
+                        f"SOW covenant read against {master_id}: "
+                        f"{check.status}"
+                        + (
+                            f" — {len(conflicts)} conflict(s) across "
+                            "the two documents"
+                            if check is checks[0] and conflicts
+                            else ""
+                        )
+                    ),
+                    details=[check.detail],
                 )
             )
 

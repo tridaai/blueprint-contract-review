@@ -126,6 +126,10 @@ def brief_source_digest(
             {"status": c.status, "found": c.found, "detail": c.detail}
             for c in latest.lapsed_covenant_readings
         ],
+        "sow_covenant_conflicts": [
+            {"status": c.status, "found": c.found, "detail": c.detail}
+            for c in latest.sow_covenant_conflicts
+        ],
         "covenant_steps": [
             {
                 "from_contract_id": step.get("from_contract_id", ""),
@@ -296,6 +300,17 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             "letter's fresh covenant follows a lapsed one in the "
             "chain — a new bargain, not a continuation — see "
             "Exhibit findings."
+        )
+    cur_sow = current.get("sow_covenant_conflicts", [])
+    prev_sow = previous.get("sow_covenant_conflicts", [])
+    if cur_sow and cur_sow != prev_sow:
+        conflicts = sum(
+            1 for c in cur_sow if c["status"] != "consistent"
+        )
+        lines.append(
+            "SOW covenants read against the master agreement: "
+            f"{conflicts} conflict(s) across the two documents "
+            "— see Exhibit findings."
         )
     # Covenant movements (round 19): the steps that ARRIVED since
     # the previous export — a step's later round sits in the chain
@@ -743,6 +758,7 @@ def build_negotiation_brief(
         + list(latest.certificate_renewal)
         + list(latest.prior_invention_drift)
         + list(latest.lapsed_covenant_readings)
+        + list(latest.sow_covenant_conflicts)
     )
     if not exhibit_rows:
         lines.append(
@@ -782,6 +798,17 @@ def build_negotiation_brief(
                 "previous round of this chain — a removal is a "
                 "finding, because the assignment excludes what "
                 "the schedule lists."
+            )
+        if latest.sow_covenant_conflicts:
+            lines.append("")
+            lines.append(
+                "The `sow_covenant_conflict` rows are "
+                "cross-document: this statement of work's "
+                "covenants read against the master agreement its "
+                "own text names — a conflict names both sources "
+                "and the order of precedence the documents state, "
+                "where they state one; neither document stating "
+                "one is itself the reading."
             )
     lines.append("")
 

@@ -242,6 +242,59 @@ def _eval_exhibit(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, 
     return not problems, "; ".join(problems)
 
 
+_COVENANT_LABEL_TO_KIND = {
+    "non-compete": "non_compete",
+    "non-solicitation": "non_solicit",
+    "exclusivity": "exclusivity",
+    "non-circumvention": "non_circumvention",
+}
+
+
+def _eval_sow_master(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """SOW-vs-MSA covenant conflicts (round 19): seed the master
+    agreement the case names, analyse the SOW under it, and
+    compare the conflict map (covenant kind → status, for the
+    readings that are not consistent), the full check count, and
+    the posture — which the conflicts must NOT move: posture is
+    the SOW against the playbook, the conflicts are the SOW
+    against its own master."""
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+
+    master = samples.get(case["master_contract_id"])
+    sow = samples.get(case["contract_id"])
+    if master is None or sow is None:
+        return False, "unknown sample in sow_master case"
+    service = ContractService(store=InMemoryStore(), checkpointer=False)
+    service.analyze(master)
+    result = service.analyze(sow)
+    conflicts = {}
+    for check in result.sow_covenant_conflicts:
+        for label, kind in _COVENANT_LABEL_TO_KIND.items():
+            if check.expectation.startswith(f"the {label} covenant"):
+                if check.status != "consistent":
+                    conflicts[kind] = check.status
+    problems = []
+    expected_conflicts = case.get("expected_conflicts") or {}
+    if conflicts != expected_conflicts:
+        problems.append(
+            f"conflicts: expected {expected_conflicts}, got {conflicts}"
+        )
+    if case.get("expected_checks") is not None:
+        if len(result.sow_covenant_conflicts) != case["expected_checks"]:
+            problems.append(
+                f"checks: expected {case['expected_checks']}, "
+                f"got {len(result.sow_covenant_conflicts)}"
+            )
+    if case.get("expected_posture") is not None:
+        if result.facts.posture != case["expected_posture"]:
+            problems.append(
+                f"posture: expected {case['expected_posture']}, "
+                f"got {result.facts.posture}"
+            )
+    return not problems, "; ".join(problems)
+
+
 def evaluate(cases: list[dict]) -> dict:
     samples = {c.contract_id: c for c in sample_contract_models()}
     correct = 0
@@ -259,6 +312,8 @@ def evaluate(cases: list[dict]) -> dict:
             ok, detail = _eval_round_chain(case, samples)
         elif kind == "exhibit":
             ok, detail = _eval_exhibit(case, samples)
+        elif kind == "sow_master":
+            ok, detail = _eval_sow_master(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:

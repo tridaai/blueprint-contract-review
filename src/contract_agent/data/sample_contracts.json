@@ -768,9 +768,9 @@
     "title": "Master Services Agreement",
     "counterparty_name": "Caldera Robotics Inc",
     "our_role": "customer",
-    "sender_name": "Contracts — Caldera Robotics Inc",
+    "sender_name": "Contracts \u2014 Caldera Robotics Inc",
     "cover_email_text": "Please find our master services agreement for managed robotics maintenance attached for your review.",
-    "notes": "Commercial restrictive covenants sample: an MSA carrying an exclusivity appointment (a twelve-month tail) and a non-circumvention covenant (a twenty-four-month tail), both running from the agreement's own termination machinery — and the agreement states its own expiry (December 31, 2026), so both covenant clocks are dated in code from that anchor. The governing-law clause's exclusive jurisdiction and the absence of any licence grant test that the covenant reading fires on appointments, not on the word 'exclusive' alone.",
+    "notes": "Commercial restrictive covenants sample: an MSA carrying an exclusivity appointment (a twelve-month tail) and a non-circumvention covenant (a twenty-four-month tail), both running from the agreement's own termination machinery \u2014 and the agreement states its own expiry (December 31, 2026), so both covenant clocks are dated in code from that anchor. The governing-law clause's exclusive jurisdiction and the absence of any licence grant test that the covenant reading fires on appointments, not on the word 'exclusive' alone.",
     "received_at": "2026-09-14T09:00:00",
     "documents": [
       {
@@ -786,9 +786,9 @@
     "title": "Amendment No. 1 to Master Services Agreement",
     "counterparty_name": "Caldera Robotics Inc",
     "our_role": "customer",
-    "sender_name": "Contracts — Caldera Robotics Inc",
+    "sender_name": "Contracts \u2014 Caldera Robotics Inc",
     "cover_email_text": "Attached is Amendment No. 1 to the Caldera managed robotics agreement, restating the exclusivity tail, for counsel's review.",
-    "notes": "Commercial restrictive covenants sample (amendment): round 2 of the CTR-2038 chain — the amendment restates the agreement's own expiry, keeps the exclusivity appointment but shortens its tail from twelve months to six, and does not carry the non-circumvention covenant forward. The covenant biography reads the step: a duration shortened, a covenant dropped.",
+    "notes": "Commercial restrictive covenants sample (amendment): round 2 of the CTR-2038 chain \u2014 the amendment restates the agreement's own expiry, keeps the exclusivity appointment but shortens its tail from twelve months to six, and does not carry the non-circumvention covenant forward. The covenant biography reads the step: a duration shortened, a covenant dropped.",
     "received_at": "2026-11-30T09:00:00",
     "documents": [
       {
@@ -798,5 +798,59 @@
       }
     ],
     "supersedes": "CTR-2038"
+  },
+  {
+    "contract_id": "CTR-2040",
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Vantage Facilities Group Inc",
+    "our_role": "customer",
+    "sender_name": "Contracts \u2014 Vantage Facilities Group Inc",
+    "cover_email_text": "Attached: Master Services Agreement, for counsel's review.",
+    "notes": "SOW-vs-MSA covenant conflicts sample (master): a master agreement carrying a twelve-month non-compete and a twelve-month exclusivity tail over managed warehouse automation services, an expiry it states for itself (June 30, 2027), and an order-of-precedence clause putting the master first in a conflict. The SOWs under it are CTR-2041 (conflicting) and CTR-2042 (aligned).",
+    "received_at": "2026-09-20T09:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Limitation of Liability\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Confidentiality\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n4. Term and Termination\nThis Agreement takes effect on the Effective Date and expires on June 30, 2027, unless terminated earlier in accordance with this clause. Either party may terminate this Agreement for convenience on sixty (60) days' written notice.\n\n5. Fees and Payment\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date.\n\n6. Non-Compete\nDuring the Term and for twelve (12) months following the termination or expiry of this Agreement, the Provider shall not compete with the Customer in the facilities services market.\n\n7. Exclusivity\nDuring the Term, the Provider shall be the exclusive provider of managed warehouse automation services to the Customer. This exclusivity shall continue for twelve (12) months following the termination or expiry of this Agreement.\n\n8. Order of Precedence\nIn the event of any conflict between this Agreement and any statement of work entered into under it, this Agreement shall control.\n\n9. Governing Law\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n"
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2041",
+    "doc_type": "sow",
+    "title": "Statement of Work \u2014 Regional Distribution Centres",
+    "counterparty_name": "Vantage Facilities Group Inc",
+    "our_role": "customer",
+    "sender_name": "Contracts \u2014 Vantage Facilities Group Inc",
+    "cover_email_text": "Attached: Statement of Work \u2014 Regional Distribution Centres, for counsel's review.",
+    "notes": "SOW-vs-MSA covenant conflicts sample (conflicting SOW): names its master (CTR-2040) in its own text, then grants exclusivity for twenty-four months over a wider scope (warehouse automation AND facilities monitoring) where the master granted twelve over the narrower scope, and a six-month non-compete where the master set twelve. Both conflicts are flagged against both sources, with the master's stated precedence.",
+    "received_at": "2026-10-05T09:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Services\nThis Statement of Work is entered into under that certain Master Services Agreement (CTR-2040) between Vantage Facilities Group Inc and the Provider dated September 20, 2026. The Provider shall provide managed warehouse automation services for the Customer's regional distribution centres, as further described in the service schedule.\n\n2. Exclusivity\nThe Provider shall be the exclusive provider of managed warehouse automation and facilities monitoring services to the Customer. This exclusivity shall continue for twenty-four (24) months following the termination or expiry of the Master Agreement.\n\n3. Non-Compete\nDuring the engagement and for six (6) months following its end, the Provider shall not compete with the Customer in the facilities services market.\n\n4. Fees and Schedule\nThe fees for the services under this Statement of Work are as set out in the service schedule. The Customer shall pay all undisputed invoices Net 30 from the invoice date.\n"
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2042",
+    "doc_type": "sow",
+    "title": "Statement of Work \u2014 Northern Distribution Centre",
+    "counterparty_name": "Vantage Facilities Group Inc",
+    "our_role": "customer",
+    "sender_name": "Contracts \u2014 Vantage Facilities Group Inc",
+    "cover_email_text": "Attached: Statement of Work \u2014 Northern Distribution Centre, for counsel's review.",
+    "notes": "SOW-vs-MSA covenant conflicts sample (aligned SOW): names its master (CTR-2040) and carries the exclusivity and non-compete at the master's own durations and scope \u2014 consistent readings \u2014 plus an eighteen-month non-circumvention covenant the master is silent on, which reads as the SOW's own covenant standing, not a conflict.",
+    "received_at": "2026-10-06T09:00:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Services\nThis Statement of Work is entered into under that certain Master Services Agreement (CTR-2040) between Vantage Facilities Group Inc and the Provider dated September 20, 2026. The Provider shall provide managed warehouse automation services for the Customer's northern distribution centre, as further described in the service schedule.\n\n2. Exclusivity\nThe Provider shall be the exclusive provider of managed warehouse automation services to the Customer. This exclusivity shall continue for twelve (12) months following the termination or expiry of the Master Agreement.\n\n3. Non-Compete\nDuring the engagement and for twelve (12) months following its end, the Provider shall not compete with the Customer in the facilities services market.\n\n4. Non-Circumvention\nEach party agrees not to circumvent, directly or indirectly, the other party in respect of the introductions made under this Statement of Work. This non-circumvention covenant shall run for eighteen (18) months following the expiry of the Master Agreement.\n\n5. Fees and Schedule\nThe fees for the services under this Statement of Work are as set out in the service schedule. The Customer shall pay all undisputed invoices Net 30 from the invoice date.\n"
+      }
+    ]
   }
 ]

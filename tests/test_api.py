@@ -26,7 +26,7 @@ def test_console_and_samples():
     assert "Contract Review Agent" in console.text
     samples = client.get("/samples")
     assert samples.status_code == 200
-    assert len(samples.json()) == 39
+    assert len(samples.json()) == 42
     playbook = client.get("/playbook")
     assert playbook.status_code == 200
     assert len(playbook.json()) >= 20
@@ -144,5 +144,5 @@ def test_eval_results_endpoint():
     res = client.get("/evals/results")
     assert res.status_code == 200
     payload = res.json()
-    assert payload["total"] == 84
+    assert payload["total"] == 86
     assert payload["passed"] is True

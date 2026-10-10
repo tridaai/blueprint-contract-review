@@ -885,6 +885,7 @@ class AgentResult(BaseModel):
     certificate_renewal: list[ExhibitCheck] = Field(default_factory=list)  # a renewal certificate read against the ORIGINAL round's requirement set (certificate_renewal.py) — cross-round, attached by the service after the run; the renewal watch closes on this evidence or not at all
     prior_invention_drift: list[ExhibitCheck] = Field(default_factory=list)  # the prior-invention schedule's movement vs the prior round of the chain (prior_invention_drift.py) — a removal is a finding: an invention that leaves the schedule falls into the assignment
     lapsed_covenant_readings: list[ExhibitCheck] = Field(default_factory=list)  # this letter's fresh covenants read against the chain's lapsed ones (covenant_history.py) — a new bargain after a lapse, not a continuation; attached by the service after the run
+    sow_covenant_conflicts: list[ExhibitCheck] = Field(default_factory=list)  # an SOW's covenants read against the master agreement it names (sow_covenants.py) — duration/scope conflicts flagged with both sources and the stated order of precedence; attached by the service after the run
     drift_dispatches: list[DriftDispatch] = Field(default_factory=list)  # signed webhook pushes of this round's drift findings (service.py) — findings only, recorded when ACTION_WEBHOOK_URL is configured
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)

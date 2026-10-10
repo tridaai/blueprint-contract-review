@@ -82,3 +82,5 @@
 {"case_id": "X15", "kind": "exhibit", "contract_id": "CTR-2033", "expected_checks": 2, "expected_failed": {}, "expected_posture": "negotiable"}
 {"case_id": "X16", "kind": "exhibit", "contract_id": "CTR-2034", "expected_checks": 1, "expected_failed": {}, "expected_posture": "negotiable"}
 {"case_id": "X17", "kind": "exhibit", "contract_id": "CTR-2035", "expected_checks": 1, "expected_failed": {"severance_arithmetic": "mismatch"}, "expected_posture": "negotiable"}
+{"case_id": "X18", "kind": "sow_master", "contract_id": "CTR-2041", "master_contract_id": "CTR-2040", "expected_checks": 2, "expected_conflicts": {"exclusivity": "mismatch", "non_compete": "mismatch"}, "expected_posture": "escalation_required"}
+{"case_id": "X19", "kind": "sow_master", "contract_id": "CTR-2042", "master_contract_id": "CTR-2040", "expected_checks": 3, "expected_conflicts": {}, "expected_posture": "escalation_required"}
