@@ -239,6 +239,29 @@ class ClauseDiff(BaseModel):
     tier_reason: str = ""
 
 
+class ProposedEdit(BaseModel):
+    """One concrete edit the packet proposes for a flagged clause
+    (``proposed_edits.py``): a tracked-changes style instruction —
+    replace this sentence with that language, insert this language
+    after that sentence, replace the clause wholesale, or counsel
+    drafts — computed in code by aligning the clause diff's
+    tier-appropriate fallback language against the counterparty's
+    own sentences. The model may phrase fallback language upstream;
+    the assignment of language to sentences is code's, and every
+    edit is a draft for counsel, never a sent redline."""
+
+    clause_id: str = ""
+    clause_type: str = "other"
+    position: str = ""
+    tier: int = 0  # the ClauseDiff tier this edit carries (0 = no tier proposal)
+    kind: str = ""  # replace_sentence | insert_after | replace_clause | counsel_draft
+    original_sentence: str = ""  # the counterparty sentence to replace ("" for inserts / counsel-draft)
+    anchor_sentence: str = ""  # for insert_after: the sentence the new language follows
+    replacement_text: str = ""  # the proposed language ("" for counsel_draft)
+    alignment: str = ""  # sentence | clause_fallback | none — how the pairing was made
+    note: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Negotiation-round diff (computed in code — verdict movement)
 # ---------------------------------------------------------------------------
@@ -516,6 +539,7 @@ class AgentResult(BaseModel):
     injection_flags: list[str] = Field(default_factory=list)
     clause_verdicts: list[ClauseVerdict] = Field(default_factory=list)
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
+    proposed_edits: list[ProposedEdit] = Field(default_factory=list)
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
     round_chain: Optional[RoundChain] = None  # set when the chain has 3+ rounds
     exhibit_checks: list[ExhibitCheck] = Field(default_factory=list)

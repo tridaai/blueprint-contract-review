@@ -68,6 +68,7 @@ from .guardrails import validate_drafts
 from .model_backends import DraftContext, clause_rows_text, estimate_cost_usd
 from .obligations import build_obligations, due_obligations
 from .options import build_options
+from .proposed_edits import build_proposed_edits
 from .playbook_data import PLAYBOOK
 from .resilience import ResilientBackend
 from .retriever import get_retriever
@@ -80,6 +81,7 @@ from .schemas import (
     ClauseExtraction,
     ClauseOption,
     Obligation,
+    ProposedEdit,
     ClauseUnit,
     ClauseVerdict,
     ContractFacts,
@@ -212,6 +214,7 @@ class AgentState(TypedDict, total=False):
     injection_flags: list[str]
     verdicts: list[dict[str, Any]]
     clause_diffs: list[dict[str, Any]]
+    proposed_edits: list[dict[str, Any]]
     exhibit_checks: list[dict[str, Any]]
     obligations: list[dict[str, Any]]
     facts: dict[str, Any]
@@ -421,19 +424,20 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
         facts = compute_facts(
             contract, units, extractions, verdicts, exhibit_checks=exhibit_checks
         )
+        diffs = build_clause_diffs(
+            units,
+            verdicts,
+            # A contract that supersedes an earlier round is, at
+            # minimum, round 2 — tier proposals start there; the
+            # service refines with the full chain when it can.
+            round_number=2 if contract.supersedes else 1,
+        )
         return {
             "facts": facts.model_dump(),
             "clause_rows": _rows(state),
-            "clause_diffs": [
-                d.model_dump()
-                for d in build_clause_diffs(
-                    units,
-                    verdicts,
-                    # A contract that supersedes an earlier round is, at
-                    # minimum, round 2 — tier proposals start there; the
-                    # service refines with the full chain when it can.
-                    round_number=2 if contract.supersedes else 1,
-                )
+            "clause_diffs": [d.model_dump() for d in diffs],
+            "proposed_edits": [
+                e.model_dump() for e in build_proposed_edits(diffs)
             ],
             "exhibit_checks": [c.model_dump() for c in exhibit_checks],
             "obligations": [
@@ -1041,6 +1045,9 @@ def run_contract(
         clause_verdicts=[ClauseVerdict.model_validate(v) for v in state.get("verdicts", [])],
         clause_diffs=[
             ClauseDiff.model_validate(d) for d in state.get("clause_diffs", [])
+        ],
+        proposed_edits=[
+            ProposedEdit.model_validate(e) for e in state.get("proposed_edits", [])
         ],
         exhibit_checks=[
             ExhibitCheck.model_validate(c) for c in state.get("exhibit_checks", [])

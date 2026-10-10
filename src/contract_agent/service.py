@@ -90,6 +90,7 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
         "posture": result.facts.posture if result.facts else "",
         "clause_verdicts": [v.model_dump(mode="json") for v in result.clause_verdicts],
         "clause_diffs": [d.model_dump(mode="json") for d in result.clause_diffs],
+        "proposed_edits": [e.model_dump(mode="json") for e in result.proposed_edits],
         "round_diff": (
             result.round_diff.model_dump(mode="json") if result.round_diff else None
         ),
@@ -343,6 +344,7 @@ class ContractService:
             # round number and the chain's re-trade flags (the graph
             # could only assume "round 2" from the supersedes link).
             from .clause_diffs import build_clause_diffs
+            from .proposed_edits import build_proposed_edits
 
             result.clause_diffs = build_clause_diffs(
                 result.clauses,
@@ -350,6 +352,9 @@ class ContractService:
                 round_number=chain.rounds,
                 re_traded_types=set(chain.re_traded_clause_types),
             )
+            # The edit script maps the diffs' tier language — when
+            # the tiers move with the chain, the edits move with them.
+            result.proposed_edits = build_proposed_edits(result.clause_diffs)
 
     def analyze_batch(
         self,
