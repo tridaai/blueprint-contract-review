@@ -716,6 +716,7 @@ class AgentResult(BaseModel):
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
     round_chain: Optional[RoundChain] = None  # set when the chain has 3+ rounds
     exhibit_checks: list[ExhibitCheck] = Field(default_factory=list)
+    subprocessor_drift: list[ExhibitCheck] = Field(default_factory=list)  # the DPA annex's movement vs the prior round of the chain (subprocessor_drift.py) — cross-round, so attached by the service after the run, like round_diff
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""

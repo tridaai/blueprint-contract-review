@@ -430,6 +430,7 @@ class ContractService:
             thread_id=model.contract_id,
         )
         self._attach_round_diff(model, result)
+        self._attach_subprocessor_drift(model, result)
         self._get_store().save(
             ApprovalRecord(
                 result=result,
@@ -608,6 +609,42 @@ class ContractService:
             # The edit script maps the diffs' tier language — when
             # the tiers move with the chain, the edits move with them.
             result.proposed_edits = build_proposed_edits(result.clause_diffs)
+
+    def _attach_subprocessor_drift(
+        self, model: ContractInput, result: AgentResult
+    ) -> None:
+        """Sub-processor list drift (``subprocessor_drift.py``):
+        when this round supersedes a stored one and both rounds
+        carry a sub-processor list annex, diff the lists and check
+        any addition against the clause's notice clock. Attached
+        after the run like the round diff — the comparison needs
+        the prior round's stored package, which only the service
+        holds — and kept apart from the single-round exhibit
+        checks the facts node already read."""
+        if not model.supersedes or model.supersedes == model.contract_id:
+            return
+        prior = self._get_store().get(model.supersedes)
+        if prior is None or not prior.contract:
+            return
+        from .schemas import TraceStep
+        from .subprocessor_drift import build_subprocessor_drift
+
+        prior_model = ContractInput.model_validate(prior.contract)
+        drift = build_subprocessor_drift(prior_model, model)
+        if not drift:
+            return
+        result.subprocessor_drift = drift
+        check = drift[0]
+        result.trace.append(
+            TraceStep(
+                name="subprocessor_drift",
+                title=(
+                    f"Sub-processor list drift vs {prior_model.contract_id}: "
+                    f"{check.status}"
+                ),
+                details=[check.detail],
+            )
+        )
 
     def analyze_batch(
         self,

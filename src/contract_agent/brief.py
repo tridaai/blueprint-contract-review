@@ -88,6 +88,10 @@ def brief_source_digest(chain: list[AgentResult], latest: AgentResult) -> dict:
             {"kind": o.kind, "detail": o.detail, "date": o.date or ""}
             for o in latest.obligations
         ],
+        "subprocessor_drift": [
+            {"status": c.status, "found": c.found}
+            for c in latest.subprocessor_drift
+        ],
         "re_trades": latest.round_chain.re_trades if latest.round_chain else 0,
         "reflection_flags": sum(
             1 for e in latest.edit_reflection if e.status == "agreed_not_reflected"
@@ -205,6 +209,15 @@ def brief_delta_lines(previous: dict, current: dict) -> list[str]:
             "this clause were flagged not reflected in two consecutive "
             "follow-ups; the packet now proposes the walk-away line "
             "for it (see Reflection patterns)."
+        )
+    cur_drift = current.get("subprocessor_drift", [])
+    prev_drift = previous.get("subprocessor_drift", [])
+    if cur_drift and cur_drift != prev_drift:
+        drift = cur_drift[0]
+        lines.append(
+            f"Sub-processor list drift vs the prior round: "
+            f"{drift['found']} ({drift['status']}) — see Exhibit "
+            "findings."
         )
     if current["re_trades"] != previous["re_trades"]:
         lines.append(
@@ -480,7 +493,8 @@ def build_negotiation_brief(
     # -- Exhibit findings ---------------------------------------------------
     lines.append("## Exhibit findings")
     lines.append("")
-    if not latest.exhibit_checks:
+    exhibit_rows = list(latest.exhibit_checks) + list(latest.subprocessor_drift)
+    if not exhibit_rows:
         lines.append(
             "No cross-document checks were generated for this package "
             "— the agreement ties nothing checkable to an exhibit."
@@ -488,10 +502,18 @@ def build_negotiation_brief(
     else:
         lines.append("| Check | Promised | Exhibit says | Status | Detail |")
         lines.append("|---|---|---|---|---|")
-        for check in latest.exhibit_checks:
+        for check in exhibit_rows:
             lines.append(
                 f"| {check.name} | {check.promised or '—'} "
                 f"| {check.found or '—'} | {check.status} | {check.detail} |"
+            )
+        if latest.subprocessor_drift:
+            lines.append("")
+            lines.append(
+                "The `subprocessor_list_drift` row is cross-round: "
+                "the annex's movement since the previous round of "
+                "this chain, with any addition read against the "
+                "notice period the clause promises."
             )
     lines.append("")
 
