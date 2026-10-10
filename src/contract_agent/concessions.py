@@ -167,6 +167,28 @@ def build_concession_profile(
     )
 
     decided = [r.result for r in mine if r.result.decision in ("approved", "rejected")]
+    # Walk-away line outcomes (walkaway.py): the lines counsel
+    # actually decided on, and what the follow-up drafts did with
+    # them — decision evidence for the hold statistics, beside the
+    # verdict movement the clause-type rows above are built from.
+    wa_counts: Counter = Counter()
+    wa_by_type: dict[str, Counter] = {}
+    for record in mine:
+        for outcome in record.result.walk_away_outcomes:
+            wa_counts[outcome.status] += 1
+            wa_by_type.setdefault(outcome.clause_type, Counter())[outcome.status] += 1
+    walk_away_lines = {
+        "proposed": sum(wa_counts.values()),
+        "held": wa_counts.get("held", 0),
+        "softened": wa_counts.get("softened", 0),
+        "dropped": wa_counts.get("dropped", 0),
+        "clause_removed": wa_counts.get("clause_removed", 0),
+        "pending": wa_counts.get("pending", 0),
+        "by_clause_type": {
+            clause_type: dict(counts)
+            for clause_type, counts in sorted(wa_by_type.items())
+        },
+    }
     return {
         "counterparty": counterparty,
         "contracts": len(mine),
@@ -189,6 +211,7 @@ def build_concession_profile(
         "concedes": [r["clause_type"] for r in clause_types if r["tendency"] == "concedes"],
         "holds": [r["clause_type"] for r in clause_types if r["tendency"] == "holds"],
         "mixed": [r["clause_type"] for r in clause_types if r["tendency"] == "mixed"],
+        "walk_away_lines": walk_away_lines,
     }
 
 
@@ -211,6 +234,18 @@ def concession_evidence_lines(profile: dict) -> list[str]:
             else "; no chain has cleared its walk-away positions yet"
         )
     ]
+    walk_away = profile.get("walk_away_lines") or {}
+    if walk_away.get("proposed"):
+        lines.append(
+            f"walk-away lines: {walk_away['proposed']} proposed in "
+            f"decided packet(s) — held {walk_away['held']} · softened "
+            f"{walk_away['softened']} · dropped {walk_away['dropped']}"
+            + (
+                f" · {walk_away['pending']} awaiting a follow-up round"
+                if walk_away["pending"]
+                else ""
+            )
+        )
     for row in profile["clause_types"]:
         if row["tendency"] == "concedes":
             finals = ", ".join(

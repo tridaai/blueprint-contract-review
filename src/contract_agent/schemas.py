@@ -356,6 +356,40 @@ class EditReflection(BaseModel):
     detail: str = ""
 
 
+class WalkAwayOutcome(BaseModel):
+    """One walk-away line a decided packet proposed, tracked to its
+    outcome (``walkaway.py``, round 9). Captured on the decision
+    record at the moment counsel decides a contract whose packet
+    proposed tier-2 lines: the line itself, the position the clause
+    sat at when counsel decided, and the decision. The outcome then
+    resolves against the FOLLOW-UP round — the counterparty's next
+    draft is the evidence of whether the line held:
+
+    ``held`` = the follow-up places the clause at an acceptable
+    position (preferred or acceptable_fallback): the final text is
+    at or above the line. ``softened`` = review_required: off the
+    walk-away text, short of an acceptable position. ``dropped`` =
+    still walk_away: the final text sits beyond the line the packet
+    proposed. ``clause_removed`` = the clause is gone from the
+    follow-up — the line was neither held nor tested. ``pending`` =
+    no follow-up round is in the store yet. Counsel's decision is
+    the anchor; the follow-up draft is the evidence — the concession
+    profile reads these as decision evidence, not verdict movement.
+    """
+
+    clause_id: str = ""
+    clause_type: str = "other"
+    line_language: str = ""  # the walk-away line the packet proposed
+    position_at_decision: str = ""  # the clause's position when counsel decided
+    decision: str = ""  # approved | rejected — the decision that captured this line
+    decided_by: str = ""
+    captured_at: str = ""  # ISO timestamp of the decision
+    status: str = "pending"  # pending | held | softened | dropped | clause_removed
+    final_position: str = ""  # the follow-up round's position for the clause
+    resolved_in: str = ""  # the follow-up round's contract_id, once resolved
+    detail: str = ""
+
+
 class ReflectionPattern(BaseModel):
     """A clause type whose agreed edits keep not landing
     (``reflection_patterns.py``): counsel agreed an edit on this
@@ -663,6 +697,7 @@ class AgentResult(BaseModel):
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
     proposed_edits: list[ProposedEdit] = Field(default_factory=list)
     edit_outcomes: list[EditOutcome] = Field(default_factory=list)  # counsel's per-edit decisions (recorded post-analysis)
+    walk_away_outcomes: list[WalkAwayOutcome] = Field(default_factory=list)  # walk-away lines this packet proposed, captured at counsel's decision and resolved against the follow-up round
     edit_reflection: list[EditReflection] = Field(default_factory=list)  # prior round's accepted edits, checked against this draft
     reflection_patterns: list[ReflectionPattern] = Field(default_factory=list)  # clause types flagged not-reflected in two consecutive follow-ups
     round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round

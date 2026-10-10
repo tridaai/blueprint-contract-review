@@ -437,6 +437,9 @@ class ContractService:
                 analyzed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             )
         )
+        # A new round is evidence: any walk-away outcome along this
+        # chain that was waiting on a follow-up resolves against it.
+        self._refresh_chain_walk_away(model.contract_id)
         self._archive_documents(model, result)
         return result
 
@@ -797,6 +800,7 @@ class ContractService:
         record.result.decided_by = approver
         record.result.decision_reason = reason or None
         record.result.decided_at = datetime.now(timezone.utc).isoformat()
+        self._capture_walk_away(record)
         # Output routing: by default there is NO external action. When
         # the operator configures ACTION_WEBHOOK_URL, the approved
         # packet is POSTed to that endpoint (the customer's system of
@@ -836,12 +840,63 @@ class ContractService:
         record.result.decision_reason = reason or None
         record.result.decided_at = datetime.now(timezone.utc).isoformat()
         record.result.external_action_taken = False
+        self._capture_walk_away(record)
         store.save(record)
         self._resume_thread(
             contract_id,
             {"decision": "rejected", "actor": reviewer, "reason": reason},
         )
         return record.result
+
+    # ------------------------------------------------------------------
+    # Walk-away line acceptance tracking (round 9)
+    # ------------------------------------------------------------------
+
+    def _capture_walk_away(self, record: ApprovalRecord) -> None:
+        """Capture the walk-away lines the decided packet proposed
+        (``walkaway.py``) onto the decision record, resolved against
+        whatever of the chain is already in the store. Called by
+        approve()/reject() after the decision fields are set, before
+        the record is saved — the decision is the anchor, the chain
+        (the follow-up round, when one exists) is the evidence."""
+        from .walkaway import (
+            capture_walk_away_outcomes,
+            chain_for,
+            resolve_walk_away_outcomes,
+        )
+
+        result = record.result
+        outcomes = capture_walk_away_outcomes(result)
+        if not outcomes:
+            return
+        chain = chain_for(self._get_store().all_records(), result.contract_id)
+        if chain:
+            outcomes = resolve_walk_away_outcomes(
+                outcomes, chain, result.contract_id
+            )
+        result.walk_away_outcomes = outcomes
+
+    def _refresh_chain_walk_away(self, contract_id: str) -> None:
+        """Re-resolve the captured walk-away outcomes along the
+        chain containing ``contract_id``: a new round's arrival is
+        the evidence pending outcomes were waiting on. Resolution is
+        deterministic over the stored chain, so re-resolving is
+        idempotent; only records whose outcomes changed are saved."""
+        from .walkaway import chain_for, resolve_walk_away_outcomes
+
+        store = self._get_store()
+        chain = chain_for(store.all_records(), contract_id)
+        for record in chain:
+            if not record.result.walk_away_outcomes:
+                continue
+            resolved = resolve_walk_away_outcomes(
+                record.result.walk_away_outcomes,
+                chain,
+                record.result.contract_id,
+            )
+            if resolved != record.result.walk_away_outcomes:
+                record.result.walk_away_outcomes = resolved
+                store.save(record)
 
     # ------------------------------------------------------------------
     # Per-edit acceptance tracking (round 6)
