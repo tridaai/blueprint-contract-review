@@ -47,7 +47,13 @@ For each contract, the pipeline:
    notice periods, payment terms, breach-notice windows, and
    reporting duties extracted in code with their source clauses —
    including notice deadlines derived by date arithmetic and flagged
-   as computed, never quoted. The same pass also runs **exhibit
+   as computed, never quoted. Employment letters put their own
+   machinery in the register too: the termination notice period and
+   any garden-leave window from the employment-terms signals, and
+   the **severance itself** — a figure computed in code from the
+   letter's formula against its stated salary basis, flagged
+   computed — joining the due view and the deadline sweep alongside
+   the commercial clocks. The same pass also runs **exhibit
    consistency checks**: when the data protection clause ties its
    promises to an attached DPA exhibit (a 24-hour breach window, a
    sub-processor list), the exhibit's own text is checked against
@@ -99,7 +105,18 @@ For each contract, the pipeline:
    terms that arrive with it: a renewal draft that restates
    the clause at thinner cover passes its own checks, and
    only the comparison against the original bargain catches
-   the dropped limit or endorsement.
+   the dropped limit or endorsement. Drift **findings** — a
+   sub-processor added inside the notice window, a prior
+   invention removed from the schedule — are also **pushed, not
+   just recorded**: when the action webhook is configured, each
+   fires a signed event on the same HMAC seam as the approval
+   and SLA-breach dispatches, payloads carrying findings and
+   identifiers, never contract text, with the dispatch outcome
+   on the result's trace. And the renewal check names **where
+   each requirement came from** — the round and clause that set
+   it ("set by CTR-2029 §7"), per requirement — so a limit
+   raised by a mid-chain amendment is judged from the
+   amendment, not the root bargain.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -244,8 +261,15 @@ suspended — who set it aside, when, and why — instead of
 re-flagging it every run. A suspension can carry a **review-by
 date**: past it, the report reads the set-aside as stale and
 the queue carries it as a review alert, until counsel
-re-confirms or lifts it — a suspension is a decision with a
-shelf life, not a forgetting.
+re-confirms or lifts it. **Re-confirmation is a first-class
+act**: counsel renews the set-aside with a name and a note,
+stamped into the record's re-confirmation history, and the
+review clock resets to the date the act names — the term
+stays set aside throughout, and the original suspension's
+stamps stand untouched, so the record shows one set-aside,
+deliberately renewed, not a chain of lifts and
+re-suspensions. A suspension is a decision with a shelf life,
+not a forgetting.
 
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
@@ -403,7 +427,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 381 tests (380 run + 1 Postgres-gated skip)
+make test                  # 416 tests (415 run + 1 Postgres-gated skip)
 make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```

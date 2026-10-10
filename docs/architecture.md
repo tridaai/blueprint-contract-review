@@ -197,6 +197,23 @@ $46,500) and CTR-2035 (4 months × $240,000/yr = $80,000
 computed against a schedule stating $60,000 — a $20,000 gap)
 pin the family, with eval cases X16–X17.
 
+**Severance and notice in the register** (`obligations.py`,
+round 13). The letter's machinery also becomes *tracked*: the
+facts pass builds the employment entries alongside the
+commercial ones — a `notice_period` entry from the letter's
+`notice_days` signal, a `garden_leave` entry where the letter
+promises one, and a `severance` entry carrying the figure the
+arithmetic computes (formula × stated salary basis), flagged
+`computed`, source-cited to the clause that states the
+formula. The clocks run from a future termination, so the
+entries are undated while that is true — unless the letter
+states a termination date: then the severance falls due on it
+and the notice deadline derives from it (termination minus
+notice days, itself flagged computed). An unverifiable
+severance — a formula with no salary basis anywhere — is not
+entered as a number: the exhibit check already reports it as
+unverifiable, and the register does not invent figures.
+
 **Sub-processor list drift** (`subprocessor_drift.py`, round
 11). The annex is a living list, so the single-round checks are
 joined by a cross-round one: consecutive rounds of a chain have
@@ -248,6 +265,35 @@ full evidence is `consistent`, and the two samples pin both
 readings — CTR-2036 renews CTR-2029 in full, CTR-2037 is the
 quiet drop (professional liability $1,000,000 → $250,000, the
 waiver gone, its own checks all green).
+
+**Renewal-requirement provenance** (`certificate_renewal.py`,
+round 13). The requirement set the renewal is judged against
+now carries its own evidence chain: the prior agreement is cut
+with the pipeline's segmenter, and every requirement — each
+limit, each endorsement, the named-insured term — is placed in
+the clause whose text states it, named on the check's detail
+per requirement ("set by CTR-2029 §7 (Insurance)"). A limit
+is placed at the clause stating the amount the requirement
+actually is, so where a mid-chain amendment raised a limit,
+the requirement's provenance is the amendment's clause, not
+the root round's — the failed renewal shows which round's
+bargain each drop broke.
+
+**Drift findings on the wire** (`ContractService.
+dispatch_drift_finding_webhook`, round 13). Drift findings
+used to wait on the record for someone to open the brief; the
+two drift families that *find* something — a sub-processor
+added inside the notice window, a prior invention removed
+from the schedule — now also fire signed webhook events
+through the established seam (the same HMAC-signed POST the
+approval and SLA-breach dispatches use, `ACTION_WEBHOOK_URL`
+/ `ACTION_WEBHOOK_SECRET`). The payload carries the finding —
+check, status, the two rounds, the promised and found values,
+the check's detail — identifiers and findings, never contract
+text. Only findings fire: consistent movement stays on the
+result, the dispatch outcome is stamped on the result
+(`drift_dispatches`, with a trace step), and a failed delivery
+is recorded as failed without disturbing the finding.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -540,8 +586,25 @@ and collects the due and overdue types in
 `suspensions_due_review`; the same alerts ride the `/queue`
 payload, since the queue is where counsel works. An overdue
 suspension still binds the scorer: staleness is counsel's
-prompt to re-confirm (lift and re-suspend) or lift — never the
-agent quietly restoring a term counsel set aside.
+prompt to re-confirm or lift — never the agent quietly
+restoring a term counsel set aside.
+
+**Re-confirmation** (round 13) is that prompt's first-class
+act, distinct from both neighbours. A lift ends the set-aside;
+a re-suspension starts a new one. A re-confirmation renews
+the one that stands: counsel's name and note are appended to
+the record's re-confirmation history, the review-by date moves
+to the date the act names (or stands, when the act names
+none), and the original suspension's stamps — who set the term
+aside, when, and why — are untouched, so the record reads as
+one set-aside, deliberately renewed, however many times. The
+scorer honours the suspension throughout; the calibration
+report names the renewals on the row and in the suspension
+block (`reconfirmations`, `last_reconfirmed_by`); a stale
+suspension re-confirmed to a future date leaves
+`suspensions_due_review` without ever having stopped binding.
+`POST /options/pattern-calibration/reconfirm`, with a console
+action beside the lift.
 
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
