@@ -520,7 +520,7 @@ class Obligation(BaseModel):
     formula applied to its stated salary basis — so its ``computed``
     flags the figure, never a quoted amount."""
 
-    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term | severance | garden_leave
+    kind: str  # renewal | notice_period | payment | reporting | breach_notice | confidentiality_term | term | severance | garden_leave | non_compete | non_solicit
     description: str = ""
     detail: str = ""  # the operative value as written, e.g. "120 days' written notice"
     days: Optional[int] = None

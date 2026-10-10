@@ -30,11 +30,25 @@ unless the letter itself states a termination date: then the
 severance falls due on that date and the notice deadline is
 derived from it, the way a renewal date anchors a notice
 deadline above.
+
+The restrictive covenants join the same register (round 14):
+the non-compete and non-solicit durations the covenant reading
+(``extractor.py``) already extracts become entries of their
+own — each covenant's period read from the sentences that
+state that covenant, so a clause carrying both at different
+lengths registers both lengths. The covenant clock runs from
+the end of the employment: undated while termination is a
+future event, and when the letter states its termination date
+the expiry is that date plus the duration, computed in code
+and flagged ``computed`` — the employment register closes over
+the whole letter the way the commercial register closes over
+the MSA.
 """
 
 from __future__ import annotations
 
 import re
+from calendar import monthrange
 from datetime import date, timedelta
 
 from .schemas import ClauseExtraction, ClauseUnit, Obligation
@@ -91,6 +105,77 @@ def _length_phrase(text: str, start: int = 0) -> str:
         return ""
     n, unit = int(m.group(1)), m.group(2)
     return f"{n} {unit}"
+
+
+def _add_months(day: date, months: int) -> date:
+    """``day`` plus ``months`` calendar months, the day clamped
+    to the target month's length (31 January + 1 month is
+    28/29 February, never 3 March)."""
+    total = (day.year * 12 + (day.month - 1)) + months
+    year, month = divmod(total, 12)
+    month += 1
+    return date(year, month, min(day.day, monthrange(year, month)[1]))
+
+
+def _period_months(sentence: str) -> int | None:
+    """The period a sentence states, in months: months directly,
+    or years converted at 12 — the covenant reading's own
+    convention (``extractor.py``)."""
+    m = re.search(r"\(?(\d+)\)?\s*months?\b", sentence)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"\(?(\d+)\)?\s*years?\b", sentence)
+    if m:
+        return int(m.group(1)) * 12
+    return None
+
+
+_COMPETE_WORDS = ("compete", "competition", "covenant not to compete")
+
+
+def _covenant_durations(
+    text: str, signals: dict
+) -> tuple[int | None, int | None]:
+    """(non-compete months, non-solicit months) for one covenant
+    clause, each read from the sentences that state THAT
+    covenant: a clause routinely carries both at different
+    lengths, and the register keeps them apart. A period stated
+    in a lead-in sentence that names neither covenant ("For
+    twelve months following the end of employment, the Employee
+    shall not …") belongs to the compete covenant when the
+    clause has one and the sentence does not state the
+    solicitation. When no sentence ties a period to either
+    covenant, the extraction's own longest-period signal is the
+    compete duration of an undifferentiated covenant — never
+    split by guesswork."""
+    sentences = re.split(r"(?<=[.!?])\s+", text or "")
+    periods = [(s.lower(), _period_months(s.lower())) for s in sentences]
+    solicit = next(
+        (months for low, months in periods if months and "solicit" in low),
+        None,
+    )
+    compete = next(
+        (
+            months
+            for low, months in periods
+            if months and any(word in low for word in _COMPETE_WORDS)
+        ),
+        None,
+    )
+    if compete is None and not signals.get("non_solicit_only"):
+        has_compete = any(word in (text or "").lower() for word in _COMPETE_WORDS)
+        if has_compete:
+            compete = next(
+                (
+                    months
+                    for low, months in periods
+                    if months and "solicit" not in low
+                ),
+                None,
+            )
+    if compete is None and solicit is None and not signals.get("non_solicit_only"):
+        compete = _positive(signals.get("duration_months"))
+    return compete, solicit
 
 
 def _stated_termination_date(units: list[ClauseUnit]) -> date | None:
@@ -431,5 +516,57 @@ def build_obligations(
                 source_clause_id=(source.clause_id if source else ref["source_clause_id"]),
                 source_ref=(source.ref if source else ref["source_ref"]),
             ))
+
+    # -- Restrictive-covenant clocks (round 14) -------------------
+    # The covenant tail of the same letter: the non-compete and
+    # non-solicit periods the covenant reading extracts become
+    # dated obligations on the termination clock, like the
+    # notice and severance entries above. Each covenant's period
+    # is read from its own sentences, so the two covenants keep
+    # their own lengths; undated while the letter states no
+    # termination date, expiring at termination + duration —
+    # computed in code — when it does.
+    if employment is not None:
+        termination_date = _stated_termination_date(units)
+        for extraction in extractions:
+            if extraction.clause_type != "non_compete":
+                continue
+            unit = by_id.get(extraction.clause_id)
+            if unit is None:
+                continue
+            compete_months, solicit_months = _covenant_durations(
+                unit.text or "", extraction.signals or {}
+            )
+            for kind, label, months in (
+                ("non_compete", "non-compete", compete_months),
+                ("non_solicit", "non-solicitation", solicit_months),
+            ):
+                if not months:
+                    continue
+                expiry = (
+                    _add_months(termination_date, months)
+                    if termination_date is not None
+                    else None
+                )
+                description = (
+                    f"The {label} covenant runs {months} "
+                    f"month{'s' if months != 1 else ''} following "
+                    "the end of the employment."
+                )
+                if expiry is not None:
+                    description += (
+                        f" Against the termination date the letter "
+                        f"states ({termination_date.isoformat()}), "
+                        f"the covenant expires on {expiry.isoformat()}."
+                    )
+                add(Obligation(
+                    kind=kind,
+                    description=description,
+                    detail=f"{months} months following termination",
+                    date=expiry.isoformat() if expiry else None,
+                    computed=expiry is not None,
+                    source_clause_id=unit.clause_id,
+                    source_ref=unit.ref,
+                ))
 
     return register
