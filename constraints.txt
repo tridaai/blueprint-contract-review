@@ -1,0 +1,66 @@
+# Frozen dependency set for this blueprint — Python 3.10–3.12, macOS/Linux.
+#
+# Why this file exists: with loose >= ranges, `pip install -e ".[dev]"` on
+# Python 3.10 backtracked effectively forever. The trigger was transitive:
+# langchain-core -> langsmith requires websockets>=15.0 (unbounded), and
+# websockets 17.x requires Python >=3.11, so on 3.10 pip kept unwinding and
+# re-resolving langgraph / langchain-core / pydantic / uvicorn / pytest.
+#
+# This is the known-good set resolved on Python 3.12, with websockets held
+# at 16.0 (newest line supporting 3.10). Every version below supports both
+# 3.10 and 3.12. Install with:
+#
+#   pip install -e ".[dev]" -c constraints.txt
+#
+# exceptiongroup and tomli are only needed on Python < 3.11 (pytest/anyio);
+# they are harmless on 3.11+.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+certifi==2026.7.22
+charset-normalizer==3.5.2
+click==8.5.0
+distro==1.9.0
+exceptiongroup==1.3.1
+fastapi==0.143.0
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.13.1
+httpx==0.28.1
+httpx2==2.13.1
+idna==3.20
+iniconfig==2.3.1
+jsonpatch==1.34
+jsonpointer==3.2.0
+langchain-core==1.6.9
+langchain-protocol==0.0.19
+langgraph==0.6.11
+langgraph-checkpoint==3.0.1
+langgraph-prebuilt==0.6.5
+langgraph-sdk==0.2.15
+langsmith==0.14.5
+opentelemetry-api==1.45.1
+orjson==3.13.0
+ormsgpack==1.12.2
+packaging==26.3
+pluggy==1.6.0
+pydantic==2.14.0
+pydantic-core==2.50.0
+Pygments==2.21.0
+pytest==9.1.1
+PyYAML==6.0.3
+requests==2.34.2
+requests-toolbelt==1.0.0
+sniffio==1.3.1
+starlette==1.7.0
+tenacity==9.2.1
+tomli==2.5.0
+truststore==0.10.4
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+urllib3==2.8.0
+uuid-utils==0.17.1
+uvicorn==0.54.0
+websockets==16.0
+xxhash==4.0.1
+zstandard==0.25.0

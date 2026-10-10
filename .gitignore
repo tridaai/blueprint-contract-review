@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.chroma/
+.data/
+evals/llm_results.json
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.DS_Store
+# Mac-transfer artifacts (never part of the repo)
+decode-assets.py
+*.b64
