@@ -166,6 +166,20 @@ function render(result) {
   if (f.missing_standard_clauses && f.missing_standard_clauses.length) {
     html += `<p class="flag">⚠ Absence detection: standard clause(s) missing — ${f.missing_standard_clauses.map(esc).join(', ')}${f.critical_absences.length ? ' (critical: ' + f.critical_absences.map(esc).join(', ') + ')' : ''}</p>`;
   }
+  if (result.round_diff) {
+    const rd = result.round_diff;
+    const mvPill = m => m === 'improved' ? pill('improved', 'good') : m === 'worsened' ? pill('worsened', 'bad') : m === 'new' ? pill('new') : m === 'removed' ? pill('removed', 'warn') : pill('unchanged');
+    html += `<h3>Negotiation movement <span class="note">(vs ${esc(rd.previous_contract_id)} — what the last round won or gave up)</span></h3>
+    <div class="row">${pill(rd.improved + ' improved', 'good')} ${pill(rd.worsened + ' worsened', rd.worsened ? 'bad' : '')} ${pill(rd.unchanged + ' unchanged')} ${pill(rd.new_clauses + ' new')} ${pill(rd.removed_clauses + ' removed', 'warn')}</div>
+    <table><thead><tr><th>Clause</th><th>Type</th><th>Was</th><th>Now</th><th>Movement</th></tr></thead><tbody>
+    ${rd.movements.map(m => `<tr>
+      <td>${esc(m.heading || m.clause_type)}<br><span class="note">${esc(m.prior_clause_id || '—')} → ${esc(m.clause_id || '—')}</span></td>
+      <td>${esc(m.clause_type)}</td>
+      <td>${m.prior_position ? posPill(m.prior_position) : '—'}</td>
+      <td>${m.position ? posPill(m.position) : '—'}</td>
+      <td>${mvPill(m.movement)}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
   const diffsByClause = {};
   (result.clause_diffs || []).forEach(d => { diffsByClause[d.clause_id] = d; });
   html += `<h3>Clause-by-clause review</h3><table><thead><tr><th>Clause</th><th>Type</th><th>Verdict</th><th>Playbook</th><th>Rationale</th></tr></thead><tbody>

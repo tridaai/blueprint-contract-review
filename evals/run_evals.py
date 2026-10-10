@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from contract_agent.clause_review import review_clause  # noqa: E402
 from contract_agent.extractor import extract_clauses  # noqa: E402
 from contract_agent.graph import run_contract  # noqa: E402
+from contract_agent.round_diff import build_round_diff  # noqa: E402
 from contract_agent.samples import sample_contract_models  # noqa: E402
 from contract_agent.schemas import ContractInput, DocumentInput  # noqa: E402
 from contract_agent.segmentation import segment_text  # noqa: E402
@@ -109,6 +110,37 @@ def _eval_document(case: dict, samples: dict[str, ContractInput]) -> tuple[bool,
     return not problems, "; ".join(problems)
 
 
+def _eval_round_diff(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Negotiation-round diffing: run both rounds, align, and compare
+    the verdict movement per clause type + the summary counts."""
+    prior = samples.get(case["prior_id"])
+    current = samples.get(case["sample_id"])
+    if prior is None or current is None:
+        return False, f"unknown sample {case.get('prior_id')} / {case.get('sample_id')}"
+    diff = build_round_diff(run_contract(prior), run_contract(current))
+    problems = []
+    by_type = {m.clause_type: m for m in diff.movements}
+    for clause_type, expected in (case.get("expected_movements") or {}).items():
+        entry = by_type.get(clause_type)
+        if entry is None:
+            problems.append(f"{clause_type}: no movement recorded")
+            continue
+        for field, key in (("from", "prior_position"), ("to", "position"), ("movement", "movement")):
+            if field in expected and getattr(entry, key) != expected[field]:
+                problems.append(
+                    f"{clause_type} {field}: expected {expected[field]}, "
+                    f"got {getattr(entry, key)}"
+                )
+    for field, key in (
+        ("improved", "improved"), ("worsened", "worsened"),
+        ("unchanged", "unchanged"), ("new", "new_clauses"), ("removed", "removed_clauses"),
+    ):
+        expected = (case.get("expected_counts") or {}).get(field)
+        if expected is not None and getattr(diff, key) != expected:
+            problems.append(f"count {field}: expected {expected}, got {getattr(diff, key)}")
+    return not problems, "; ".join(problems)
+
+
 def evaluate(cases: list[dict]) -> dict:
     samples = {c.contract_id: c for c in sample_contract_models()}
     correct = 0
@@ -120,6 +152,8 @@ def evaluate(cases: list[dict]) -> dict:
         per_kind_total[kind] += 1
         if kind == "clause":
             ok, detail = _eval_clause(case)
+        elif kind == "round_diff":
+            ok, detail = _eval_round_diff(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:

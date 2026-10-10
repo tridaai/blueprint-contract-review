@@ -90,6 +90,9 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
         "posture": result.facts.posture if result.facts else "",
         "clause_verdicts": [v.model_dump(mode="json") for v in result.clause_verdicts],
         "clause_diffs": [d.model_dump(mode="json") for d in result.clause_diffs],
+        "round_diff": (
+            result.round_diff.model_dump(mode="json") if result.round_diff else None
+        ),
         "obligations": [o.model_dump(mode="json") for o in result.obligations],
         "drafts": {
             "subject": result.drafts.subject if result.drafts else "",
@@ -255,11 +258,41 @@ class ContractService:
             checkpointer=self._get_checkpointer(),
             thread_id=model.contract_id,
         )
+        self._attach_round_diff(model, result)
         self._get_store().save(
             ApprovalRecord(result=result, contract=model.model_dump(mode="json"))
         )
         self._archive_documents(model, result)
         return result
+
+    def _attach_round_diff(self, model: ContractInput, result: AgentResult) -> None:
+        """Negotiation-round diffing: when intake names the round this
+        draft supersedes and that round is in the store, align the two
+        rounds' clauses and attach the verdict movement (see
+        ``round_diff.py``). A superseded round that was never analysed
+        here simply means no diff — the review stands on its own."""
+        if not model.supersedes or model.supersedes == model.contract_id:
+            return
+        prior = self._get_store().get(model.supersedes)
+        if prior is None:
+            return
+        from .round_diff import build_round_diff
+        from .schemas import TraceStep
+
+        diff = build_round_diff(prior.result, result)
+        result.round_diff = diff
+        result.trace.append(
+            TraceStep(
+                name="round_diff",
+                title=f"Negotiation movement vs {diff.previous_contract_id}",
+                details=[
+                    f"{diff.improved} improved · {diff.worsened} worsened · "
+                    f"{diff.unchanged} unchanged · {diff.new_clauses} new · "
+                    f"{diff.removed_clauses} removed",
+                    *diff.summary,
+                ],
+            )
+        )
 
     def analyze_batch(
         self,

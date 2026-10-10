@@ -121,6 +121,7 @@ class DocumentInput(BaseModel):
 class ContractInput(BaseModel):
     contract_id: str
     doc_type: str = "msa"  # msa | sow | nda | amendment | order_form
+    supersedes: str = ""  # contract_id of the previous negotiation round this draft replaces
     title: str = ""
     counterparty_name: str = ""
     our_role: str = ""  # vendor | customer | partner — the side we review from
@@ -229,6 +230,43 @@ class ClauseDiff(BaseModel):
     playbook_fallback: str = ""  # "" = the playbook proposes none; counsel drafts
     playbook_refs: list[str] = Field(default_factory=list)
     rationale: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Negotiation-round diff (computed in code — verdict movement)
+# ---------------------------------------------------------------------------
+
+class ClauseMovement(BaseModel):
+    """One clause aligned across two negotiation rounds: where its
+    playbook position stood in the superseded round and where it
+    stands now. ``movement`` is the severity comparison — positions
+    only ever move along the ladder in ``POSITIONS``."""
+
+    clause_type: str = "other"
+    heading: str = ""
+    prior_clause_id: str = ""  # "" when the clause is new in this round
+    clause_id: str = ""  # "" when the clause was removed in this round
+    prior_ref: str = ""
+    ref: str = ""
+    prior_position: str = ""  # "" when new
+    position: str = ""  # "" when removed
+    movement: str = ""  # improved | worsened | unchanged | new | removed
+
+
+class RoundDiff(BaseModel):
+    """Verdict movement between this contract and the round it
+    supersedes (``round_diff.py``): what the last negotiation round
+    actually won, clause by clause, plus the counts."""
+
+    previous_contract_id: str = ""
+    contract_id: str = ""
+    movements: list[ClauseMovement] = Field(default_factory=list)
+    improved: int = 0
+    worsened: int = 0
+    unchanged: int = 0
+    new_clauses: int = 0
+    removed_clauses: int = 0
+    summary: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +440,7 @@ class AgentResult(BaseModel):
     injection_flags: list[str] = Field(default_factory=list)
     clause_verdicts: list[ClauseVerdict] = Field(default_factory=list)
     clause_diffs: list[ClauseDiff] = Field(default_factory=list)
+    round_diff: Optional[RoundDiff] = None  # set when intake named a superseded round
     obligations: list[Obligation] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""
