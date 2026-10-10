@@ -285,10 +285,15 @@ overlay over the shipped corpus, re-registered from the store
 after a restart), after which verdict citation resolution, the
 missing-fallback enrichment, tier walk-away lines, the mock
 assessment's playbook text, and the coverage counts all read the
-merged view. One honest limit: the retrieval corpus snapshots
-the shipped playbook when a retriever is built, so activated
-entries join keyword/semantic retrieval on the next rebuild —
-citations and tiers see them immediately.
+merged view. Retrieval reads the same merged view: retrievers
+snapshot the active playbook at construction, and the service
+refreshes its retriever (`refresh()`) the moment a proposal is
+activated — keyword corpora rebuild in place, semantic corpora
+drop their cached vectors (the pgvector stale-entry pass embeds
+the new entries), hybrid refreshes both halves — so an entry
+counsel activates at 9:00 answers queries at 9:01. A retriever
+built over an explicitly pinned corpus keeps that corpus;
+refresh is a no-op there.
 
 **Standalone DPA family** (`doc_type: "dpa"`). A data processing
 addendum arriving as the primary document is normalised from its

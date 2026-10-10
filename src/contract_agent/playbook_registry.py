@@ -13,14 +13,18 @@ service registers activated proposals' entries here on activation
 tier rules, and cross-check prompts read the ACTIVE playbook
 through here instead of the static corpus.
 
-Two deliberate limits, stated rather than implied:
+One deliberate limit, stated rather than implied:
 
 - Registration is process-local. The proposal STORE is the durable
   record; a fresh process re-registers its activated proposals at
   service start, so a restart loses nothing.
-- Retrieval corpora are built when a retriever is constructed;
-  activated entries join verdicts, tiers, and prompts immediately,
-  and the retrieval corpus on the next retriever build.
+
+Retrieval is NOT a limit (round 8): retrievers snapshot the ACTIVE
+playbook — this registry's merged view — at construction, and the
+service calls ``refresh()`` on its retriever the moment a proposal
+is activated (and after the startup re-registration), so activated
+entries are retrievable in the same minute they are activated —
+an entry counsel activates at 9:00 answers queries at 9:01.
 """
 
 from __future__ import annotations

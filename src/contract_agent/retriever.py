@@ -36,7 +36,7 @@ import re
 from .config import env_float, env_str, load_dotenv
 from .errors import translate_construction_error, translate_provider_error
 from .model_backends import DEFAULT_TIMEOUT_SECONDS, _missing_sdk_error
-from .playbook_data import PLAYBOOK
+from .playbook_registry import active_playbook
 from .schemas import RetrievedPlaybook
 
 _STOPWORDS = {
@@ -59,15 +59,36 @@ class KeywordRetriever:
 
     Deliberately simple and deterministic so evals and tests are stable
     offline. Score = shared tokens normalised by playbook length.
+
+    The default corpus is the ACTIVE playbook (the shipped corpus plus
+    counsel-activated proposal entries, ``playbook_registry``),
+    snapshotted at construction; :meth:`refresh` re-snapshots it, so an
+    activation lands in retrieval the moment it happens. A retriever
+    built over an explicit corpus keeps that corpus — refresh is a
+    no-op, because the caller pinned it deliberately.
     """
 
     name = "keyword"
 
     def __init__(self, playbooks: list[dict[str, str]] | None = None) -> None:
-        self._playbooks = playbooks if playbooks is not None else PLAYBOOK
-        self._index = [
+        self._tracks_registry = playbooks is None
+        self._playbooks = playbooks if playbooks is not None else active_playbook()
+        self._index = self._build_index()
+
+    def _build_index(self) -> list:
+        return [
             (p, set(_tokens(f"{p['title']} {p['text']}"))) for p in self._playbooks
         ]
+
+    def refresh(self) -> bool:
+        """Rebuild the corpus from the active playbook. Returns True
+        when the corpus was rebuilt (registry-tracking retrievers),
+        False for a pinned corpus."""
+        if not self._tracks_registry:
+            return False
+        self._playbooks = active_playbook()
+        self._index = self._build_index()
+        return True
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedPlaybook]:
         query_tokens = set(_tokens(query))
@@ -117,7 +138,10 @@ class SemanticRetriever:
         *,
         mode_label: str = "semantic",
     ) -> None:
-        self._playbooks = playbooks if playbooks is not None else PLAYBOOK
+        # The default corpus is the ACTIVE playbook (see
+        # KeywordRetriever); refresh() re-snapshots it on activation.
+        self._tracks_registry = playbooks is None
+        self._playbooks = playbooks if playbooks is not None else active_playbook()
         # The RETRIEVER value this instance serves ("semantic", or
         # "hybrid" when the hybrid retriever owns it) — error messages
         # name the value the operator actually set, never a sibling mode.
@@ -212,6 +236,22 @@ class SemanticRetriever:
                 base_url=base_url or "https://api.openai.com/v1",
             ) from exc
         return (client, model, "openai", base_url or "https://api.openai.com/v1")
+
+    def refresh(self) -> bool:
+        """Re-snapshot the active playbook and drop the cached
+        vectors: the next retrieve re-embeds the merged corpus
+        in-memory, and the pgvector check re-runs — its stale-entry
+        pass embeds any entry the current model has not embedded,
+        which is exactly the newly activated ones. Returns False
+        for a pinned corpus (see KeywordRetriever.refresh)."""
+        if not self._tracks_registry:
+            return False
+        self._playbooks = active_playbook()
+        self._corpus_vectors = None
+        self._pg_checked = False
+        self._pg_ready = False
+        self.vector_store = "memory"
+        return True
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         try:
@@ -408,6 +448,13 @@ class HybridRetriever:
     def vector_store(self) -> str:
         """The store serving the semantic half (pgvector | memory)."""
         return self._semantic.vector_store
+
+    def refresh(self) -> bool:
+        """Refresh both halves from the active playbook (see
+        KeywordRetriever.refresh); True when either half rebuilt."""
+        keyword_refreshed = self._keyword.refresh()
+        semantic_refreshed = self._semantic.refresh()
+        return keyword_refreshed or semantic_refreshed
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedPlaybook]:
         pool = top_k * 2

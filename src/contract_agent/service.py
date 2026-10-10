@@ -279,7 +279,19 @@ class ContractService:
                     register_entries(
                         [entry.model_dump() for entry in proposal.entries]
                     )
+            self._refresh_retriever()
         return self._resolved_proposal_store
+
+    def _refresh_retriever(self) -> None:
+        """Push newly registered playbook entries into the held
+        retriever's corpus (``retriever.refresh``): an activation
+        is retrievable immediately, not on the next restart. A
+        service with no held retriever builds one per run from the
+        active playbook, so there is nothing to refresh; a pinned
+        corpus keeps itself (refresh reports False)."""
+        refresh = getattr(self.retriever, "refresh", None)
+        if callable(refresh):
+            refresh()
 
     def _get_checkpointer(self) -> Checkpointer | None:
         if not self._checkpointer_resolved:
@@ -1534,6 +1546,7 @@ class ContractService:
         proposal.decision_note = note or ""
         store.save(proposal)
         register_entries([entry.model_dump() for entry in proposal.entries])
+        self._refresh_retriever()
         return proposal
 
     def dismiss_playbook_proposal(
