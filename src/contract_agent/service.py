@@ -26,11 +26,15 @@ thread never blocks a decision.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import threading
 import urllib.request
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from .checkpoints import get_checkpointer
 from .config import env_float, env_str, load_dotenv
@@ -64,7 +68,9 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
 
     This is the output-routing seam — the thin adapter between an
     approval and the customer's system of choice (their CLM, a work
-    queue, an automation endpoint). Returns ``None`` when no URL is
+    queue, an automation endpoint). When ``ACTION_WEBHOOK_SECRET`` is
+    also set, the request is HMAC-signed (``X-Trida-Signature``).
+    Returns ``None`` when no URL is
     configured (the default: no external action at all), ``"sent"``
     on a 2xx response, and ``"failed"`` on any error or non-2xx — a
     failed dispatch never undoes the approval; it is recorded on the
@@ -80,18 +86,32 @@ def dispatch_approval_webhook(record: ApprovalRecord) -> str | None:
         "contract_id": result.contract_id,
         "status": result.status,
         "decided_by": result.decided_by,
+        "decided_at": result.decided_at,
         "posture": result.facts.posture if result.facts else "",
         "clause_verdicts": [v.model_dump(mode="json") for v in result.clause_verdicts],
+        "clause_diffs": [d.model_dump(mode="json") for d in result.clause_diffs],
+        "obligations": [o.model_dump(mode="json") for o in result.obligations],
         "drafts": {
             "subject": result.drafts.subject if result.drafts else "",
             "counterparty_response": result.drafts.counterparty_response if result.drafts else "",
             "review_packet": result.drafts.review_packet if result.drafts else "",
         },
     }
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    # Signed when the operator sets ACTION_WEBHOOK_SECRET: the
+    # receiver verifies X-Trida-Signature against the raw body with
+    # the shared secret (HMAC-SHA256, "sha256=<hex>") before trusting
+    # the packet — an unsigned endpoint on the open internet would
+    # accept anyone's "approved contract".
+    secret = env_str("ACTION_WEBHOOK_SECRET")
+    if secret:
+        signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        headers["X-Trida-Signature"] = f"sha256={signature}"
     request = urllib.request.Request(
         url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        data=body,
+        headers=headers,
         method="POST",
     )
     timeout = env_float("ACTION_WEBHOOK_TIMEOUT_SECONDS", 5.0)
@@ -367,6 +387,7 @@ class ContractService:
         record.result.decision = "approved"
         record.result.decided_by = approver
         record.result.decision_reason = reason or None
+        record.result.decided_at = datetime.now(timezone.utc).isoformat()
         # Output routing: by default there is NO external action. When
         # the operator configures ACTION_WEBHOOK_URL, the approved
         # packet is POSTed to that endpoint (the customer's system of
@@ -402,6 +423,7 @@ class ContractService:
         record.result.decision = "rejected"
         record.result.decided_by = reviewer
         record.result.decision_reason = reason or None
+        record.result.decided_at = datetime.now(timezone.utc).isoformat()
         record.result.external_action_taken = False
         store.save(record)
         self._resume_thread(
@@ -413,3 +435,84 @@ class ContractService:
     def get(self, contract_id: str) -> AgentResult | None:
         record = self._get_store().get(contract_id)
         return record.result if record else None
+
+    def audit_rows(self) -> list[dict]:
+        """The audit trail: one flat row per analysed contract, with
+        counsel's decision (who, when, why) and the safety outcomes
+        (guardrails, repair, reviewer) that preceded it. This is the
+        record a compliance review asks for — exportable as JSON or
+        CSV from the API (``/audit/export``)."""
+        rows: list[dict] = []
+        for record in self._get_store().all_records():
+            result = record.result
+            rows.append(
+                {
+                    "contract_id": result.contract_id,
+                    "counterparty_name": result.counterparty_name,
+                    "doc_type": result.doc_type,
+                    "posture": result.facts.posture if result.facts else "",
+                    "worst_position": result.facts.worst_position if result.facts else "",
+                    "status": result.status,
+                    "decision": result.decision or "",
+                    "decided_by": result.decided_by or "",
+                    "decision_reason": result.decision_reason or "",
+                    "decided_at": result.decided_at or "",
+                    "validation_passed": (
+                        result.validation.passed if result.validation else None
+                    ),
+                    "repair_attempted": result.repair_attempted,
+                    "repaired": result.repaired,
+                    "reviewer_blocked": result.reviewer_blocked,
+                    "dispatch_status": result.dispatch_status or "",
+                    "external_action_taken": result.external_action_taken,
+                }
+            )
+        return rows
+
+    def metrics(self) -> dict:
+        """Operational summary over the stored runs (``/metrics``).
+
+        Counts and telemetry aggregates only — no draft text, no
+        counterparty detail beyond posture/status tallies. Token and
+        cost sums cover provider runs; offline runs honestly report
+        no tokens (None), so they are counted separately instead of
+        diluting the averages with zeros.
+        """
+        results = [record.result for record in self._get_store().all_records()]
+        telemetries = [r.telemetry for r in results if r.telemetry is not None]
+        provider_runs = [t for t in telemetries if t.input_tokens is not None]
+        latencies = [t.latency_seconds for t in telemetries]
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "runs_total": len(results),
+            "by_status": dict(Counter(r.status for r in results)),
+            "by_posture": dict(
+                Counter(r.facts.posture for r in results if r.facts)
+            ),
+            "decisions": {
+                "approved": sum(1 for r in results if r.decision == "approved"),
+                "rejected": sum(1 for r in results if r.decision == "rejected"),
+                "awaiting": sum(1 for r in results if r.decision is None),
+            },
+            "guardrail_failures": sum(
+                1 for r in results if r.validation is not None and not r.validation.passed
+            ),
+            "repairs": {
+                "attempted": sum(1 for r in results if r.repair_attempted),
+                "repaired": sum(1 for r in results if r.repaired),
+            },
+            "reviewer_blocks": sum(1 for r in results if r.reviewer_blocked),
+            "telemetry": {
+                "runs_with_telemetry": len(telemetries),
+                "provider_runs": len(provider_runs),
+                "model_calls": sum(t.model_calls for t in telemetries),
+                "input_tokens": sum(t.input_tokens or 0 for t in provider_runs),
+                "output_tokens": sum(t.output_tokens or 0 for t in provider_runs),
+                "estimated_cost_usd": round(
+                    sum(t.estimated_cost_usd or 0.0 for t in provider_runs), 6
+                ),
+                "mean_latency_seconds": (
+                    round(sum(latencies) / len(latencies), 3) if latencies else None
+                ),
+            },
+        }

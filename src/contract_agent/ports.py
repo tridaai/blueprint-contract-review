@@ -73,6 +73,8 @@ class Store(Protocol):
 
     def decision_feedback(self, exclude_contract_id: str | None = None) -> list[dict]: ...
 
+    def all_records(self) -> list["ApprovalRecord"]: ...
+
 
 class EventSink(Protocol):
     """The run-events seam: one ``emit`` per structured event."""

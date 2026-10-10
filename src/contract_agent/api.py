@@ -14,6 +14,8 @@ cannot take work. Logs are structured JSON with a per-request ID
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import queue
@@ -25,7 +27,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 from .config import env_str, load_dotenv, silence_langchain_deprecation_warnings
@@ -220,6 +228,45 @@ def eval_results() -> dict:
         status_code=404,
         detail="No eval results yet. Run: python evals/run_evals.py",
     )
+
+
+@app.get("/metrics", dependencies=_AUTH)
+def metrics() -> dict:
+    """Operational summary over the stored runs: counts by status and
+    posture, decision tallies, guardrail/repair/reviewer outcomes, and
+    telemetry aggregates (calls, tokens, estimated cost, mean latency).
+    Aggregates only — no draft text."""
+    return service.metrics()
+
+
+@app.get("/audit/export", dependencies=_AUTH)
+def audit_export(format: str = "json"):
+    """The audit trail — one row per analysed contract with counsel's
+    decision (who, when, why) and the safety outcomes. JSON by
+    default; ``?format=csv`` downloads a CSV for a compliance review."""
+    rows = service.audit_rows()
+    if format == "csv":
+        buffer = io.StringIO()
+        fieldnames = list(rows[0].keys()) if rows else [
+            "contract_id", "counterparty_name", "doc_type", "posture",
+            "worst_position", "status", "decision", "decided_by",
+            "decision_reason", "decided_at", "validation_passed",
+            "repair_attempted", "repaired", "reviewer_blocked",
+            "dispatch_status", "external_action_taken",
+        ]
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+        return PlainTextResponse(
+            buffer.getvalue(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": "attachment; filename=contract-audit.csv"
+            },
+        )
+    if format != "json":
+        raise HTTPException(status_code=422, detail="format must be 'json' or 'csv'.")
+    return {"count": len(rows), "records": rows}
 
 
 @app.get("/playbook", dependencies=_AUTH)

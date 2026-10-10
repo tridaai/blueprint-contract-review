@@ -87,6 +87,41 @@ def test_stream_endpoint_emits_sse_events():
     assert '"contract_id": "CTR-2001"' in body
 
 
+def test_metrics_endpoint():
+    contract = sample_contract_models()[0]
+    client.post("/contracts/analyze", json=contract.model_dump())
+    res = client.get("/metrics")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["runs_total"] >= 1
+    assert "by_posture" in payload and "decisions" in payload
+    assert "telemetry" in payload
+
+
+def test_audit_export_json_and_csv():
+    contract = sample_contract_models()[0]
+    client.post("/contracts/analyze", json=contract.model_dump())
+    client.post(
+        f"/contracts/{contract.contract_id}/approve",
+        json={"actor": "C. Ounsel", "reason": "audit trail check"},
+    )
+    res = client.get("/audit/export")
+    assert res.status_code == 200
+    payload = res.json()
+    row = next(r for r in payload["records"] if r["contract_id"] == contract.contract_id)
+    assert row["decided_by"] == "C. Ounsel"
+    assert row["decision_reason"] == "audit trail check"
+    assert row["decided_at"]
+
+    csv_res = client.get("/audit/export?format=csv")
+    assert csv_res.status_code == 200
+    assert "text/csv" in csv_res.headers["content-type"]
+    header = csv_res.text.splitlines()[0]
+    assert "contract_id" in header and "decided_by" in header
+    assert contract.contract_id in csv_res.text
+    assert client.get("/audit/export?format=yaml").status_code == 422
+
+
 def test_eval_results_endpoint():
     res = client.get("/evals/results")
     assert res.status_code == 200

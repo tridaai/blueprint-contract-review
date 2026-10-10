@@ -132,6 +132,13 @@ is a labelled offline fallback, never the story.
   `/health` (liveness) + `/readiness` (checks the database),
   structured JSON logs with request IDs, env-only configuration,
   graceful shutdown. Replicas share state through the services.
+- **Operable**: `/metrics` summarises the stored runs (status and
+  posture counts, decision tallies, guardrail/repair/reviewer
+  outcomes, token/cost/latency aggregates); `/audit/export`
+  (JSON, or `?format=csv`) emits the audit trail — one row per
+  contract with counsel's decision, timestamp, and reason. The
+  approval webhook is HMAC-signed when `ACTION_WEBHOOK_SECRET`
+  is set (`X-Trida-Signature: sha256=…`).
 - **Tests stay hermetic**: in-memory doubles inside the test suite;
   Postgres integration tests are gated on `DATABASE_URL` and skip
   without it. The Dockerfile/compose are maintained in-repo and
@@ -139,7 +146,7 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 42 synthetic cases: 30 clause-level (clause
+`evals/golden.jsonl` — 43 synthetic cases: 30 clause-level (clause
 type + expected playbook position) and 12 document-level (posture,
 per-type positions, absence detection, injection flags, information
 requests, repair behaviour). `python evals/run_evals.py` runs the

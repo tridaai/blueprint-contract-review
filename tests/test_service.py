@@ -3,6 +3,11 @@ memory/feedback, and document archiving — all with test doubles."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import urllib.request
+
 import pytest
 
 from contract_agent.model_backends import MockModelBackend
@@ -63,6 +68,67 @@ def test_documents_archived_to_object_store():
     objects = svc._get_object_store()
     assert objects.exists("contracts/CTR-1001/AGR-1.txt")
     assert objects.exists("contracts/CTR-1001/review-packet.txt")
+
+
+def test_decision_records_timestamp():
+    svc = service()
+    svc.analyze(contract())
+    decided = svc.approve("CTR-1001", approver="counsel@example.com")
+    assert decided.decided_at is not None
+    assert decided.decided_at.startswith("20")
+
+
+class _FakeResponse:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_approval_webhook_is_hmac_signed(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout=None):
+        captured["data"] = request.data
+        captured["signature"] = next(
+            (v for k, v in request.headers.items() if k.lower() == "x-trida-signature"),
+            None,
+        )
+        return _FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("ACTION_WEBHOOK_URL", "https://clm.example.com/hook")
+    monkeypatch.setenv("ACTION_WEBHOOK_SECRET", "hook-secret")
+    svc = service()
+    svc.analyze(contract())
+    decided = svc.approve("CTR-1001", approver="counsel@example.com")
+    assert decided.dispatch_status == "sent"
+    expected = hmac.new(b"hook-secret", captured["data"], hashlib.sha256).hexdigest()
+    assert captured["signature"] == f"sha256={expected}"
+    payload = json.loads(captured["data"])
+    assert payload["contract_id"] == "CTR-1001"
+    assert "obligations" in payload and "clause_diffs" in payload
+
+
+def test_metrics_and_audit_rows():
+    svc = service()
+    svc.analyze(contract())
+    svc.analyze(contract(contract_id="CTR-1002"))
+    svc.approve("CTR-1001", approver="counsel@example.com", reason="Cleared.")
+    metrics = svc.metrics()
+    assert metrics["runs_total"] == 2
+    assert metrics["decisions"] == {"approved": 1, "rejected": 0, "awaiting": 1}
+    assert metrics["by_status"]["approved"] == 1
+    assert metrics["telemetry"]["provider_runs"] == 0  # offline: no tokens, honestly
+    rows = {row["contract_id"]: row for row in svc.audit_rows()}
+    assert rows["CTR-1001"]["decided_by"] == "counsel@example.com"
+    assert rows["CTR-1001"]["decision_reason"] == "Cleared."
+    assert rows["CTR-1001"]["decided_at"]
+    assert rows["CTR-1001"]["validation_passed"] is True
+    assert rows["CTR-1002"]["decision"] == ""
 
 
 def test_feedback_loop_teaches_later_runs():

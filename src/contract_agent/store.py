@@ -141,6 +141,11 @@ class _BaseStore:
                 entries.append(entry)
         return entries
 
+    def all_records(self) -> list[ApprovalRecord]:
+        """Every record in the store — the audit-export and metrics
+        read path (the decision-of-record set, unfiltered)."""
+        return self._all()
+
 
 class InMemoryStore(_BaseStore):
     """Process-local store — a test double for the hermetic suite and

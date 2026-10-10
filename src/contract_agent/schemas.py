@@ -424,6 +424,7 @@ class AgentResult(BaseModel):
     decision: Optional[str] = None  # approved | rejected
     decided_by: Optional[str] = None
     decision_reason: Optional[str] = None
+    decided_at: Optional[str] = None  # ISO timestamp of counsel's decision
     dispatch_status: Optional[str] = None  # sent | failed | None
     external_action_taken: bool = False
     error: Optional[str] = None
