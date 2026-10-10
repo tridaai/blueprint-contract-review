@@ -47,7 +47,13 @@ For each contract, the pipeline:
    notice periods, payment terms, breach-notice windows, and
    reporting duties extracted in code with their source clauses —
    including notice deadlines derived by date arithmetic and flagged
-   as computed, never quoted.
+   as computed, never quoted. The same pass also runs **exhibit
+   consistency checks**: when the data protection clause ties its
+   promises to an attached DPA exhibit (a 24-hour breach window, a
+   sub-processor list), the exhibit's own text is checked against
+   them — consistent, mismatch, missing in the exhibit, or the
+   promised exhibit never arrived — and failures floor the posture
+   like absences do.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -62,11 +68,17 @@ For each contract, the pipeline:
    flagged clause — a diff pairing the counterparty's own text with
    the playbook fallback, also in the console's clause table) and a
    counterparty response that proposes changes and asserts nothing
-   as agreed.
+   as agreed. Fallbacks are **tiered**: the packet proposes tier 1
+   (the first fallback) in round one, and tier 2 (the playbook's
+   walk-away line for that clause type) for walk-away verdicts,
+   later rounds, and re-traded clauses — chosen in code from the
+   round number and the chain, never by the model.
 9. **Verifies** the drafts (self-check), sends them to an
    **independent reviewer**, then runs **guardrails as code**:
    `no_legal_conclusion`, `no_agreement_language`,
-   `no_materiality_minimising` (the drafts never call the requested
+   `no_acceptability_pronouncement` (the response never calls a
+   clause "acceptable as drafted" — the draft proposes; acceptability
+   is counsel's call), `no_materiality_minimising` (the drafts never call the requested
    changes "routine", "minor", "technical" — materiality is counsel's
    call), `no_prohibited_promises`, `no_pii_in_draft`, a playbook
    citation per flagged clause, the contract id present. A bounded repair loop
@@ -88,8 +100,21 @@ is diffed against the stored earlier round — clauses aligned by type
 and heading, verdict movement (`walk_away → preferred`, …) reported
 per clause on the result, in the console, and in the approval
 webhook. Counsel sees what the last round won, what it gave up, and
-which clauses appeared or disappeared. The bundled samples include
-a round pair (CTR-2014 → CTR-2015) that shows all five movements.
+which clauses appeared or disappeared. From three rounds up, the
+service walks the whole **chain**: per-clause movement history
+across every round, cumulative first-to-latest movement, and
+**re-trade detection** — a clause that improved in an earlier round
+and worsens again later is flagged as re-traded, the finding a
+pairwise diff cannot see. The bundled samples carry a three-round
+chain (CTR-2014 → CTR-2015 → CTR-2016) whose third round re-trades
+two clauses the second round won.
+
+**Deadline operations.** Deadlines computed at analysis time matter
+weeks later, so `POST /obligations/sweep` (or the CLI's
+`--sweep-obligations DAYS`) sweeps every stored contract for
+obligations due within the window, emits one `obligation_due` event
+per deadline, and returns a dispatch report. Report-only: the sweep
+sends nothing — delivery belongs to the event consumer.
 
 ## Quickstart
 
@@ -106,8 +131,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 57 tests (56 run + 1 Postgres-gated skip)
-make evals                 # golden set: 42/42 (gate ≥ 95%)
+make test                  # 118 tests (117 run + 1 Postgres-gated skip)
+make evals                 # golden set: 50/50 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -148,9 +173,11 @@ is a labelled offline fallback, never the story.
   types most often lack fallback language, position distribution
   per counterparty. `/queue` is the counsel worklist (awaiting
   contracts, worst first); `/obligations/due?days=N` aggregates
-  register deadlines across contracts, and runs announce due
+  register deadlines across contracts, runs announce due
   entries on the event stream as `obligation_due` events (window:
-  `OBLIGATION_DUE_WINDOW_DAYS`). `/audit/export` (JSON, or
+  `OBLIGATION_DUE_WINDOW_DAYS`), and `POST /obligations/sweep`
+  re-emits them on demand across the whole store with a dispatch
+  report. `/audit/export` (JSON, or
   `?format=csv`) emits the audit trail — one row per contract with
   counsel's decision, timestamp, and reason. The approval webhook
   is HMAC-signed when `ACTION_WEBHOOK_SECRET` is set
@@ -162,13 +189,16 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 46 synthetic cases: 30 clause-level (clause
+`evals/golden.jsonl` — 50 synthetic cases: 30 clause-level (clause
 type + expected playbook position), 15 document-level (posture,
 per-type positions, absence detection, injection flags, information
-requests, repair behaviour), and 1 negotiation-round case (verdict
-movement between the CTR-2014/CTR-2015 round pair). `python
-evals/run_evals.py` runs the deterministic pipeline; the gate is
-≥ 95% (currently 46/46).
+requests, repair behaviour), 1 negotiation-round case (verdict
+movement between the CTR-2014/CTR-2015 round pair), 1 round-chain
+case (re-trades and cumulative movement across CTR-2014 → 2016),
+and 3 exhibit-consistency cases (the CTR-2017 mismatch pair, the
+CTR-2018 consistent pair, and the no-exhibit-promises case).
+`python evals/run_evals.py` runs the deterministic pipeline; the
+gate is ≥ 95% (currently 50/50).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.

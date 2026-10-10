@@ -32,7 +32,7 @@ ingest → extract → screen → classify → facts
 | extract | Per-clause type + structured facts (cap months/amounts, net days, notice periods, governing law, DPA, assignment) with confidence; optional LLM extraction cross-check; discrepancies recorded, never fatal | rules + LLM check |
 | screen | Injection screening: counterparty text is untrusted. AI-directed instructions are flagged and fenced out of prompts/drafts; the clause is still reviewed on substance | code |
 | classify | Per-clause playbook position from the deterministic matrix, cross-checked by an LLM per clause; disagreements escalate to ≥ review_required; resolution recorded per verdict | rules, LLM advises |
-| facts | Document posture counted in code: position counts, worst position, absence detection (missing standard clauses; liability cap + data protection are critical absences) | code |
+| facts | Document posture counted in code: position counts, worst position, absence detection (missing standard clauses; liability cap + data protection are critical absences); exhibit consistency checks (the DPA exhibit's text vs the clause's promises); the obligations register | code |
 | retrieve | Playbook entries by keyword / semantic / hybrid (RRF fusion); query built from clause content | code |
 | assess | Risk summary composed over evidence; with a provider, a bounded tool loop (`search_playbook`, `clause_facts`, `counterparty_history`); template fallback offline | LLM over evidence |
 | options | Per flagged clause, options scored in code (position fit + posture fit + package completeness) | code |
@@ -47,7 +47,10 @@ ingest → extract → screen → classify → facts
 
 `no_legal_conclusion` (no "legally binding / safe to sign /
 approved"), `no_agreement_language` (no "we agree / we accept these
-terms" in the counterparty draft), `no_materiality_minimising` (no
+terms" in the counterparty draft), `no_acceptability_pronouncement`
+(no "acceptable as drafted" / "acceptable to us" in the counterparty
+draft — added after an LLM judge caught a live letter pronouncing a
+cap acceptable, pre-deciding counsel's call), `no_materiality_minimising` (no
 "technical and routine" / "minor changes" characterisations of the
 requested changes — a pattern family added after an LLM judge caught
 live drafts minimising; materiality is counsel's judgement),
@@ -68,6 +71,54 @@ silently adopting either side; a weak rule position adopts a
 high-confidence LLM position. Every verdict carries
 `rule_position`, `llm_position`, `resolution`, and `escalated` so
 counsel can see exactly how the final position was reached.
+
+### Across documents and across rounds
+
+Four service-level capabilities sit on top of the per-contract
+pipeline; all are computed in code from stored records, and all are
+original to this blueprint.
+
+**Round chains and re-trades** (`round_diff.py`). A pairwise diff
+answers what the last round won. With three or more rounds in the
+store, the service walks the `supersedes` chain and threads each
+clause type through consecutive pairwise alignments: a movement
+history per clause, cumulative first-to-latest movement, and
+re-trade detection — an `improved` step followed by a later
+`worsened` step is a clause that was won and then given back, the
+finding no single diff can see. A worsening followed by a recovery
+is explicitly not a re-trade.
+
+**Tiered fallbacks** (`fallback_tiers.py`). Each clause type's
+fallback language is tier 1; the type's designated playbook entry
+also carries a `walk_away_line` — tier 2, the final position. The
+packet's proposal is chosen by rule: walk-away verdicts propose
+tier 2 directly, later rounds propose tier 2 (the first fallback
+did not close the clause), and re-traded clause types propose
+tier 2 in any round. The proposal (tier, language, reason) rides on
+the clause diff into the packet and the console.
+
+**Exhibit consistency** (`exhibit_review.py`). A clause that ties
+its promises to an attached exhibit makes a claim about another
+document. The data protection clause's commitments — the breach
+window from its extractor signals, the sub-processor list it relies
+on — become expectations checked against the DPA exhibit's own
+text: `consistent`, `mismatch`, `missing_in_exhibit`, or
+`exhibit_missing`. Failures land in the computed facts like clause
+absences: the posture floors at negotiable, a promised-but-absent
+exhibit makes the package incomplete and is requested by name, and
+autonomy triage is blocked. Checks are generated only when there
+is something cross-document to check, so a DPA merely referenced
+between the parties is not double-flagged.
+
+**Deadline dispatch sweep** (`ContractService.dispatch_obligation_sweep`).
+Per-run `obligation_due` events announce deadlines at analysis
+time; the sweep is the scheduled counterpart. It walks every
+stored contract against an explicit clock, emits one
+`obligation_due` event per due deadline (marked
+`via: deadline_sweep`), and returns a dispatch report. Report-only
+by design — delivery is the event consumer's job. Exposed as a
+service method, `POST /obligations/sweep`, and the CLI's
+`--sweep-obligations` flag.
 
 ## Production topology
 
