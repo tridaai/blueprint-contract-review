@@ -2,12 +2,14 @@
 #
 # `docker compose up` runs the PRODUCTION TOPOLOGY locally: a stateless
 # API, PostgreSQL (records + LangGraph checkpoints + pgvector) as the
-# system of record, and MinIO as the S3-compatible document store.
+# system of record, and an S3-compatible document store (SeaweedFS
+# gateway).
 # State lives in the services (named volumes only — no host
 # bind-mounts), so the same shape scales out unchanged.
 #
-# NOTE: maintained in-repo, not yet verified end-to-end in CI
-# (build-unverified, like the Dockerfile).
+# NOTE: build-verified on a developer machine (2026-10-10) —
+# `docker compose build` succeeds and the stack runs healthy.
+# There is no CI build; the quality gates are local commands.
 
 services:
   api:
@@ -17,8 +19,8 @@ services:
     environment:
       # The system of record: decisions store, checkpoints, vectors.
       DATABASE_URL: postgresql://contract:contract@postgres:5432/contracts
-      # S3-compatible document storage (MinIO here; AWS S3 in production
-      # by changing the endpoint + credentials).
+      # S3-compatible document storage (SeaweedFS gateway here; AWS S3
+      # in production by changing the endpoint + credentials).
       S3_BUCKET: contract-documents
       S3_ENDPOINT_URL: http://minio:8333
       S3_ACCESS_KEY: minioadmin

@@ -609,11 +609,11 @@ exhibit failures appearing or clearing.
 ## Quickstart
 
 Runs the **production topology locally** — a stateless API backed by
-PostgreSQL (records, checkpoints, pgvector) and MinIO (S3 documents):
+PostgreSQL (records, checkpoints, pgvector) and SeaweedFS (S3 documents):
 
 ```bash
 docker compose up --build
-# console: http://localhost:8000 · MinIO console: http://localhost:9001
+# console: http://localhost:8000
 ```
 
 Or natively, offline, in about a minute:
@@ -651,7 +651,7 @@ is a labelled offline fallback, never the story.
   migrations in `migrations/` run at startup; no ORM.
 - **Documents are objects, not files**: contract texts and drafts are
   archived to S3-compatible storage under `contracts/<id>/…` keys
-  (MinIO in compose; AWS S3 by changing the endpoint).
+  (SeaweedFS gateway in compose; AWS S3 by changing the endpoint).
 - **Stateless app**: multi-stage Dockerfile, non-root user,
   `/health` (liveness) + `/readiness` (checks the database),
   structured JSON logs with request IDs, env-only configuration,
@@ -683,11 +683,13 @@ is a labelled offline fallback, never the story.
 - **Tests stay hermetic**: in-memory doubles inside the test suite;
   Postgres integration tests are gated on `DATABASE_URL` and skip
   without it. The Dockerfile/compose are maintained in-repo and
-  labelled **build-unverified** until a CI build proves them.
+  **build-verified**: `docker compose build` succeeds and the stack
+  runs healthy (developer machine, 2026-10-10; there is no CI
+  build — the gates are the local `make` commands).
 
 ## Evals
 
-`evals/golden.jsonl` — 84 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 86 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
 DPA family and 8 for the employment family), 19 document-level
 (posture, per-type positions, absence detection, injection flags,
@@ -704,7 +706,7 @@ passes review and is then caught by the renewal watch, the
 CTR-2030/2031 sub-processor pair, the prior-invention trio:
 CTR-2025's promised-but-absent schedule, CTR-2032's swallowed
 schedule, CTR-2033's clean one, and the severance-arithmetic
-pair: CTR-2034's agreeing figures, CTR-2035's $20,000 gap). The
+pair: CTR-2034's agreeing figures, CTR-2035's $20,000 gap). 2
 `sow_master` cases seed a master agreement and read the SOW
 under it (CTR-2040 with CTR-2041's conflicts and CTR-2042's
 alignment).
@@ -722,7 +724,7 @@ migrations/           numbered SQL migrations (records, playbook vectors, propos
 evals/                golden set + deterministic runner + opt-in judge pack
 tests/                hermetic pytest suite (in-memory doubles)
 docs/architecture.md  the full pipeline + production topology
-docker-compose.yml    api + postgres(pgvector) + minio (+ ollama profile)
+docker-compose.yml    api + postgres(pgvector) + seaweedfs (+ ollama profile)
 ```
 
 ## Extension seams

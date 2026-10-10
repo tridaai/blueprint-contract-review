@@ -1223,7 +1223,7 @@ The application container is stateless. All state lives in services:
                   │               ┌──────────────────────────────┐
                   └──────────────▶│ S3-compatible object store   │
                                   │  contracts/<id>/… documents  │
-                                  │  + drafts (MinIO in compose) │
+                                  │ + drafts (SeaweedFS gateway) │
                                   └──────────────────────────────┘
 ```
 
@@ -1234,7 +1234,8 @@ The application container is stateless. All state lives in services:
   `migrations/`, applied by a small runner at startup; no ORM.
 - **Object storage port** — documents and drafts are archived under
   object keys, never local paths (`objectstore.py`; a compact
-  stdlib SigV4 client, path-style for MinIO, virtual-host for AWS).
+  stdlib SigV4 client, path-style for S3-compatible endpoints,
+  virtual-host for AWS).
 - **Runtime posture** — multi-stage Dockerfile, non-root user,
   `/health` (liveness) and `/readiness` (database check, 503 when
   down), structured JSON logs with per-request IDs, env-only
