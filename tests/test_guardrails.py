@@ -76,6 +76,7 @@ def test_reviewer_checklist_blocks_packet_without_recommendation():
         "packet_citations": ["PB-LIA-03"],
         "packet_options": [],
         "packet_recommended": None,
+        "options_expected": True,
         "assessment_citations": ["PB-LIA-03"],
     }
     verdict, findings = checklist_review(

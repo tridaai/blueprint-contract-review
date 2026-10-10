@@ -226,7 +226,11 @@ class MockModelBackend:
                 + ", ".join(context["missing_clauses"])
                 + ". Please include them in your revised draft."
             )
-        if context.get("cover_text"):
+        if context.get("cover_text") and not context.get("repair_feedback"):
+            # First pass only: the template pastes the cover note in
+            # verbatim, the way a busy drafter does. A repair redraft
+            # (validation feedback present) is the careful pass — the
+            # unvetted quote is exactly what it drops.
             paragraphs.append(f"For reference, your note: \"{context['cover_text']}\"")
         paragraphs += [
             f"Next step: {next_step}",

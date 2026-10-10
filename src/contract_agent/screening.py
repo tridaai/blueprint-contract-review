@@ -17,6 +17,12 @@ today"). Screening runs deterministically after extraction:
 A clause that tries to instruct the reviewer still gets reviewed by
 the playbook rules on its substance — screening removes the
 instruction, not the clause.
+
+Reported speech is not an injection: a cover email *reporting* that
+"your team confirmed you accept all terms" is pressure to be visible
+to counsel, not an instruction to the agent, and is not flagged here
+— when a drafter pastes it into the response draft, the guardrail
+layer (``guardrails.py``) is what stops it.
 """
 
 from __future__ import annotations

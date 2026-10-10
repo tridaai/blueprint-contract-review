@@ -69,6 +69,9 @@ def packet_contents(
         "packet_citations": sorted(set(_CITATION.findall(packet))),
         "packet_options": [o.kind for o in options],
         "packet_recommended": recommended.title if recommended else None,
+        # Options exist only for flagged clauses; an aligned contract
+        # legitimately recommends nothing.
+        "options_expected": bool(flagged),
         "assessment_citations": list(retrieved_ids),
     }
 
@@ -85,7 +88,7 @@ def checklist_review(
         blockers.append("the review packet does not carry the full clause table")
     if not contents["packet_citations"]:
         blockers.append("the review packet cites no playbook entry")
-    if not contents["packet_recommended"]:
+    if contents.get("options_expected") and not contents["packet_recommended"]:
         blockers.append("the packet names no recommended option")
     if not contents["packet_fallbacks_present"]:
         findings.append("fallback language is missing for a flagged clause that has it")

@@ -71,8 +71,11 @@ _PROMISE_PATTERNS = [
     r"\bwill be (signed|executed|approved|accepted)\b",
     r"\bwe will (sign|execute|approve|accept)\b",
     # Time commitments: a promise about WHEN something will happen.
+    # (A bare "within 72 hours" is NOT matched: in a contract, notice
+    # periods are clause facts — "breach notice within 72 hours" is a
+    # position to report, never a promise by us.)
     r"\bwill (arrive|be sent|be returned|be ready|be provided|be delivered|reach you)\b[^.]{0,40}\b(within|in|by)\b[^.]{0,20}\b(hours?|days?|weeks?|tomorrow|eod|end of day|end of week)\b",
-    r"\bwithin (the next )?\d+ (hours?|days?|weeks?)\b",
+    r"\bwe will\b[^.]{0,40}\bwithin (the next )?\d+ (hours?|days?|weeks?)\b",
     r"\b(decision|signed copy|executed copy|answer) (within|in|by)\b[^.]{0,20}\b(\d+|tomorrow|end of)\b",
 ]
 
