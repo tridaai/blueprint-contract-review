@@ -357,7 +357,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 307 tests (306 run + 1 Postgres-gated skip)
+make test                  # 308 tests (307 run + 1 Postgres-gated skip)
 make evals                 # golden set: 76/76 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
