@@ -52,6 +52,14 @@ STANDARD_CLAUSES: dict[str, list[str]] = {
         "data_protection", "subprocessor_terms", "data_transfer",
         "audit_rights", "data_deletion", "confidentiality",
     ],
+    # An employment document is measured on the employment matrix:
+    # the restrictive covenants, the invention assignment, the
+    # dispute machinery, the at-will core — plus confidentiality,
+    # which an offer letter carries like any other agreement.
+    "employment": [
+        "employment_terms", "non_compete", "ip_assignment",
+        "arbitration", "confidentiality",
+    ],
     "general": ["liability_cap", "confidentiality", "governing_law"],
 }
 

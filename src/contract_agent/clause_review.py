@@ -369,6 +369,139 @@ def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdi
                         "counsel must read it (PB-DEL-02).",
                         ["PB-DEL-02"])
 
+    if t == "non_compete":
+        months = s.get("duration_months")
+        if s.get("non_solicit_only"):
+            return _verdict(unit, extraction, "preferred", 0.88,
+                            "The clause restrains solicitation only, not "
+                            "competitive employment — the narrower covenant "
+                            "the playbook prefers (PB-NCT-01).",
+                            ["PB-NCT-01"])
+        if months is not None and months > 24:
+            return _verdict(unit, extraction, "walk_away", 0.9,
+                            f"A non-compete running {months} months after "
+                            "employment ends exceeds the playbook's outer "
+                            "limit of twenty-four — a walk-away (PB-NCT-02).",
+                            ["PB-NCT-02"])
+        if s.get("any_business") and s.get("nationwide"):
+            return _verdict(unit, extraction, "walk_away", 0.88,
+                            "The covenant bars work in any business, in any "
+                            "capacity, across the whole country — scope no "
+                            "legitimate interest supports; a walk-away "
+                            "(PB-NCT-02).",
+                            ["PB-NCT-02"])
+        if months is not None and months > 12:
+            return _verdict(unit, extraction, "review_required", 0.85,
+                            f"A non-compete of {months} months is longer "
+                            "than the twelve the playbook accepts without "
+                            "counsel review (PB-NCT-02).",
+                            ["PB-NCT-02"])
+        if s.get("geographic_limit") or s.get("limited_to_competitors"):
+            return _verdict(unit, extraction, "preferred", 0.88,
+                            "A non-compete of twelve months or less, "
+                            "bounded in geography or to competing "
+                            "businesses — the preferred position (PB-NCT-01).",
+                            ["PB-NCT-01"])
+        if months is not None:
+            return _verdict(unit, extraction, "acceptable_fallback", 0.8,
+                            f"A non-compete of {months} months states no "
+                            "geographic limit or competitor bound — an "
+                            "acceptable fallback counsel should narrow "
+                            "(PB-NCT-01).",
+                            ["PB-NCT-01"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The covenant's duration cannot be measured "
+                        "from the clause text; counsel must read it "
+                        "(PB-NCT-02).",
+                        ["PB-NCT-02"])
+
+    if t == "ip_assignment":
+        if s.get("covers_prior_inventions") and not s.get("excludes_prior_inventions"):
+            return _verdict(unit, extraction, "walk_away", 0.9,
+                            "The assignment reaches inventions conceived "
+                            "BEFORE the employment, with no prior-invention "
+                            "carve-out — a walk-away (PB-IPA-02).",
+                            ["PB-IPA-02"])
+        if s.get("covers_off_hours") and not s.get("limited_to_company_business"):
+            return _verdict(unit, extraction, "walk_away", 0.86,
+                            "The assignment claims inventions made on the "
+                            "employee's own time with no limit to the "
+                            "company's business — a walk-away (PB-IPA-02).",
+                            ["PB-IPA-02"])
+        if s.get("assigns_inventions") and s.get("limited_to_company_business"):
+            return _verdict(unit, extraction, "preferred", 0.88,
+                            "Assignment is limited to inventions conceived "
+                            "in the course of employment and relating to "
+                            "the company's business — the preferred "
+                            "position (PB-IPA-01).",
+                            ["PB-IPA-01"])
+        if s.get("assigns_inventions"):
+            return _verdict(unit, extraction, "acceptable_fallback", 0.8,
+                            "The assignment covers employment inventions "
+                            "but its boundaries are not stated — an "
+                            "acceptable fallback counsel should bound "
+                            "(PB-IPA-01).",
+                            ["PB-IPA-01"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The clause addresses inventions but states no "
+                        "assignment the rules can scope; counsel must "
+                        "read it (PB-IPA-02).",
+                        ["PB-IPA-02"])
+
+    if t == "arbitration":
+        if s.get("one_sided") and s.get("class_waiver"):
+            return _verdict(unit, extraction, "walk_away", 0.88,
+                            "Arbitration binds the employee — with a "
+                            "class waiver — while the company keeps its "
+                            "own court remedies: one-sided machinery is "
+                            "a walk-away (PB-ARB-02).",
+                            ["PB-ARB-02"])
+        if s.get("class_waiver") and not s.get("carve_outs"):
+            return _verdict(unit, extraction, "review_required", 0.85,
+                            "A class and collective-action waiver with no "
+                            "carve-out for statutory or non-waivable "
+                            "claims requires counsel review (PB-ARB-02).",
+                            ["PB-ARB-02"])
+        if s.get("mandatory"):
+            return _verdict(unit, extraction, "acceptable_fallback", 0.82,
+                            "Mutual binding arbitration"
+                            + (" with carve-outs for statutory and "
+                               "injunctive claims" if s.get("carve_outs") else "")
+                            + " — an acceptable fallback (PB-ARB-01).",
+                            ["PB-ARB-01"])
+        return _verdict(unit, extraction, "preferred", 0.8,
+                        "No mandatory arbitration: disputes stay in "
+                        "court, the playbook's preferred default "
+                        "(PB-ARB-01).",
+                        ["PB-ARB-01"])
+
+    if t == "employment_terms":
+        severance = s.get("severance_months")
+        if s.get("at_will_undermined"):
+            return _verdict(unit, extraction, "review_required", 0.87,
+                            "The letter promises what at-will employment "
+                            "cannot: termination only for cause or a "
+                            "guaranteed term, with no at-will preservation "
+                            "anywhere in the clause — counsel review "
+                            "required (PB-EMP-02).",
+                            ["PB-EMP-02"])
+        if severance is not None and severance > 12:
+            return _verdict(unit, extraction, "review_required", 0.85,
+                            f"Severance of {severance} months exceeds "
+                            "the playbook's twelve-month review trigger "
+                            "(PB-EMP-02).",
+                            ["PB-EMP-02"])
+        if s.get("at_will_preserved"):
+            return _verdict(unit, extraction, "preferred", 0.9,
+                            "At-will employment is stated plainly and "
+                            "preserved — the preferred position (PB-EMP-01).",
+                            ["PB-EMP-01"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The clause states no at-will preservation the "
+                        "rules can find; for an employment document "
+                        "that silence is itself the risk (PB-EMP-02).",
+                        ["PB-EMP-02"])
+
     if t == "limitation_of_warranty":
         months = s.get("warranty_months")
         if months is not None and months > 12:

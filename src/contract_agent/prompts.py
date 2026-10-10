@@ -89,6 +89,7 @@ Respond with a single JSON object and nothing else:
 "confidentiality" | "term_termination" | "payment_terms" |
 "governing_law" | "data_protection" | "subprocessor_terms" |
 "data_transfer" | "audit_rights" | "data_deletion" |
+"non_compete" | "ip_assignment" | "arbitration" | "employment_terms" |
 "limitation_of_warranty" | "assignment" | "other", "confidence": a number between 0 and 1,
 "signals": {typed facts you found, e.g. "uncapped": true,
 "cap_months_fees": 12, "net_days": 45, "notice_days": 90,

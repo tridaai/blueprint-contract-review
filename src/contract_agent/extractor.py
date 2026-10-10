@@ -80,6 +80,27 @@ _TYPE_KEYWORDS: dict[str, list[str]] = {
         "return or delete", "return of personal data", "certify deletion",
         "erasure", "deletion", "destruction of personal data",
     ],
+    "non_compete": [
+        "non-compete", "noncompete", "non-competition", "covenant not to compete",
+        "shall not compete", "not to compete", "non-solicitation", "non-solicit",
+        "restrictive covenant", "restrictive covenants",
+    ],
+    "ip_assignment": [
+        "assignment of inventions", "invention assignment", "hereby assigns all",
+        "assigns all inventions", "works made for hire", "work made for hire",
+        "inventions", "moral rights",
+    ],
+    "arbitration": [
+        "binding arbitration", "arbitration agreement", "agree to arbitrate",
+        "agrees to arbitrate", "shall be resolved by arbitration",
+        "resolved by binding arbitration", "class action waiver",
+        "jury trial waiver", "waives trial by jury", "jury trial", "arbitration",
+    ],
+    "employment_terms": [
+        "at-will", "at will", "employment at will", "severance",
+        "garden leave", "termination of employment", "notice of termination",
+        "employment may be terminated", "only for cause",
+    ],
     "limitation_of_warranty": [
         "warranty", "warranties", "as is", "disclaims", "merchantability",
         "fitness for a particular purpose",
@@ -331,6 +352,150 @@ def extract_signals_rules(unit: ClauseUnit, clause_type: str) -> dict:
                       "not obliged to delete", "no obligation to delete")
         )
         signals["deletion_certified"] = "certif" in text and "delet" in text
+    elif clause_type == "non_compete":
+        # Duration: the longest period tied to the covenant — months
+        # stated directly, or years converted at 12.
+        months = None
+        m = re.search(r"\(?(\d+)\)?\s*months?", text)
+        if m:
+            months = int(m.group(1))
+        m = re.search(r"\(?(\d+)\)?\s*years?", text)
+        if m:
+            months = max(months or 0, int(m.group(1)) * 12)
+        signals["duration_months"] = months
+        signals["nationwide"] = any(
+            p in text
+            for p in ("throughout the united states", "anywhere in the united states",
+                      "nationwide", "throughout the world", "anywhere in the world",
+                      "worldwide")
+        )
+        signals["radius_limited"] = bool(
+            re.search(r"within\s+\(?\d+\)?\s+miles", text)
+        ) or "within the state of" in text
+        signals["state_limited"] = any(
+            p in text for p in ("within the state", "in the state of")
+        ) and not signals["nationwide"]
+        signals["geographic_limit"] = bool(
+            signals["radius_limited"] or signals["state_limited"]
+        )
+        signals["any_business"] = any(
+            p in text
+            for p in ("any business", "any capacity", "in any capacity",
+                      "any other business", "engage in any")
+        )
+        signals["limited_to_competitors"] = any(
+            p in text
+            for p in ("competitor", "competitive business", "business that competes",
+                      "competing business")
+        )
+        signals["non_solicit_only"] = (
+            ("non-solicit" in text or "solicit" in text)
+            and not any(
+                p in text
+                for p in ("not to compete", "shall not compete",
+                          "covenant not to compete", "non-compete",
+                          "non-competition")
+            )
+        )
+    elif clause_type == "ip_assignment":
+        signals["assigns_inventions"] = any(
+            p in text
+            for p in ("hereby assigns", "assigns to the company", "shall assign",
+                      "assigns all", "agrees to assign")
+        )
+        signals["covers_prior_inventions"] = any(
+            p in text
+            for p in ("prior inventions", "inventions conceived before",
+                      "inventions made before", "all inventions, whether conceived before or",
+                      "conceived or reduced to practice before",
+                      "inventions the employee has conceived at any time")
+        )
+        signals["excludes_prior_inventions"] = any(
+            p in text
+            for p in ("prior inventions are excluded", "excluding prior inventions",
+                      "except for prior inventions", "inventions listed on exhibit",
+                      "schedule of prior inventions", "does not apply to inventions conceived before",
+                      "conceived before the employment are excluded",
+                      "excluded from this assignment")
+        )
+        signals["covers_off_hours"] = any(
+            p in text
+            for p in ("on the employee's own time", "on their own time",
+                      "on his or her own time", "outside working hours",
+                      "whether or not during working hours",
+                      "at any time, whether during",
+                      "using the employee's own resources")
+        ) and signals["assigns_inventions"]
+        signals["limited_to_company_business"] = any(
+            p in text
+            for p in ("in the course of the employee's employment",
+                      "in the course of employment",
+                      "relates to the company's business",
+                      "relating to the business of the company",
+                      "within the scope of employment",
+                      "conceived in the course of")
+        )
+    elif clause_type == "arbitration":
+        # Mandatory means binding or exclusive: a bare agreement to
+        # arbitrate, with no binding/exclusive framing, is voluntary
+        # machinery and does not set this signal.
+        signals["mandatory"] = any(
+            p in text
+            for p in ("binding arbitration", "shall be resolved by arbitration",
+                      "resolved exclusively by arbitration",
+                      "must be resolved by arbitration", "shall arbitrate")
+        )
+        signals["class_waiver"] = any(
+            p in text
+            for p in ("class action", "collective action", "class or collective",
+                      "representative action")
+        ) and any(p in text for p in ("waiv", "may not bring", "shall not bring", "only in an individual capacity"))
+        signals["jury_waiver"] = "jury" in text and "waiv" in text
+        signals["mutual"] = any(
+            p in text
+            for p in ("either party may", "both parties agree",
+                      "the company and the employee agree", "each party agrees")
+        )
+        signals["one_sided"] = any(
+            p in text
+            for p in ("the company may pursue", "company may bring an action in court",
+                      "company reserves the right to seek", "the company may seek relief in any court",
+                      "nothing in this section limits the company")
+        )
+        signals["carve_outs"] = any(
+            p in text
+            for p in ("injunctive relief", "statutory claims", "claims that by law cannot",
+                      "non-waivable", "agency charge", "unemployment")
+        )
+    elif clause_type == "employment_terms":
+        signals["at_will_preserved"] = any(
+            p in text
+            for p in ("at-will employment", "employment is at will",
+                      "employment is at-will", "employed at will",
+                      "may be terminated by either party at any time",
+                      "terminated at any time, with or without cause",
+                      "at any time, for any reason")
+        )
+        signals["at_will_undermined"] = any(
+            p in text
+            for p in ("may be terminated only for cause",
+                      "terminated only for cause",
+                      "permanent employment", "guaranteed employment",
+                      "employment is guaranteed", "shall be employed for a term of")
+        ) and not signals["at_will_preserved"]
+        m = re.search(r"severance[^.]{0,80}?\(?(\d+)\)?\s*months?", text) or re.search(
+            r"\(?(\d+)\)?\s*months?['’]?\s*(?:of\s+)?severance", text
+        )
+        signals["severance_months"] = int(m.group(1)) if m else None
+        m = re.search(r"garden leave[^.]{0,60}?\(?(\d+)\)?\s*(month|day)", text) or re.search(
+            r"\(?(\d+)\)?\s*(month|day)s?\s*(?:of\s+)?garden leave", text
+        )
+        if m:
+            value = int(m.group(1))
+            signals["garden_leave_months"] = value if m.group(2) == "month" else round(value / 30)
+        else:
+            signals["garden_leave_months"] = None
+        signals["notice_days"] = _notice_days(text)
     elif clause_type == "limitation_of_warranty":
         m = re.search(r"(\d+)\s*months?", text)
         signals["warranty_months"] = int(m.group(1)) if m and "warrant" in text else None

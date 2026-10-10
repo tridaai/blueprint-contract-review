@@ -566,6 +566,194 @@ PLAYBOOK: list[dict] = [
         ),
     },
     {
+        "id": "PB-NCT-01",
+        "title": "Restrictive covenants — preferred position (employment)",
+        "clause_type": "non_compete",
+        "text": (
+            "Preferred (employment): a non-compete runs no more than twelve "
+            "months after employment ends and is bounded — to the businesses "
+            "that actually compete with us, or to a stated geography (a named "
+            "state, or a radius around where the employee worked). A "
+            "non-solicitation covenant alone (customers, recruits) is "
+            "preferred over any non-compete. The covenant protects a real "
+            "interest; it does not park a career."
+        ),
+        "fallback_language": (
+            "For twelve (12) months following the end of the Employee's "
+            "employment, the Employee shall not be employed by, or provide "
+            "services to, a business that competes with the Company within "
+            "the state in which the Employee was employed."
+        ),
+    },
+    {
+        "id": "PB-NCT-02",
+        "title": "Restrictive covenants — overbroad is a walk-away (employment)",
+        "clause_type": "non_compete",
+        "text": (
+            "Review required: a non-compete longer than twelve months. "
+            "Walk-away: a covenant longer than twenty-four months, or one "
+            "barring work in ANY business in ANY capacity across the whole "
+            "country (or world) — scope no legitimate interest supports, "
+            "and the clause most likely to be struck down or read against "
+            "us. Escalate to senior counsel and propose the bounded "
+            "wording."
+        ),
+        "fallback_language": (
+            "For twelve (12) months following the end of the Employee's "
+            "employment, the Employee shall not be employed by, or provide "
+            "services to, a business that competes with the Company within "
+            "the state in which the Employee was employed."
+        ),
+        "walk_away_line": (
+            "Final position on restrictive covenants: no more than twelve "
+            "(12) months, bounded to competing businesses and a stated "
+            "geography. A longer or unbounded covenant ends the negotiation."
+        ),
+    },
+    {
+        "id": "PB-IPA-01",
+        "title": "Invention assignment — preferred position (employment)",
+        "clause_type": "ip_assignment",
+        "text": (
+            "Preferred (employment): the employee assigns inventions "
+            "conceived in the course of employment and relating to the "
+            "company's business. Inventions conceived before the employment "
+            "are excluded — listed on a schedule of prior inventions when "
+            "the employee has them — and work done entirely on the "
+            "employee's own time and resources, unrelated to the business, "
+            "stays theirs."
+        ),
+        "fallback_language": (
+            "The Employee hereby assigns to the Company all inventions "
+            "conceived or reduced to practice in the course of the "
+            "Employee's employment and relating to the Company's business. "
+            "Inventions conceived before the employment are excluded, and "
+            "no assignment is made of inventions developed entirely on the "
+            "Employee's own time and resources that do not relate to the "
+            "Company's business."
+        ),
+    },
+    {
+        "id": "PB-IPA-02",
+        "title": "Invention assignment — reaching backwards is a walk-away (employment)",
+        "clause_type": "ip_assignment",
+        "text": (
+            "Walk-away: an assignment that reaches inventions conceived "
+            "BEFORE the employment began, with no prior-invention carve-out "
+            "— or that claims everything the employee makes on their own "
+            "time with no limit to the company's business. The company "
+            "cannot own what predates it, and a clause that tries invites "
+            "the whole assignment to be challenged. Escalate to senior "
+            "counsel and propose the bounded wording."
+        ),
+        "fallback_language": (
+            "The Employee hereby assigns to the Company all inventions "
+            "conceived or reduced to practice in the course of the "
+            "Employee's employment and relating to the Company's business. "
+            "Inventions conceived before the employment are excluded, and "
+            "no assignment is made of inventions developed entirely on the "
+            "Employee's own time and resources that do not relate to the "
+            "Company's business."
+        ),
+        "walk_away_line": (
+            "Final position on invention assignment: assignment is limited "
+            "to inventions conceived in the course of employment and "
+            "relating to the Company's business; prior inventions are "
+            "excluded. An assignment reaching prior or unrelated "
+            "own-time inventions ends the negotiation."
+        ),
+    },
+    {
+        "id": "PB-ARB-01",
+        "title": "Dispute resolution — preferred position (employment)",
+        "clause_type": "arbitration",
+        "text": (
+            "Preferred (employment): no mandatory arbitration — disputes "
+            "stay in court unless both sides agree otherwise after a "
+            "dispute arises. Acceptable fallback: binding arbitration "
+            "that is MUTUAL, with carve-outs for injunctive relief and "
+            "for statutory claims the law does not allow to be waived."
+        ),
+        "fallback_language": (
+            "Any dispute arising out of the Employee's employment shall be "
+            "resolved by binding arbitration, at either party's election. "
+            "Nothing in this section prevents either party from seeking "
+            "injunctive relief in court, or from bringing statutory claims "
+            "that cannot lawfully be submitted to arbitration."
+        ),
+    },
+    {
+        "id": "PB-ARB-02",
+        "title": "Dispute resolution — one-sided machinery is a walk-away (employment)",
+        "clause_type": "arbitration",
+        "text": (
+            "Review required: a class, collective, or representative "
+            "action waiver with no carve-out for statutory claims — the "
+            "waiver's reach is a counsel call. Walk-away: arbitration "
+            "that binds only the employee (with the waiver on top) while "
+            "the company keeps its own claims in court — one-sided "
+            "machinery, and the shape most likely to be held "
+            "unenforceable. Escalate to senior counsel."
+        ),
+        "fallback_language": (
+            "Any dispute arising out of the Employee's employment shall be "
+            "resolved by binding arbitration, at either party's election. "
+            "Nothing in this section prevents either party from seeking "
+            "injunctive relief in court, or from bringing statutory claims "
+            "that cannot lawfully be submitted to arbitration."
+        ),
+        "walk_away_line": (
+            "Final position on dispute resolution: any arbitration must "
+            "be mutual, with statutory and injunctive carve-outs. "
+            "Arbitration binding only the employee ends the negotiation."
+        ),
+    },
+    {
+        "id": "PB-EMP-01",
+        "title": "Employment terms — at-will preserved (employment)",
+        "clause_type": "employment_terms",
+        "text": (
+            "Preferred (employment): employment is at will, stated "
+            "plainly — either side may end it at any time, with or "
+            "without cause — and nothing else in the letter takes that "
+            "back. Severance, where offered, is stated in months of base "
+            "salary; garden leave, where used, runs over the notice "
+            "period and is paid."
+        ),
+        "fallback_language": (
+            "The Employee's employment is at will: either the Employee or "
+            "the Company may terminate the employment at any time, with "
+            "or without cause or notice. Nothing in this letter creates a "
+            "promise of employment for any period."
+        ),
+    },
+    {
+        "id": "PB-EMP-02",
+        "title": "Employment terms — promised security needs review (employment)",
+        "clause_type": "employment_terms",
+        "text": (
+            "Review required: a letter that promises what at-will "
+            "employment cannot — termination only for cause, a guaranteed "
+            "or 'permanent' term — whatever the at-will boilerplate "
+            "elsewhere says, because the promise is what gets quoted back. "
+            "Severance beyond twelve months of salary is likewise a "
+            "counsel call. Escalate; either the promise comes out or the "
+            "term is made deliberate."
+        ),
+        "fallback_language": (
+            "The Employee's employment is at will: either the Employee or "
+            "the Company may terminate the employment at any time, with "
+            "or without cause or notice. Nothing in this letter creates a "
+            "promise of employment for any period."
+        ),
+        "walk_away_line": (
+            "Final position on employment terms: employment is at will "
+            "and the letter says so without contradiction. A guaranteed "
+            "term or for-cause-only promise ends the negotiation until "
+            "counsel makes it deliberate."
+        ),
+    },
+    {
         "id": "PB-GEN-01",
         "title": "Review process — drafts are for counsel, never conclusions",
         "clause_type": "other",

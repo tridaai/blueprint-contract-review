@@ -51,9 +51,18 @@ CONTRACT_TYPE_ALIASES = {
     "data_processing_agreement": "dpa",
     "data processing agreement": "dpa",
     "data_protection_addendum": "dpa",
+    "employment": "employment",
+    "employment_agreement": "employment",
+    "employment agreement": "employment",
+    "employment_contract": "employment",
+    "employment contract": "employment",
+    "offer_letter": "employment",
+    "offer letter": "employment",
+    "employment_offer_letter": "employment",
+    "employment offer letter": "employment",
 }
 
-CONTRACT_TYPES = {"msa", "sow", "nda", "amendment", "order_form", "dpa"}
+CONTRACT_TYPES = {"msa", "sow", "nda", "amendment", "order_form", "dpa", "employment"}
 
 DOC_TYPE_ALIASES = {
     "agreement": "agreement",
@@ -126,7 +135,7 @@ class DocumentInput(BaseModel):
 
 class ContractInput(BaseModel):
     contract_id: str
-    doc_type: str = "msa"  # msa | sow | nda | amendment | order_form | dpa
+    doc_type: str = "msa"  # msa | sow | nda | amendment | order_form | dpa | employment
     supersedes: str = ""  # contract_id of the previous negotiation round this draft replaces
     title: str = ""
     counterparty_name: str = ""
@@ -177,6 +186,14 @@ CLAUSE_TYPES = [
     "data_transfer",
     "audit_rights",
     "data_deletion",
+    # The employment family (doc_type "employment"): an offer letter
+    # or employment agreement reviewed as the primary document gets
+    # its own clause matrix — restrictive covenants, invention
+    # assignment, dispute machinery, and the at-will core.
+    "non_compete",
+    "ip_assignment",
+    "arbitration",
+    "employment_terms",
     "limitation_of_warranty",
     "assignment",
     "other",
