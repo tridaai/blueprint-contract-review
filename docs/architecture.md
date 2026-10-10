@@ -74,7 +74,7 @@ counsel can see exactly how the final position was reached.
 
 ### Across documents and across rounds
 
-Four service-level capabilities sit on top of the per-contract
+A set of service-level capabilities sits on top of the per-contract
 pipeline; all are computed in code from stored records, and all are
 original to this blueprint.
 
@@ -108,7 +108,56 @@ absences: the posture floors at negotiable, a promised-but-absent
 exhibit makes the package incomplete and is requested by name, and
 autonomy triage is blocked. Checks are generated only when there
 is something cross-document to check, so a DPA merely referenced
-between the parties is not double-flagged.
+between the parties is not double-flagged. Two more families run
+on the same status model: **order forms** (the fees total the
+payment clause relies on must be stated; payment terms or a term
+the form restates are checked against the agreement's — a
+restatement that differs is a `mismatch`, silence asserts nothing
+and generates no check) and **statements of work** (the SOW must
+list the deliverables and state the delivery dates the agreement
+relies on; an acceptance period it states is checked against the
+agreement's acceptance window). The information request names the
+missing exhibit by family (`facts.exhibit_missing_checks`), so a
+missing order form is never requested as a missing DPA.
+
+**Proposed edits** (`proposed_edits.py`). The clause diff pairs two
+texts; the edit script turns the pair into instructions counsel
+can paste. Each flagged clause's tier language is aligned against
+the clause's own sentences in code — content-word (Jaccard)
+overlap, greedy, each sentence used at most once — producing
+`replace_sentence` edits for paired sentences, an `insert_after`
+for language with no counterpart, a `replace_clause` when no
+pairing clears the alignment threshold (stated honestly as a
+clause-level edit rather than dressed up as sentence precision),
+and `counsel_draft` when the playbook proposes no language. The
+model may phrase language upstream; which sentence it replaces is
+code's decision. Edits ride on the result, the approval webhook,
+and the console, labelled draft-for-counsel; when the service
+refines the diffs from the full chain, the edits are rebuilt from
+the refined diffs so the two never disagree.
+
+**Queue SLA and ownership** (`ContractService.queue` / `assign`).
+The counsel queue is a worklist, not a report: each awaiting item
+carries an assignee recorded on the record (who holds it, assigned
+by whom, when — bookkeeping that decides nothing) and an SLA state
+computed in code against an injectable clock: a budget in business
+days by worst-position tier (`walk_away` 2, `review_required` 5,
+`acceptable_fallback` 10, `preferred` none; `QUEUE_SLA_*` env
+overrides), business days waited (Mon–Fri in (received, today]),
+and a breach flag. Breaches sort ahead of posture. `/metrics`
+aggregates the state (awaiting / breached / unassigned /
+unassigned-breached), which is the number legal ops manages to.
+
+**Negotiation brief** (`brief.py`). One markdown document per
+chain, assembled in code from the stored results — never
+model-composed, so every figure traces to a record: the
+round-by-round chain table (posture, worst position, walk-away and
+flagged counts), cumulative movement with re-trades called out,
+open positions grouped by proposed tier with their language, the
+proposed edits, exhibit findings, and the obligations register.
+Exported through the object-store port under
+`contracts/<id>/negotiation-brief.md` and served as a download by
+`GET /contracts/{id}/brief`; labelled draft for counsel review.
 
 **Deadline dispatch sweep** (`ContractService.dispatch_obligation_sweep`).
 Per-run `obligation_due` events announce deadlines at analysis
