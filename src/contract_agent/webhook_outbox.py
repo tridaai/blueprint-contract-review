@@ -58,6 +58,15 @@ retention age in force, the exact entry ids removed, and what
 was kept — a prune that removed nothing included, because the
 ledger records the act, not only its casualties. The ledger is
 append-only: nothing prunes the prunes.
+
+**The ledger, trended** (round 18): a readable ledger is not
+yet a measured one. :func:`prune_ledger_readings` aggregates
+it for ``/metrics`` — how many prune acts, how many entries
+they removed, the same figures over the trailing window, and
+the last prune — so retention itself is a number legal ops
+can watch: a ledger growing fast is history being retired
+fast, and a last prune long ago beside a growing outbox is
+retention nobody is running.
 """
 
 from __future__ import annotations
@@ -310,6 +319,58 @@ def record_dispatch(
     )
     store.save(entry)
     return entry
+
+
+PRUNE_READINGS_WINDOW_DAYS = 30
+
+
+def prune_ledger_readings(
+    prunes: list[OutboxPrune], now: datetime | None = None
+) -> dict:
+    """The prune ledger aggregated for ``/metrics`` (round 18):
+    the act counts and removed-entry totals, all-time and over
+    the trailing ``PRUNE_READINGS_WINDOW_DAYS``, and the last
+    prune — so the retention of delivery history is itself
+    measured beside the staleness numbers. The last prune is
+    the latest by its stamp (an unstamped act cannot be the
+    latest of anything); window membership is measured from
+    the same stamps, and a stamp in the future — clock skew,
+    not a prune that has happened — counts in the totals but
+    not in the window."""
+    now = now or datetime.now(timezone.utc)
+    window_seconds = PRUNE_READINGS_WINDOW_DAYS * 86400
+    in_window: list[OutboxPrune] = []
+    latest: OutboxPrune | None = None
+    latest_stamp: datetime | None = None
+    for prune in prunes:
+        stamp = _stamp(prune.at)
+        if stamp is None:
+            continue
+        age_seconds = (now - stamp).total_seconds()
+        if 0 <= age_seconds <= window_seconds:
+            in_window.append(prune)
+        if latest_stamp is None or stamp >= latest_stamp:
+            latest, latest_stamp = prune, stamp
+    return {
+        "total_prunes": len(prunes),
+        "entries_removed": sum(len(p.pruned_ids) for p in prunes),
+        "window_days": PRUNE_READINGS_WINDOW_DAYS,
+        "prunes_in_window": len(in_window),
+        "entries_removed_in_window": sum(
+            len(p.pruned_ids) for p in in_window
+        ),
+        "last_prune": (
+            {
+                "prune_id": latest.prune_id,
+                "actor": latest.actor,
+                "at": latest.at,
+                "entries_removed": len(latest.pruned_ids),
+                "retention_days": latest.retention_days,
+            }
+            if latest is not None
+            else None
+        ),
+    }
 
 
 def record_prune(

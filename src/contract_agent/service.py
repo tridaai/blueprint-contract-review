@@ -3508,10 +3508,15 @@ class ContractService:
         no tokens (None), so they are counted separately instead of
         diluting the averages with zeros.
         """
+        from .webhook_outbox import prune_ledger_readings
+
         records = self._get_store().all_records()
         results = [record.result for record in records]
         queue_items = self.queue()
         outbox_view = self.webhook_outbox()
+        prune_readings = prune_ledger_readings(
+            self._get_outbox_store().prunes()
+        )
         telemetries = [r.telemetry for r in results if r.telemetry is not None]
         provider_runs = [t for t in telemetries if t.input_tokens is not None]
         latencies = [t.latency_seconds for t in telemetries]
@@ -3561,6 +3566,11 @@ class ContractService:
                     "stale_threshold_days"
                 ],
                 "retention_days": outbox_view["staleness"]["retention_days"],
+                # The prune ledger, trended (round 18): the
+                # retention acts aggregated beside the staleness
+                # numbers — how much delivery history has been
+                # retired, how fast, and by whose latest act.
+                "prunes": prune_readings,
             },
             "playbook_coverage": self.playbook_coverage(results),
             "proposal_effectiveness": [
