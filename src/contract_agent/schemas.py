@@ -542,6 +542,12 @@ class ClauseOption(BaseModel):
     description: str = ""
     score: float = 0.0
     recommended: bool = False
+    # The score, decomposed (options.py): position + posture + info +
+    # history points. ``history`` is the concession-history term —
+    # how this counterparty has actually moved on this clause type —
+    # capped small enough that it can never dominate the
+    # playbook-driven terms; it is shown, never hidden in the total.
+    breakdown: dict[str, float] = Field(default_factory=dict)
 
 
 # Alias used by shared engine code.

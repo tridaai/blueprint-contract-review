@@ -364,6 +364,12 @@ class ContractService:
         concession_lines = self._concession_lines(model)
         if concession_lines:
             history = {**(history or {}), "concession_lines": concession_lines}
+        # The same profile, structured, rides along for the option
+        # scorer's capped history term (options.py) — the assessment
+        # reads the lines; the scorer reads the tendencies.
+        tendencies = self._concession_tendencies(model)
+        if tendencies:
+            history = {**(history or {}), "concession_tendencies": tendencies}
         result = run_contract(
             model,
             backend=backend,
@@ -602,6 +608,31 @@ class ContractService:
         ]
         profile = build_concession_profile(contract.counterparty_name, records)
         return concession_evidence_lines(profile)
+
+    def _concession_tendencies(self, contract: ContractInput) -> dict:
+        """The counterparty's concession profile as the option
+        scorer's history input: clause type → {tendency, re_trades}
+        for the types with a signal worth scoring on (a conceded or
+        held type, or any type they have re-traded). Computed from
+        the stored records only — the current contract is not in the
+        store yet, and a counterparty with no multi-round chain has
+        no tendencies: the history term is then simply absent."""
+        from .concessions import build_concession_profile
+
+        records = [
+            record
+            for record in self._get_store().all_records()
+            if record.result.contract_id != contract.contract_id
+        ]
+        profile = build_concession_profile(contract.counterparty_name, records)
+        tendencies: dict[str, dict] = {}
+        for row in profile["clause_types"]:
+            if row["tendency"] in ("concedes", "holds") or row["re_trades"]:
+                tendencies[row["clause_type"]] = {
+                    "tendency": row["tendency"],
+                    "re_trades": row["re_trades"],
+                }
+        return tendencies
 
     def _feedback_for(self, contract: ContractInput) -> list[dict]:
         """Recent counsel feedback for this counterparty.

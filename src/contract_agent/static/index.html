@@ -352,7 +352,7 @@ function render(result) {
     ${result.assessment.risk_factors.length ? `<ul>${result.assessment.risk_factors.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
     ${result.assessment.tool_calls && result.assessment.tool_calls.length ? `<p class="note">Tool calls: ${result.assessment.tool_calls.map(c => esc(c.name)).join(', ')}</p>` : ''}`;
   html += `<h3>Next-step options (scored by code)</h3><table><thead><tr><th>Clause</th><th>Option</th><th>Score</th><th></th></tr></thead><tbody>
-    ${result.options.map(o => `<tr><td>${esc(o.clause_id || '—')}</td><td>[${esc(o.kind)}] ${esc(o.title)}</td><td>${esc(o.score)}</td><td>${o.recommended ? pill('recommended') : ''}</td></tr>`).join('') || '<tr><td colspan="4">No flagged clauses — no options needed.</td></tr>'}
+    ${result.options.map(o => `<tr><td>${esc(o.clause_id || '—')}</td><td>[${esc(o.kind)}] ${esc(o.title)}${o.breakdown && o.breakdown.history ? `<div class="note">score breakdown: position ${esc(o.breakdown.position)} + posture ${esc(o.breakdown.posture)}${o.breakdown.info ? ' + info ' + esc(o.breakdown.info) : ''} + history ${esc(o.breakdown.history)} (counterparty concession record)</div>` : ''}</td><td>${esc(o.score)}</td><td>${o.recommended ? pill('recommended') : ''}</td></tr>`).join('') || '<tr><td colspan="4">No flagged clauses — no options needed.</td></tr>'}
   </tbody></table>`;
   if (result.verification) {
     html += `<h3>Self-verification</h3><p>${result.verification.grounded ? '<span class="check-pass">GROUNDED</span>' : '<span class="check-fail">NOT GROUNDED</span>'} <span class="note">(${esc(result.verification.source)})</span></p>

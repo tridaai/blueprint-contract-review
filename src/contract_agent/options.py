@@ -17,13 +17,25 @@ In provider mode the LLM may propose the wording of the options; in
 every mode their *kinds* are validated here and their scores are
 computed by deterministic code (the model never does this arithmetic):
 
-    score = 60 * position_fit + 40 * posture_fit + info_bonus
+    score = 60 * position_fit + 40 * posture_fit + info_bonus + history_term
 
 where ``position_fit`` ∈ [0, 1] is how well the kind matches the
 clause's verdict, ``posture_fit`` how well it matches the computed
 document posture, and ``info_bonus`` applies to information requests
 while the package is incomplete. The recommended option is the
 argmax — in practice, the next step for the worst clause.
+
+``history_term`` is the counterparty's own record, read small: the
+concession profile (``concessions.py``) labels each clause type with
+how this counterparty has actually moved on it across past chains.
+A type they CONCEDE adds the term to ``propose_fallback_language``
+(pressing works — propose the language); a type they HOLD, or one
+they have RE-TRADED, adds it to ``escalate_to_senior_counsel``
+(pressing has not worked — a senior lawyer should carry it). The
+term is capped at ``HISTORY_TERM_CAP`` points of a 100-point scale,
+so it breaks near-ties and orders close calls; it can never
+outweigh the playbook-driven terms. Every option carries its
+``breakdown`` — the term is visible wherever the score is.
 """
 
 from __future__ import annotations
@@ -151,22 +163,71 @@ def template_proposals(verdicts: list[ClauseVerdict], facts: ContractFacts) -> l
     return proposals
 
 
-def score_option(kind: str, position: str, facts: ContractFacts) -> float:
-    """The deterministic score for one option (see module docstring)."""
+# The concession-history term, in score points: large enough to
+# order close calls, small enough — against a 100-point
+# playbook-driven scale — that it can never dominate them. Tests
+# pin both directions.
+HISTORY_TERM_CAP = 6.0
+
+
+def history_adjustment(kind: str, history_entry: dict | None) -> float:
+    """The history term for one option: how this counterparty has
+    moved on the option's clause type, from the concession profile
+    (``{"tendency": ..., "re_trades": ...}`` — see
+    ``ContractService._concession_tendencies``). Only two kinds are
+    ever moved, each by at most the cap: proposing fallback language
+    on a conceded type, and escalating a held or re-traded type."""
+    if not history_entry:
+        return 0.0
+    tendency = history_entry.get("tendency") or ""
+    re_trades = int(history_entry.get("re_trades") or 0)
+    if kind == "propose_fallback_language" and tendency == "concedes":
+        return HISTORY_TERM_CAP
+    if kind == "escalate_to_senior_counsel" and (tendency == "holds" or re_trades > 0):
+        return HISTORY_TERM_CAP
+    return 0.0
+
+
+def score_components(
+    kind: str,
+    position: str,
+    facts: ContractFacts,
+    history_entry: dict | None = None,
+) -> dict[str, float]:
+    """The deterministic score for one option, decomposed (see the
+    module docstring): the components sum to the option's score."""
     position_fit = _POSITION_FIT.get(position, _POSITION_FIT["review_required"]).get(kind, 0.0)
     posture_fit = _POSTURE_FIT.get(facts.posture, _POSTURE_FIT["negotiable"]).get(kind, 0.0)
-    info_bonus = 8.0 if kind == "request_counterparty_info" and not facts.package_complete else 0.0
-    return round(60.0 * position_fit + 40.0 * posture_fit + info_bonus, 2)
+    return {
+        "position": round(60.0 * position_fit, 2),
+        "posture": round(40.0 * posture_fit, 2),
+        "info": 8.0 if kind == "request_counterparty_info" and not facts.package_complete else 0.0,
+        "history": history_adjustment(kind, history_entry),
+    }
+
+
+def score_option(
+    kind: str,
+    position: str,
+    facts: ContractFacts,
+    history_entry: dict | None = None,
+) -> float:
+    """The deterministic score for one option (see module docstring)."""
+    return round(sum(score_components(kind, position, facts, history_entry).values()), 2)
 
 
 def score_options(
     proposals: list[dict],
     verdicts: list[ClauseVerdict],
     facts: ContractFacts,
+    history_tendencies: dict | None = None,
 ) -> list[ClauseOption]:
     """Validate kinds and clause IDs, score every proposal, mark the
-    argmax recommended."""
+    argmax recommended. ``history_tendencies`` maps clause type →
+    concession-profile entry; it moves scores only through
+    ``history_adjustment`` (capped, and shown in each breakdown)."""
     by_id = {v.clause_id: v for v in verdicts}
+    tendencies = history_tendencies or {}
     scored: list[ClauseOption] = []
     seen: set[tuple[str, str]] = set()
     for proposal in proposals:
@@ -177,21 +238,27 @@ def score_options(
         if (clause_id, kind) in seen:
             continue
         seen.add((clause_id, kind))
+        verdict = by_id[clause_id]
+        components = score_components(
+            kind, verdict.position, facts, tendencies.get(verdict.clause_type)
+        )
         scored.append(
             ClauseOption(
                 clause_id=clause_id,
                 kind=kind,
                 title=str(proposal.get("title") or _TITLES[kind])[:120],
                 description=str(proposal.get("description") or _DESCRIPTIONS[kind])[:300],
-                score=score_option(kind, by_id[clause_id].position, facts),
+                score=round(sum(components.values()), 2),
+                breakdown=components,
             )
         )
     if not scored and proposals:
         # Every proposal was invalid (unknown kind or clause) — fall
         # back to the template set. When nothing is flagged there is
         # legitimately nothing to propose: an empty list, not a loop.
-        scored = score_options(template_proposals(verdicts, facts), verdicts, facts) \
-            if template_proposals(verdicts, facts) else []
+        scored = score_options(
+            template_proposals(verdicts, facts), verdicts, facts, tendencies
+        ) if template_proposals(verdicts, facts) else []
     if scored:
         best = max(scored, key=lambda o: o.score)
         for option in scored:
@@ -209,17 +276,26 @@ def build_options(
     assessment_summary: str,
     playbook: list[dict],
     backend,
+    history_tendencies: dict | None = None,
 ) -> tuple[list[ClauseOption], str]:
     """Propose + score the next-step options for the flagged clauses.
 
     In provider mode the LLM proposes the option wording (kinds and
     clause IDs validated, scores computed here); otherwise the
-    template proposal set runs. Returns (options, note) — the note
+    template proposal set runs. ``history_tendencies`` is the
+    counterparty's concession profile by clause type, supplied by
+    the service from the store — it reaches the scores only through
+    the capped history term. Returns (options, note) — the note
     records a degraded LLM path.
     """
     propose = getattr(backend, "propose_options", None)
     if propose is None:
-        return score_options(template_proposals(verdicts, facts), verdicts, facts), ""
+        return (
+            score_options(
+                template_proposals(verdicts, facts), verdicts, facts, history_tendencies
+            ),
+            "",
+        )
     context = DraftContext(
         contract_id=contract.contract_id,
         counterparty_name=contract.counterparty_name,
@@ -247,4 +323,4 @@ def build_options(
         proposals = template_proposals(verdicts, facts)
         if not note:
             note = "LLM option proposals were unusable — template proposals used"
-    return score_options(proposals, verdicts, facts), note
+    return score_options(proposals, verdicts, facts, history_tendencies), note

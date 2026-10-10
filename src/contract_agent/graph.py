@@ -518,6 +518,9 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
             assessment_summary=state["assessment"]["summary"],
             playbook=state.get("playbook", []),
             backend=backend,
+            history_tendencies=(state.get("history") or {}).get(
+                "concession_tendencies"
+            ),
         )
         update: dict[str, Any] = {"options": [o.model_dump() for o in options]}
         if notes:
