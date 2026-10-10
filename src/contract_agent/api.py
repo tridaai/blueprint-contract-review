@@ -258,6 +258,17 @@ def obligations_due(days: int = 90) -> dict:
     return service.obligations_due(days=days)
 
 
+@app.post("/obligations/sweep", dependencies=_AUTH)
+def obligations_sweep(days: int = 90) -> dict:
+    """The deadline dispatch sweep: emit one ``obligation_due`` event
+    per stored-contract deadline due within ``days`` and return the
+    dispatch report. Report-only — the sweep sends nothing itself;
+    delivery belongs to the event consumer."""
+    if days < 0:
+        raise HTTPException(status_code=422, detail="days must be >= 0.")
+    return service.dispatch_obligation_sweep(days=days)
+
+
 @app.get("/audit/export", dependencies=_AUTH)
 def audit_export(format: str = "json"):
     """The audit trail — one row per analysed contract with counsel's

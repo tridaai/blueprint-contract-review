@@ -7,6 +7,7 @@ Usage:
     contract-agent --index 2             # a specific bundled sample
     contract-agent --file data/contracts.json --all
     contract-agent --all --concurrency 4 # the batch, four at a time
+    contract-agent --sweep-obligations 30  # deadline dispatch sweep (report-only)
 
 The default data source is the sample set bundled inside the package, so
 this works identically from a source checkout and a pip install.
@@ -116,6 +117,31 @@ def _run_batch(contracts: list[ContractInput], concurrency: int) -> list[BatchIt
     return items
 
 
+def _run_sweep(contracts: list[ContractInput], days: int) -> None:
+    """The deadline dispatch sweep, CLI form: analyse the loaded
+    contracts into a throwaway store (the CLI persists nothing), then
+    sweep the store for obligations due within ``days``. Events print
+    live via the printing sink; the report closes the run. Report-only
+    — the sweep sends nothing."""
+    service = build_service_from_env(store=InMemoryStore(), checkpointer=False)
+    for contract in contracts:
+        service.analyze(contract)
+    report = service.dispatch_obligation_sweep(days=days, event_sink=PrintingSink())
+    print("=" * 72)
+    print(
+        f"Obligation sweep: {report['contracts_swept']} contract(s) swept · "
+        f"window {report['window_days']} day(s) from {report['as_of']} · "
+        f"{report['due_count']} deadline(s) due · {report['events_emitted']} event(s) emitted"
+    )
+    for row in report["obligations"]:
+        state = "OVERDUE" if row["overdue"] else f"in {row['days_until']}d"
+        print(
+            f"  {row['date']} [{state}] {row['contract_id']} "
+            f"({row['counterparty_name']}): {row['kind']} — {row['description']}"
+        )
+    print(f"Report-only: {report['note']}")
+
+
 def _print_batch_summary(items: list[BatchItem], concurrency: int, wall_clock: float) -> None:
     print("=" * 72)
     print(
@@ -149,6 +175,15 @@ def main() -> None:
         action="store_true",
         help="Print the run's structured events live as it executes (sequential path; the rendered result follows as usual)",
     )
+    parser.add_argument(
+        "--sweep-obligations",
+        nargs="?",
+        const=90,
+        type=int,
+        default=None,
+        metavar="DAYS",
+        help="Deadline dispatch sweep: analyse the loaded contracts, then report every obligation due within DAYS (default 90) and emit one obligation_due event per deadline. Report-only — nothing is sent.",
+    )
     args = parser.parse_args()
 
     # Backend + retriever come from the environment (.env loaded by the
@@ -160,6 +195,9 @@ def main() -> None:
         backend = build_backend()
         retriever = build_retriever()
         contracts = _load_contracts(args.file)
+        if args.sweep_obligations is not None:
+            _run_sweep(contracts, args.sweep_obligations)
+            return
         selected = contracts if args.all else [contracts[args.index]]
         started = time.perf_counter()
         if args.all and args.concurrency > 1:

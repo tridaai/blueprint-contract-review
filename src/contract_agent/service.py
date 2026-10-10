@@ -588,6 +588,68 @@ class ContractService:
             "obligations": rows,
         }
 
+    def dispatch_obligation_sweep(
+        self, days: int = 90, today=None, event_sink: EventSink | None = None
+    ) -> dict:
+        """The deadline dispatch sweep: walk every stored contract,
+        find the obligations due within ``days`` of ``today``, emit
+        one ``obligation_due`` event per deadline to ``event_sink``,
+        and return the dispatch report.
+
+        This is the scheduled counterpart of the per-run deadline
+        events the pipeline emits at analysis time: analysis computes
+        the deadlines; the sweep is what a nightly job (or counsel,
+        from the console) runs so a deadline computed weeks ago still
+        surfaces on the day it matters. **Report-only by design**: the
+        sweep emits events to the configured sink and returns a
+        report — it sends nothing to any counterparty or counsel
+        address itself. Delivery (email, ticket, queue) is the
+        consumer's job, behind the same event port as everything
+        else. ``today`` is a parameter so the sweep is testable
+        against a frozen clock."""
+        from datetime import date as _date
+
+        from .events import NullSink, RunEvent
+
+        today = today or _date.today()
+        due = self.obligations_due(days=days, today=today)
+        sink = event_sink if event_sink is not None else NullSink()
+        for row in due["obligations"]:
+            sink.emit(
+                RunEvent(
+                    type="obligation_due",
+                    contract_id=row["contract_id"],
+                    detail={
+                        "via": "deadline_sweep",
+                        "kind": row["kind"],
+                        "date": row["date"],
+                        "days_until": row["days_until"],
+                        "overdue": row["overdue"],
+                        "computed": row["computed"],
+                        "description": row["description"],
+                        "source_clause_id": row["source_clause_id"],
+                        "counterparty_name": row["counterparty_name"],
+                        "contract_status": row["status"],
+                    },
+                )
+            )
+        swept = len(self._get_store().all_records())
+        return {
+            "as_of": today.isoformat(),
+            "window_days": days,
+            "contracts_swept": swept,
+            "due_count": due["count"],
+            "events_emitted": due["count"],
+            "report_only": True,
+            "note": (
+                "Report-only sweep: one obligation_due event per due "
+                "deadline was emitted to the event sink and this report "
+                "was produced. Nothing was sent to any counterparty or "
+                "counsel address by this operation."
+            ),
+            "obligations": due["obligations"],
+        }
+
     def audit_rows(self) -> list[dict]:
         """The audit trail: one flat row per analysed contract, with
         counsel's decision (who, when, why) and the safety outcomes
