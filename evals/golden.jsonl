@@ -80,3 +80,5 @@
 {"case_id": "X13", "kind": "exhibit", "contract_id": "CTR-2025", "expected_checks": 1, "expected_failed": {"prior_invention_schedule": "exhibit_missing"}, "expected_posture": "negotiable"}
 {"case_id": "X14", "kind": "exhibit", "contract_id": "CTR-2032", "expected_checks": 2, "expected_failed": {"prior_invention_exclusion": "mismatch"}, "expected_posture": "escalation_required"}
 {"case_id": "X15", "kind": "exhibit", "contract_id": "CTR-2033", "expected_checks": 2, "expected_failed": {}, "expected_posture": "negotiable"}
+{"case_id": "X16", "kind": "exhibit", "contract_id": "CTR-2034", "expected_checks": 1, "expected_failed": {}, "expected_posture": "negotiable"}
+{"case_id": "X17", "kind": "exhibit", "contract_id": "CTR-2035", "expected_checks": 1, "expected_failed": {"severance_arithmetic": "mismatch"}, "expected_posture": "negotiable"}

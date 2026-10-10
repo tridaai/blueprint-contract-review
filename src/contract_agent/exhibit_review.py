@@ -90,6 +90,20 @@ A sixth family follows the same discipline (round 11):
   excludes the scheduled inventions would swallow them — the
   schedule becomes a list of things the employee is about to
   assign away.
+
+A seventh family follows the same discipline (round 12):
+
+- **Severance arithmetic.** An offer letter's severance promise
+  is usually a formula — so many months of base salary — while
+  the compensation schedule attached to the same letter often
+  states the severance as a lump sum. The two are the same
+  promise in different units, and they do not always agree: the
+  schedule is frequently drafted from last year's salary. The
+  formula is applied, in code, to the salary basis the package
+  states (``severance_arithmetic``): the computed figure must be
+  the figure the package states. A formula whose salary basis is
+  stated nowhere cannot be computed at all, and a lump sum that
+  cannot be checked is reported, not waved through.
 """
 
 from __future__ import annotations
@@ -342,6 +356,7 @@ def build_exhibit_checks(
     checks.extend(_insurance_certificate_checks(contract, units, extractions))
     checks.extend(_subprocessor_list_checks(contract, units, extractions))
     checks.extend(_prior_invention_checks(contract, units, extractions))
+    checks.extend(_severance_checks(contract, units, extractions))
     return checks
 
 
@@ -1506,3 +1521,218 @@ def _prior_invention_checks(
             ),
         ))
     return checks
+
+
+# ---------------------------------------------------------------------------
+# Severance arithmetic: the formula, applied to the package's own numbers
+# ---------------------------------------------------------------------------
+
+_MONEY_AMOUNT = re.compile(r"\$\s?(\d[\d,]*(?:\.\d{2})?)")
+_SALARY_ANNUAL = re.compile(
+    r"salary[^.\n]{0,60}?\$\s?(\d[\d,]*(?:\.\d{2})?)\s*"
+    r"(?:per\s+(?:annum|year)|a\s+year|annually)",
+    re.I,
+)
+_SALARY_BARE = re.compile(
+    r"base\s+salary\s+of\s+\$\s?(\d[\d,]*(?:\.\d{2})?)", re.I
+)
+_SALARY_MONTHLY = re.compile(
+    r"salary[^.\n]{0,60}?\$\s?(\d[\d,]*(?:\.\d{2})?)\s*per\s+month", re.I
+)
+_SEVERANCE_MONTHS_TEXT = re.compile(
+    r"severance[^.\n]{0,80}?\(?(\d+)\)?\s*months?\s*of\s*(?:base\s+)?salary",
+    re.I,
+)
+_SEVERANCE_WEEKS_TEXT = re.compile(
+    r"severance[^.\n]{0,80}?\(?(\d+)\)?\s*weeks?\s*of\s*(?:base\s+)?salary",
+    re.I,
+)
+
+# A stated lump sum and a computed product agree when they are
+# within a dollar: the schedule's figures are round numbers, the
+# product of months and a divided salary need not be.
+_ARITHMETIC_TOLERANCE = 1.0
+
+
+def _salary_basis_monthly(texts: list[str]) -> tuple[float | None, str]:
+    """The package's salary basis as a monthly figure, and how the
+    package states it. Offer letters state base salary annually
+    (a bare "base salary of $X" in an offer letter is the annual
+    figure — the convention the letter itself trades on); a
+    per-month statement is taken as written."""
+    for text in texts:
+        m = _SALARY_MONTHLY.search(text)
+        if m:
+            value = float(m.group(1).replace(",", ""))
+            return value, f"{_fmt_money(value)} per month"
+    for text in texts:
+        m = _SALARY_ANNUAL.search(text)
+        if m:
+            value = float(m.group(1).replace(",", ""))
+            return value / 12, f"{_fmt_money(value)} per annum"
+    for text in texts:
+        m = _SALARY_BARE.search(text)
+        if m:
+            value = float(m.group(1).replace(",", ""))
+            return value / 12, f"base salary of {_fmt_money(value)} (annual)"
+    return None, ""
+
+
+def _severance_formula_months(
+    texts: list[str], extractions: list[ClauseExtraction]
+) -> tuple[float | None, str]:
+    """The severance formula as a number of months of salary, and
+    the words the package states it in. The employment-terms
+    extraction's signal is the primary read (it is the extractor's
+    own parse of the clause); the text patterns cover a formula
+    stated where the clause segmentation did not reach, and the
+    weeks form."""
+    for extraction in extractions:
+        if extraction.clause_type != "employment_terms":
+            continue
+        months = (extraction.signals or {}).get("severance_months")
+        if isinstance(months, int) and months > 0:
+            return float(months), f"{months} months of base salary"
+    for text in texts:
+        m = _SEVERANCE_MONTHS_TEXT.search(text)
+        if m:
+            months = int(m.group(1))
+            return float(months), f"{months} months of base salary"
+    for text in texts:
+        m = _SEVERANCE_WEEKS_TEXT.search(text)
+        if m:
+            weeks = int(m.group(1))
+            return weeks * 12 / 52, f"{weeks} weeks of base salary"
+    return None, ""
+
+
+def _stated_severance_amount(texts: list[str]) -> tuple[float | None, str]:
+    """A severance lump sum the package states, and the id of the
+    document stating it is the caller's concern — here the amount
+    and the sentence. A money figure inside a salary-basis
+    statement is the basis, not a severance amount, and is skipped:
+    the two live in different sentences in every package shape this
+    family reads, and a sentence that states a salary is not
+    stating a severance."""
+    for text in texts:
+        for sentence in _text_sentences(text):
+            if "severance" not in sentence.lower():
+                continue
+            if _SALARY_ANNUAL.search(sentence) or _SALARY_MONTHLY.search(
+                sentence
+            ):
+                continue
+            m = _MONEY_AMOUNT.search(sentence)
+            if m:
+                return float(m.group(1).replace(",", "")), sentence.strip()
+    return None, ""
+
+
+def _severance_checks(
+    contract: ContractInput,
+    units,
+    extractions: list[ClauseExtraction],
+) -> list[ExhibitCheck]:
+    """Severance arithmetic: generated for an employment package
+    whose severance promise is a formula (months or weeks of base
+    salary). The formula is computed against the salary basis the
+    package states and compared with any severance lump sum the
+    package states — in the letter itself or in an attached
+    compensation schedule. A formula alone, with neither a basis
+    nor a figure anywhere in the package, produces nothing
+    checkable and generates no check. The package gate is the
+    document type or an employment-terms clause: a letter that
+    mixes its notice and severance sentences in one paragraph can
+    segment either way, and the arithmetic does not care which
+    label the paragraph wore."""
+    if contract.doc_type != "employment" and not any(
+        e.clause_type == "employment_terms" for e in extractions
+    ):
+        return []
+    texts = [contract.agreement_text()] + [
+        doc.raw_text
+        for doc in contract.documents
+        if doc.doc_type in {"schedule", "exhibit"}
+    ]
+    months, formula = _severance_formula_months(texts, extractions)
+    if months is None:
+        return []
+    basis_monthly, basis_desc = _salary_basis_monthly(texts)
+    stated, stated_sentence = _stated_severance_amount(texts)
+    if basis_monthly is None and stated is None:
+        return []  # a formula with no numbers anywhere is not arithmetic yet
+
+    expectation = (
+        "The severance promise is a formula — a period of base "
+        "salary. Applied to the salary basis the package states, "
+        "the formula must produce the severance the package "
+        "states; a schedule drafted from a different salary "
+        "contradicts the letter it is attached to."
+    )
+    promised = f"severance of {formula}"
+    if basis_monthly is None:
+        return [ExhibitCheck(
+            name="severance_arithmetic",
+            expectation=expectation,
+            promised=promised,
+            found=f"severance stated as {_fmt_money(stated)}",
+            status="missing_in_exhibit",
+            detail=(
+                f"The letter promises severance of {formula} and "
+                f"the package states a severance figure of "
+                f"{_fmt_money(stated)}, but the salary basis the "
+                "formula multiplies is stated nowhere in the "
+                "package — the severance cannot be computed, so "
+                "the stated figure cannot be checked. One of the "
+                "two numbers counsel is being asked to approve is "
+                "unverifiable as the package stands."
+            ),
+        )]
+    computed = round(months * basis_monthly, 2)
+    if stated is None:
+        return [ExhibitCheck(
+            name="severance_arithmetic",
+            expectation=expectation,
+            promised=promised,
+            found=f"computed {_fmt_money(computed)}",
+            status="consistent",
+            detail=(
+                f"The formula produces {_fmt_money(computed)}: "
+                f"{formula} at the stated basis of {basis_desc}. "
+                "No severance lump sum is stated anywhere in the "
+                "package for the computation to contradict — the "
+                "figure is computed in code from the package's "
+                "own numbers, not quoted from it."
+            ),
+        )]
+    if abs(computed - stated) <= _ARITHMETIC_TOLERANCE:
+        status, detail = (
+            "consistent",
+            f"The formula produces {_fmt_money(computed)} — "
+            f"{formula} at the stated basis of {basis_desc} — and "
+            f"the package states severance of "
+            f"{_fmt_money(stated)}. The schedule's figure is the "
+            "letter's formula, computed.",
+        )
+    else:
+        status, detail = (
+            "mismatch",
+            f"The formula produces {_fmt_money(computed)} — "
+            f"{formula} at the stated basis of {basis_desc} — but "
+            f"the package states severance of "
+            f"{_fmt_money(stated)} (\"{stated_sentence}\"). The "
+            "two numbers in the same package describe the same "
+            "promise and disagree by "
+            f"{_fmt_money(abs(computed - stated))}: one of them "
+            "was drafted against a different salary, and which "
+            "one governs is a dispute the package invites.",
+        )
+    return [ExhibitCheck(
+        name="severance_arithmetic",
+        expectation=expectation,
+        promised=promised,
+        found=f"severance stated as {_fmt_money(stated)}; "
+              f"formula produces {_fmt_money(computed)}",
+        status=status,
+        detail=detail,
+    )]

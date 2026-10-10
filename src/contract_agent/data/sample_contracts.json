@@ -667,5 +667,51 @@
         "raw_text": "Schedule of Prior Inventions\n\nThe Employee records the following inventions, conceived before the employment, as the Employee's prior inventions:\n- RouteWeaver \u2014 a route-planning prototype for regional delivery fleets\n- Ledgerline \u2014 a bookkeeping reconciliation tool for small practices\n"
       }
     ]
+  },
+  {
+    "contract_id": "CTR-2034",
+    "doc_type": "employment",
+    "title": "Employment Offer Letter",
+    "counterparty_name": "Amara Osei",
+    "our_role": "employer",
+    "sender_name": "",
+    "cover_email_text": "Attached is the offer letter for the Head of Support Engineering role, with the compensation schedule, for counsel's review before it goes out.",
+    "notes": "Severance arithmetic sample (consistent): the letter promises severance of three months of base salary at $186,000 per annum (computed $46,500) and the attached compensation schedule states $46,500 \u2014 the severance_arithmetic check comes back consistent.",
+    "received_at": "2026-10-08T09:15:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Employment and At-Will Status\nThe Employee's employment is at will: the Employee's employment may be terminated by either party at any time, with or without cause, on thirty (30) days' written notice. If the Company terminates the employment without cause, the Employee will receive severance of three (3) months of base salary. Nothing in this letter guarantees employment for any period.\n\n2. Compensation\nThe Employee's base salary is $186,000 per annum, payable in monthly instalments.\n\n3. Restrictive Covenants\nFor twelve (12) months following the end of the Employee's employment, the Employee shall not be employed by a business that competes with the Company within the state in which the Employee was employed. The Employee also agrees not to solicit the Company's customers or employees for twelve (12) months following the end of employment.\n\n4. Invention Assignment\nThe Employee hereby assigns to the Company all inventions conceived or reduced to practice in the course of the Employee's employment and relating to the Company's business. Inventions conceived before the employment are excluded from this assignment. No assignment is made of inventions developed entirely on the Employee's own time that do not relate to the Company's business.\n\n5. Dispute Resolution\nAny dispute arising out of the Employee's employment shall be resolved by binding arbitration, at either party's election, under a mutual arbitration agreement. Nothing in this section prevents either party from seeking injunctive relief in court, or from pursuing statutory claims that cannot lawfully be submitted to arbitration.\n\n6. Confidentiality\nEach party shall hold the other party's Confidential Information in confidence for three (3) years from the date of disclosure.\n"
+      },
+      {
+        "doc_type": "schedule",
+        "document_id": "SCHED-C",
+        "raw_text": "Compensation Schedule\n\nBase salary: $186,000 per annum.\nSeverance on termination without cause: $46,500.\n"
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2035",
+    "doc_type": "employment",
+    "title": "Employment Offer Letter",
+    "counterparty_name": "Tomas Lindqvist",
+    "our_role": "employer",
+    "sender_name": "",
+    "cover_email_text": "Attached is the offer letter for the Director of Infrastructure role, with the compensation schedule, for counsel's review before it goes out.",
+    "notes": "Severance arithmetic sample (mismatch): the letter promises severance of four months of base salary at $240,000 per annum (computed $80,000) but the attached compensation schedule states $60,000 \u2014 drafted against a lower salary \u2014 so the severance_arithmetic check comes back mismatch.",
+    "received_at": "2026-10-08T11:45:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-1",
+        "raw_text": "1. Employment and At-Will Status\nThe Employee's employment is at will: the Employee's employment may be terminated by either party at any time, with or without cause, on thirty (30) days' written notice. If the Company terminates the employment without cause, the Employee will receive severance of four (4) months of base salary. Nothing in this letter guarantees employment for any period.\n\n2. Compensation\nThe Employee's base salary is $240,000 per annum, payable in monthly instalments.\n\n3. Restrictive Covenants\nFor twelve (12) months following the end of the Employee's employment, the Employee shall not be employed by a business that competes with the Company within the state in which the Employee was employed. The Employee also agrees not to solicit the Company's customers or employees for twelve (12) months following the end of employment.\n\n4. Invention Assignment\nThe Employee hereby assigns to the Company all inventions conceived or reduced to practice in the course of the Employee's employment and relating to the Company's business. Inventions conceived before the employment are excluded from this assignment. No assignment is made of inventions developed entirely on the Employee's own time that do not relate to the Company's business.\n\n5. Dispute Resolution\nAny dispute arising out of the Employee's employment shall be resolved by binding arbitration, at either party's election, under a mutual arbitration agreement. Nothing in this section prevents either party from seeking injunctive relief in court, or from pursuing statutory claims that cannot lawfully be submitted to arbitration.\n\n6. Confidentiality\nEach party shall hold the other party's Confidential Information in confidence for three (3) years from the date of disclosure.\n"
+      },
+      {
+        "doc_type": "schedule",
+        "document_id": "SCHED-C",
+        "raw_text": "Compensation Schedule\n\nBase salary: $240,000 per annum.\nSeverance on termination without cause: $60,000.\n"
+      }
+    ]
   }
 ]
