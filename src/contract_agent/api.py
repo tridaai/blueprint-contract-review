@@ -51,6 +51,7 @@ from .schemas import (
     ContractInput,
     DecisionRequest,
     EditOutcomesRequest,
+    ProposalDecisionRequest,
 )
 from .wiring import build_service_from_env
 
@@ -319,6 +320,74 @@ def audit_export(format: str = "json"):
 @app.get("/playbook", dependencies=_AUTH)
 def list_playbook() -> list[dict]:
     return PLAYBOOK
+
+
+@app.get("/playbook/proposals", dependencies=_AUTH)
+def list_playbook_proposals(status: str = "") -> dict:
+    """The playbook proposal queue: candidate entries drafted from
+    coverage gaps (clause types that keep arriving flagged with no
+    fallback language), each PROPOSED until counsel activates or
+    dismisses it. Nothing here is active playbook."""
+    proposals = service.list_playbook_proposals(status=status or None)
+    return {
+        "count": len(proposals),
+        "proposals": [p.model_dump(mode="json") for p in proposals],
+    }
+
+
+@app.post("/playbook/proposals/generate", dependencies=_AUTH)
+def generate_playbook_proposals() -> dict:
+    """Draft proposals for the coverage gaps the stored runs support
+    (idempotent — gaps with a proposal on record, in any status, are
+    not re-drafted). Returns what this call created."""
+    created = service.generate_playbook_proposals()
+    return {
+        "created": len(created),
+        "proposals": [p.model_dump(mode="json") for p in created],
+    }
+
+
+@app.post("/playbook/proposals/{proposal_id}/activate", dependencies=_AUTH)
+def activate_playbook_proposal(proposal_id: str, request: ProposalDecisionRequest):
+    """Counsel activates a proposal: its entries join the active
+    playbook. Requires the actor's name — an activation is a human
+    decision with a name on it. The agent never calls this."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the counsel member activating this proposal.",
+        )
+    try:
+        proposal = service.activate_playbook_proposal(
+            proposal_id, actor=actor, note=request.note or ""
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return proposal.model_dump(mode="json")
+
+
+@app.post("/playbook/proposals/{proposal_id}/dismiss", dependencies=_AUTH)
+def dismiss_playbook_proposal(proposal_id: str, request: ProposalDecisionRequest):
+    """Counsel dismisses a proposal: it leaves the queue and is never
+    re-drafted. Requires the actor's name, like activation."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the counsel member dismissing this proposal.",
+        )
+    try:
+        proposal = service.dismiss_playbook_proposal(
+            proposal_id, actor=actor, note=request.note or ""
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return proposal.model_dump(mode="json")
 
 
 @app.get("/counterparties/{counterparty}/profile", dependencies=_AUTH)

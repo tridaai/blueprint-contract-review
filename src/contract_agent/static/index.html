@@ -81,6 +81,15 @@
       </div>
     </section>
     <section>
+      <h2>Playbook proposals</h2>
+      <div id="proposals" class="empty">Loading…</div>
+      <div class="row" style="margin-top:10px">
+        <button id="proposals-generate">Draft from coverage gaps</button>
+        <button id="proposals-refresh">Refresh</button>
+        <span class="note" id="proposals-status">candidate entries for clause types that keep arriving flagged with no fallback language. Drafts only — a proposal joins the playbook only when counsel activates it here.</span>
+      </div>
+    </section>
+    <section>
       <h2>Obligations due soon</h2>
       <div id="due" class="empty">Loading…</div>
       <div class="row" style="margin-top:10px">
@@ -229,6 +238,49 @@ async function loadDue() {
       </tbody></table>`;
   } catch (e) {
     $('due').innerHTML = '<span class="empty">Due view unavailable.</span>';
+  }
+}
+
+async function loadProposals() {
+  try {
+    const res = await fetch('/playbook/proposals', {headers: headers()});
+    if (!res.ok) throw new Error('none');
+    const data = await res.json();
+    if (!data.proposals.length) {
+      $('proposals').innerHTML = '<span class="empty">No proposals on record — draft from the coverage gaps when a clause type keeps arriving with no fallback language.</span>';
+      return;
+    }
+    $('proposals').innerHTML = data.proposals.map(p => `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div class="row">${pill(p.status, p.status === 'activated' ? 'good' : p.status === 'proposed' ? 'warn' : '')}
+          <strong>${esc(p.clause_type)}</strong>
+          <span class="note">flagged ${esc(p.without_fallback)}× with no fallback (of ${esc(p.flagged)} flagged) · shaped from ${esc(p.based_on_type || '—')} · examples: ${esc((p.example_contract_ids || []).join(', ') || '—')}</span></div>
+        <p class="note" style="margin:6px 0">${esc(p.basis)}</p>
+        ${(p.entries || []).map(e => `<details><summary class="note">[${esc(e.id)}] ${esc(e.title)}</summary>
+          <p class="note" style="white-space:pre-wrap">${esc(e.text)}</p>
+          ${e.fallback_language ? `<div><strong>Fallback language</strong><pre style="max-height:160px">${esc(e.fallback_language)}</pre></div>` : ''}
+          ${e.walk_away_line ? `<div><strong>Walk-away line</strong><pre style="max-height:160px">${esc(e.walk_away_line)}</pre></div>` : ''}
+        </details>`).join('')}
+        ${p.status === 'proposed' ? `<div class="row" style="margin-top:8px">
+          <button data-activate="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Activate (counsel)</button>
+          <button data-dismiss="${esc(p.proposal_id)}" style="padding:3px 9px;font-size:12px">Dismiss</button>
+        </div>` : `<p class="note" style="margin:6px 0">${esc(p.status)} by ${esc(p.decided_by || '—')}${p.decided_at ? ' · ' + esc(p.decided_at) : ''}${p.decision_note ? ' — ' + esc(p.decision_note) : ''}</p>`}
+      </div>`).join('');
+    const decide = async (id, action) => {
+      const actor = $('actor').value.trim();
+      if (!actor) { $('proposals-status').textContent = 'Enter counsel name (section 3) first — an activation or dismissal carries a name.'; return; }
+      const res = await fetch('/playbook/proposals/' + encodeURIComponent(id) + '/' + action, {
+        method: 'POST', headers: headers(), body: JSON.stringify({actor})
+      });
+      if (res.ok) { $('proposals-status').textContent = action === 'activate' ? 'Activated — its entries are live in the playbook now.' : 'Dismissed — it will not be drafted again.'; loadProposals(); }
+      else alert('Proposal ' + action + ' failed: ' + res.status + ' ' + (await res.text()).slice(0, 200));
+    };
+    $('proposals').querySelectorAll('button[data-activate]').forEach(btn =>
+      btn.addEventListener('click', () => decide(btn.dataset.activate, 'activate')));
+    $('proposals').querySelectorAll('button[data-dismiss]').forEach(btn =>
+      btn.addEventListener('click', () => decide(btn.dataset.dismiss, 'dismiss')));
+  } catch (e) {
+    $('proposals').innerHTML = '<span class="empty">Proposals unavailable.</span>';
   }
 }
 
@@ -485,10 +537,20 @@ async function slaSweep() {
 $('due-refresh').addEventListener('click', loadDue);
 $('queue-refresh').addEventListener('click', loadQueue);
 $('sla-sweep').addEventListener('click', slaSweep);
+$('proposals-refresh').addEventListener('click', loadProposals);
+$('proposals-generate').addEventListener('click', async () => {
+  const res = await fetch('/playbook/proposals/generate', {method: 'POST', headers: headers()});
+  const body = await res.json().catch(() => ({}));
+  $('proposals-status').textContent = res.ok
+    ? (body.created ? `Drafted ${body.created} proposal(s) from the coverage gaps — counsel decides below.` : 'No new gaps to draft from (gaps with a proposal on record are not re-drafted).')
+    : 'Generate failed: ' + res.status;
+  loadProposals();
+});
 loadSamples();
 loadEvals();
 loadDue();
 loadQueue();
+loadProposals();
 </script>
 </body>
 </html>

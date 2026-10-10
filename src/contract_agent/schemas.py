@@ -702,3 +702,58 @@ class AssignRequest(BaseModel):
 
     actor: Optional[str] = None
     assignee: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Playbook proposals (coverage-driven — the playbook stays human-owned)
+# ---------------------------------------------------------------------------
+
+class PlaybookProposalEntry(BaseModel):
+    """One candidate playbook entry inside a proposal: the same shape
+    as a shipped ``playbook_data`` entry, drafted in code from the
+    nearest covered clause type's family (``playbook_proposals.py``).
+    It is text counsel reviews, edits, and only then activates —
+    until activation it exists nowhere but the proposal record."""
+
+    id: str  # PROP-<TYPE>-NN — never collides with shipped PB-* ids
+    title: str = ""
+    clause_type: str = ""
+    text: str = ""
+    fallback_language: str = ""
+    walk_away_line: str = ""
+
+
+class PlaybookProposal(BaseModel):
+    """A drafted playbook addition for a clause type that keeps
+    arriving flagged with no fallback language to offer — a coverage
+    gap in the playbook, surfaced by ``playbook_coverage`` and
+    drafted by ``playbook_proposals.py``. Stored as PROPOSED;
+    counsel activates or dismisses it in the console. Activation —
+    a human act, recorded with the actor — is the only way a
+    proposal's entries join the active playbook
+    (``playbook_registry.py``); the agent never activates its own
+    drafts, and a dismissed proposal is never re-drafted."""
+
+    proposal_id: str
+    clause_type: str = ""
+    status: str = "proposed"  # proposed | activated | dismissed
+    based_on_type: str = ""  # the covered clause type whose family shaped the draft
+    based_on_entry_ids: list[str] = Field(default_factory=list)
+    basis: str = ""  # why that donor: the stated similarity rule's reading
+    entries: list[PlaybookProposalEntry] = Field(default_factory=list)
+    flagged: int = 0  # stored verdicts that flagged this type
+    without_fallback: int = 0  # ...and had no fallback language to offer
+    example_contract_ids: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    decided_by: str = ""
+    decided_at: str = ""
+    decision_note: str = ""
+
+
+class ProposalDecisionRequest(BaseModel):
+    """Counsel's decision on a playbook proposal (activate/dismiss).
+    The actor is required: activating a playbook entry is a human
+    decision with a name on it, like every gate in this blueprint."""
+
+    actor: Optional[str] = None
+    note: Optional[str] = None

@@ -42,6 +42,7 @@ from .graph import resume_decision, run_contract
 from .model_backends import ModelBackend, get_backend
 from .objectstore import get_object_store
 from .ports import Checkpointer, EventSink, ObjectStore
+from .proposal_store import PlaybookProposalStore, default_proposal_store
 from .retriever import Retriever, get_retriever
 from .schemas import (
     EDIT_OUTCOMES,
@@ -49,6 +50,7 @@ from .schemas import (
     ContractInput,
     EditOutcome,
     EditOutcomeInput,
+    PlaybookProposal,
 )
 from .store import ApprovalRecord, counterparty_summary, default_store
 
@@ -245,15 +247,39 @@ class ContractService:
     # because it persists nothing).
     checkpointer: Checkpointer | bool | None = None
     object_store: ObjectStore | None = None
+    proposal_store: PlaybookProposalStore | None = None
     _resolved_store: Store | None = field(default=None, repr=False)
     _resolved_checkpointer: Checkpointer | None = field(default=None, repr=False)
     _checkpointer_resolved: bool = field(default=False, repr=False)
     _resolved_object_store: ObjectStore | None = field(default=None, repr=False)
+    _resolved_proposal_store: PlaybookProposalStore | None = field(
+        default=None, repr=False
+    )
+    _proposals_registered: bool = field(default=False, repr=False)
 
     def _get_store(self) -> Store:
         if self._resolved_store is None:
             self._resolved_store = self.store or default_store()
         return self._resolved_store
+
+    def _get_proposal_store(self) -> PlaybookProposalStore:
+        if self._resolved_proposal_store is None:
+            self._resolved_proposal_store = (
+                self.proposal_store or default_proposal_store()
+            )
+        if not self._proposals_registered:
+            self._proposals_registered = True
+            # Activations are durable in the proposal store; the
+            # registry is process-local, so a fresh process
+            # re-registers them here, on first use.
+            from .playbook_registry import register_entries
+
+            for proposal in self._resolved_proposal_store.all():
+                if proposal.status == "activated":
+                    register_entries(
+                        [entry.model_dump() for entry in proposal.entries]
+                    )
+        return self._resolved_proposal_store
 
     def _get_checkpointer(self) -> Checkpointer | None:
         if not self._checkpointer_resolved:
@@ -1343,8 +1369,9 @@ class ContractService:
         not a contract gap), and the position distribution per
         counterparty (who keeps sending walk-away paper).
         """
-        from .playbook_data import PLAYBOOK
+        from .playbook_registry import active_playbook
 
+        PLAYBOOK = active_playbook()
         if results is None:
             results = [record.result for record in self._get_store().all_records()]
         firing: Counter = Counter()
@@ -1379,6 +1406,118 @@ class ContractService:
                 if counterparty
             },
         }
+
+    # ------------------------------------------------------------------
+    # Playbook proposals: drafted from coverage, decided by counsel
+    # ------------------------------------------------------------------
+
+    def generate_playbook_proposals(self) -> list[PlaybookProposal]:
+        """Draft a playbook proposal for every coverage gap the
+        stored runs support (``playbook_proposals.py``): a clause
+        type flagged without fallback language at least
+        ``MIN_GAP_FLAGS`` times, with no proposal already on record
+        in any status (a dismissed gap stays dismissed) and no
+        fallback coverage in the active playbook. Returns the
+        proposals created by this call — generation is idempotent;
+        a second call with no new gaps creates nothing."""
+        from .playbook_proposals import (
+            MIN_GAP_FLAGS,
+            covered_clause_types,
+            draft_playbook_proposal,
+        )
+
+        store = self._get_proposal_store()
+        results = [record.result for record in self._get_store().all_records()]
+        coverage = self.playbook_coverage(results)
+        existing_types = {p.clause_type for p in store.all()}
+        covered = covered_clause_types()
+        created: list[PlaybookProposal] = []
+        for row in coverage["clause_types_without_fallback"]:
+            clause_type = row["clause_type"]
+            if row["without_fallback"] < MIN_GAP_FLAGS:
+                continue
+            if clause_type in existing_types or clause_type in covered:
+                continue
+            examples: list[str] = []
+            for result in results:
+                if any(
+                    verdict.clause_type == clause_type
+                    and verdict.position != "preferred"
+                    and not verdict.fallback_language
+                    for verdict in result.clause_verdicts
+                ):
+                    examples.append(result.contract_id)
+                if len(examples) >= 3:
+                    break
+            proposal = draft_playbook_proposal(
+                clause_type,
+                flagged=row["flagged"],
+                without_fallback=row["without_fallback"],
+                example_contract_ids=examples,
+            )
+            store.save(proposal)
+            created.append(proposal)
+        return created
+
+    def list_playbook_proposals(
+        self, status: str | None = None
+    ) -> list[PlaybookProposal]:
+        """Every proposal on record, awaiting counsel first."""
+        proposals = self._get_proposal_store().all()
+        if status:
+            proposals = [p for p in proposals if p.status == status]
+        return sorted(
+            proposals, key=lambda p: (p.status != "proposed", p.clause_type)
+        )
+
+    def activate_playbook_proposal(
+        self, proposal_id: str, actor: str, note: str = ""
+    ) -> PlaybookProposal:
+        """Counsel activates a proposal: its entries join the active
+        playbook (``playbook_registry``) from this moment — verdicts
+        may cite them, their fallback language may be offered, their
+        walk-away lines may be proposed. The decision is stamped
+        with the actor; the agent never calls this itself."""
+        from .playbook_registry import register_entries
+
+        store = self._get_proposal_store()
+        proposal = store.get(proposal_id)
+        if proposal is None:
+            raise KeyError(f"Unknown playbook proposal: {proposal_id}")
+        if proposal.status != "proposed":
+            raise ValueError(
+                f"Proposal {proposal_id} is already {proposal.status} — "
+                "only a proposed proposal can be activated."
+            )
+        proposal.status = "activated"
+        proposal.decided_by = actor
+        proposal.decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        proposal.decision_note = note or ""
+        store.save(proposal)
+        register_entries([entry.model_dump() for entry in proposal.entries])
+        return proposal
+
+    def dismiss_playbook_proposal(
+        self, proposal_id: str, actor: str, note: str = ""
+    ) -> PlaybookProposal:
+        """Counsel dismisses a proposal: it leaves the queue and is
+        never re-drafted — the coverage gap stays visible in the
+        metrics, with counsel's decision on record beside it."""
+        store = self._get_proposal_store()
+        proposal = store.get(proposal_id)
+        if proposal is None:
+            raise KeyError(f"Unknown playbook proposal: {proposal_id}")
+        if proposal.status != "proposed":
+            raise ValueError(
+                f"Proposal {proposal_id} is already {proposal.status} — "
+                "only a proposed proposal can be dismissed."
+            )
+        proposal.status = "dismissed"
+        proposal.decided_by = actor
+        proposal.decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        proposal.decision_note = note or ""
+        store.save(proposal)
+        return proposal
 
     def metrics(self) -> dict:
         """Operational summary over the stored runs (``/metrics``).

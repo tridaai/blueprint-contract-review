@@ -38,22 +38,20 @@ round, and the reason says so.
 
 from __future__ import annotations
 
-from .playbook_data import PLAYBOOK
+from .playbook_registry import active_playbook
 
 TIER_NAMES = {1: "first fallback", 2: "walk-away line"}
-
-_WALK_AWAY_BY_TYPE: dict[str, tuple[str, str]] = {}
-for _entry in PLAYBOOK:
-    if _entry.get("walk_away_line"):
-        _WALK_AWAY_BY_TYPE.setdefault(
-            _entry["clause_type"], (_entry["id"], _entry["walk_away_line"])
-        )
 
 
 def walk_away_line(clause_type: str) -> tuple[str, str] | None:
     """(entry_id, line) of the clause type's walk-away line, if the
-    playbook carries one."""
-    return _WALK_AWAY_BY_TYPE.get(clause_type)
+    active playbook carries one — the shipped corpus first, then
+    counsel-activated proposal entries (``playbook_registry``), so
+    an activation can give a previously uncovered type a tier 2."""
+    for entry in active_playbook():
+        if entry["clause_type"] == clause_type and entry.get("walk_away_line"):
+            return entry["id"], entry["walk_away_line"]
+    return None
 
 
 def propose_tier(

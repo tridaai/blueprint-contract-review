@@ -12,8 +12,10 @@ entry IDs cited on each verdict are the entries a reviewer can open.
 
 from __future__ import annotations
 
-from .playbook_data import PLAYBOOK_BY_ID
+from .playbook_registry import active_entry_by_id, entries_for_type
 from .schemas import ClauseExtraction, ClauseUnit, ClauseVerdict
+
+_FLAGGED = {"review_required", "walk_away", "acceptable_fallback"}
 
 
 def _verdict(
@@ -26,10 +28,21 @@ def _verdict(
 ) -> ClauseVerdict:
     fallback = ""
     for ref in refs:
-        entry = PLAYBOOK_BY_ID.get(ref) or {}
+        entry = active_entry_by_id(ref) or {}
         if entry.get("fallback_language"):
             fallback = entry["fallback_language"]
             break
+    if not fallback and position in _FLAGGED:
+        # The cited entries offer no language. A counsel-activated
+        # proposal entry for this clause type (playbook_registry)
+        # may: the playbook was extended by a human precisely for
+        # this gap, so its language is offered and its id cited.
+        for entry in entries_for_type(extraction.clause_type):
+            if entry.get("fallback_language"):
+                fallback = entry["fallback_language"]
+                if entry["id"] not in refs:
+                    refs = [*refs, entry["id"]]
+                break
     return ClauseVerdict(
         clause_id=unit.clause_id,
         clause_type=extraction.clause_type,
@@ -39,7 +52,7 @@ def _verdict(
         rule_position=position,
         resolution="rules_only",
         playbook_refs=refs,
-        fallback_language=fallback if position in {"review_required", "walk_away", "acceptable_fallback"} else "",
+        fallback_language=fallback if position in _FLAGGED else "",
     )
 
 

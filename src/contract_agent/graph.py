@@ -70,6 +70,7 @@ from .obligations import build_obligations, due_obligations
 from .options import build_options
 from .proposed_edits import build_proposed_edits
 from .playbook_data import PLAYBOOK
+from .playbook_registry import active_playbook
 from .resilience import ResilientBackend
 from .retriever import get_retriever
 from .reviewer import review_drafts
@@ -271,7 +272,7 @@ def _rows(state: AgentState) -> list[dict]:
 
 
 def _playbook_text_for(clause_type: str) -> str:
-    entries = [e for e in PLAYBOOK if e["clause_type"] == clause_type]
+    entries = [e for e in active_playbook() if e["clause_type"] == clause_type]
     if not entries:
         entries = [e for e in PLAYBOOK if e["id"].startswith("PB-GEN")]
     return "\n".join(
