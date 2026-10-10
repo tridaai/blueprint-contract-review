@@ -136,6 +136,30 @@ and the console, labelled draft-for-counsel; when the service
 refines the diffs from the full chain, the edits are rebuilt from
 the refined diffs so the two never disagree.
 
+**Edit outcomes and reflection** (`edit_reflection.py`,
+`ContractService.record_edit_outcomes`). The gate decision is
+packet-level; negotiations settle edit by edit, so counsel records
+a per-edit outcome on the record — accepted / modified / rejected,
+a note, and for a modified edit the settled language — standalone
+or carried with the approval (recorded before dispatch, so the
+routed packet carries them). When a follow-up round is analysed,
+the reflection check reads the superseded round's accepted/modified
+edits and tests them against the new draft's text: the agreed
+language is split into propositions and each is measured on its
+novel content words (the words it would change relative to the
+prior clause — shared boilerplate cannot inflate the score), with
+one class held to an exact standard: operative tokens (figures,
+capitalised names mid-sentence) must all appear, so adopting a
+sentence's frame with a different state or figure named still
+fails. An edit lands `reflected`, is flagged
+`agreed_not_reflected`, or is `not_checkable` when no agreed
+language is on record — the module states what it cannot check.
+Outcomes marked after the follow-up was analysed refresh its
+stored reflection, so the check never goes stale against late
+bookkeeping. The verdict diff and the reflection answer different
+questions — positions vs the specific agreed words — and ride side
+by side on the result, the brief, and the webhook.
+
 **Queue SLA and ownership** (`ContractService.queue` / `assign`).
 The counsel queue is a worklist, not a report: each awaiting item
 carries an assignee recorded on the record (who holds it, assigned
@@ -148,16 +172,62 @@ and a breach flag. Breaches sort ahead of posture. `/metrics`
 aggregates the state (awaiting / breached / unassigned /
 unassigned-breached), which is the number legal ops manages to.
 
+**SLA breach sweep** (`ContractService.dispatch_sla_breach_sweep`).
+The queue's breach flag waits for someone to look; the sweep is
+its scheduled counterpart, in the deadline sweep's shape. It
+walks the queue against an injectable clock and, for each contract
+past budget, emits one `sla_breach` event (tier, budget vs waited,
+owner — `unassigned` stated outright) and, when
+`ACTION_WEBHOOK_URL` is configured, a signed webhook on the
+approval channel's scheme (`dispatch_sla_breach_webhook`; the two
+dispatchers share one signed-POST helper). Dedupe is a stamp on
+the record (`sla_breach_notified_at`): first observation only,
+however often the sweep runs, and `/metrics` counts the stamps as
+`breach_events_emitted`. Exposed as a service method,
+`POST /queue/sla-sweep`, the CLI's `--sweep-sla`, and a console
+button.
+
+**Counterparty concession profiles** (`concessions.py`). The
+chains also aggregate sideways, per counterparty: records are
+threaded into chains by their `supersedes` links, chain histories
+come from `build_round_chain`, and per clause type the profile
+counts contested chains closed better than they opened
+(`concedes`) vs closed no better (`holds`), with re-trades,
+improved/worsened step counts, and first/final position tallies —
+plus rounds-to-no-walk-away per chain and counsel's decision
+counts. The tendency label is a stated counting rule
+(conceded > held, held > conceded, equal = mixed, never contested
+= uncontested), so the profile is auditable back to the records.
+It surfaces as `GET /counterparties/{name}/profile` and a console
+panel, and its strongest lines (headline, concedes, holds with
+re-trades first, capped at six) are injected into the service's
+history dict as `concession_lines`, which
+`assessment.memory_evidence_lines` renders as evidence — the next
+review of that counterparty is informed by how they have actually
+moved, as priors beside the posture memory and counsel feedback.
+
 **Negotiation brief** (`brief.py`). One markdown document per
 chain, assembled in code from the stored results — never
 model-composed, so every figure traces to a record: the
 round-by-round chain table (posture, worst position, walk-away and
 flagged counts), cumulative movement with re-trades called out,
 open positions grouped by proposed tier with their language, the
-proposed edits, exhibit findings, and the obligations register.
-Exported through the object-store port under
+proposed edits with counsel's per-edit outcomes, the reflection
+flags, exhibit findings, and the obligations register. Exported
+through the object-store port under
 `contracts/<id>/negotiation-brief.md` and served as a download by
 `GET /contracts/{id}/brief`; labelled draft for counsel review.
+Exports are a lineage, not an overwrite: the service retains each
+export under a versioned key and stores its source digest
+(`brief_source_digest` — clause positions, edits keyed by language
+hash, chain-wide outcomes, obligations, re-trade and
+reflection-flag counts) in an index keyed by the chain's root
+contract. A new export diffs against the previous export's digest,
+whichever round it covered, and the brief leads with "Since the
+last brief" (`brief_delta_lines`): new round, decision recorded,
+clauses moved / appeared / disappeared, edits proposed anew,
+outcomes recorded, obligations opened or closed — or, honestly,
+that nothing material changed.
 
 **Deadline dispatch sweep** (`ContractService.dispatch_obligation_sweep`).
 Per-run `obligation_due` events announce deadlines at analysis

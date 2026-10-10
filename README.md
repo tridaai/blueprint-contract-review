@@ -122,6 +122,33 @@ pairwise diff cannot see. The bundled samples carry a three-round
 chain (CTR-2014 → CTR-2015 → CTR-2016) whose third round re-trades
 two clauses the second round won.
 
+**Edit outcomes and reflection.** The gate decision is
+packet-level; negotiations settle edit by edit. Counsel marks each
+proposed edit accepted / modified / rejected — with a note, and the
+settled language for a modified edit — on the record
+(`POST /contracts/{id}/edits`, or carried with the approval); the
+outcomes show in the brief, the packet surfaces, and the approval
+webhook. When the follow-up draft arrives, its review **reflects**
+the agreed edits against the new text: sentence by sentence, on
+the words the edit would change, with figures and capitalised
+names treated as operative tokens that must appear exactly — an
+edit whose agreed language the new draft does not show is flagged
+**agreed but not reflected**, the trap a verdict diff cannot see
+(positions can improve while the specific agreed words never
+appear). The check is textual and says so; counsel judges
+substance.
+
+**Counterparty concession profiles.** Across every stored
+negotiation with one counterparty, the service computes how they
+actually move (`GET /counterparties/{name}/profile`): clause types
+**conceded** once pressed (closed better than they opened) vs
+**held** (flagged early, never moved — re-traded types called
+out), rounds to clear the walk-away positions, the re-trade rate,
+and counsel's decision tallies — a stated counting rule over the
+records, no model judgement. The profile's strongest facts join
+the assessment evidence of that counterparty's next review, as
+priors: facts about their past rounds, never verdicts on this one.
+
 **Deadline operations.** Deadlines computed at analysis time matter
 weeks later, so `POST /obligations/sweep` (or the CLI's
 `--sweep-obligations DAYS`) sweeps every stored contract for
@@ -138,16 +165,33 @@ computed in code — a budget in business days by severity tier
 none; `QUEUE_SLA_*_BUSINESS_DAYS` env-tunable), the business days
 waited, and a breach flag. Breaches sort ahead of fresher items
 whatever their posture, and `/metrics` reports the queue's SLA
-state (awaiting / breached / unassigned counts).
+state (awaiting / breached / unassigned counts). A flag nobody
+sees is not an alarm, so the **breach sweep**
+(`POST /queue/sla-sweep`, CLI `--sweep-sla`) announces each breach
+the first time it is observed: one `sla_breach` event on the
+stream — an unassigned breach says so outright — plus a signed
+webhook per breach when `ACTION_WEBHOOK_URL` is configured, on
+the approval channel's scheme. The record carries the
+notification stamp, so a breach is announced once per contract
+however often the sweep runs; a contract decided in the meantime
+leaves the queue and is never announced late.
 
 **The negotiation brief.** `GET /contracts/{id}/brief` downloads one
 markdown document per contract chain, assembled in code from the
 stored records — the round-by-round chain table, cumulative
 movement and re-trades, open positions grouped by proposed tier
-with their language, the proposed edits, exhibit findings, and the
-obligations register. It is exported through the object-store port
-(`contracts/<id>/negotiation-brief.md`), labelled draft for counsel
-review, and sent nowhere: counsel takes it into the negotiation.
+with their language, the proposed edits with counsel's outcomes,
+the reflection flags, exhibit findings, and the obligations
+register. It is exported through the object-store port, labelled
+draft for counsel review, and sent nowhere: counsel takes it into
+the negotiation. Exports form a **lineage**: every export is
+retained under a versioned key (`contracts/<id>/
+negotiation-brief-v<n>.md`; the canonical key holds the latest)
+and its source digest is stored in the chain's index, so each new
+brief leads with a **"Since the last brief"** section diffed
+against the previous export — the new round, clauses moved, edits
+proposed anew, outcomes and decisions recorded, obligations
+opened or closed. A re-export with no changes says exactly that.
 
 ## Quickstart
 
@@ -164,7 +208,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 152 tests (151 run + 1 Postgres-gated skip)
+make test                  # 190 tests (189 run + 1 Postgres-gated skip)
 make evals                 # golden set: 54/54 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
