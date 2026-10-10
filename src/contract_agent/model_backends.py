@@ -192,6 +192,29 @@ class MockModelBackend:
         ] or ["- none recorded"]
         packet_lines.append("Clause-by-clause review:")
         packet_lines.append(clause_rows_text(rows))
+        diffs = context.get("clause_diffs") or []
+        if diffs:
+            packet_lines.append(
+                "Clause diff — counterparty text vs playbook fallback "
+                "(flagged clauses only):"
+            )
+            for diff in diffs:
+                refs = " ".join(f"[{r}]" for r in diff.get("playbook_refs") or [])
+                label = diff.get("ref") or diff.get("clause_id")
+                packet_lines.append(
+                    f"- {diff.get('clause_id')} [{label}] {diff.get('clause_type')} "
+                    f"({diff.get('position')}) {refs}".rstrip()
+                )
+                packet_lines.append(
+                    f"  Counterparty text: {diff.get('counterparty_text') or '(no text captured)'}"
+                )
+                packet_lines.append(
+                    "  Playbook fallback: "
+                    + (
+                        diff.get("playbook_fallback")
+                        or "none in the playbook — counsel to draft"
+                    )
+                )
         packet_lines.append("Options scored by review code:")
         packet_lines += [
             f"- [{o['kind']}] {o['title']} (clause {o.get('clause_id') or '—'}) — score {o['score']}"

@@ -215,6 +215,22 @@ class ClauseVerdict(BaseModel):
     fallback_language: str = ""  # proposed fallback wording from the playbook, when relevant
 
 
+class ClauseDiff(BaseModel):
+    """One flagged clause, side by side: what the counterparty wrote
+    vs the fallback language the playbook proposes. Assembled in code
+    (``clause_diffs.py``) — neither side is model-rewritten."""
+
+    clause_id: str
+    ref: str = ""
+    heading: str = ""
+    clause_type: str = "other"
+    position: str = ""
+    counterparty_text: str = ""
+    playbook_fallback: str = ""  # "" = the playbook proposes none; counsel drafts
+    playbook_refs: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Computed document facts (code only — never the model)
 # ---------------------------------------------------------------------------
@@ -363,6 +379,7 @@ class AgentResult(BaseModel):
     facts: ContractFacts = Field(default_factory=ContractFacts)
     injection_flags: list[str] = Field(default_factory=list)
     clause_verdicts: list[ClauseVerdict] = Field(default_factory=list)
+    clause_diffs: list[ClauseDiff] = Field(default_factory=list)
     playbook: list[RetrievedPlaybook] = Field(default_factory=list)
     vector_store: str = ""
     assessment: Assessment = Field(default_factory=Assessment)

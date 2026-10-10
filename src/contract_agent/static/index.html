@@ -166,13 +166,20 @@ function render(result) {
   if (f.missing_standard_clauses && f.missing_standard_clauses.length) {
     html += `<p class="flag">⚠ Absence detection: standard clause(s) missing — ${f.missing_standard_clauses.map(esc).join(', ')}${f.critical_absences.length ? ' (critical: ' + f.critical_absences.map(esc).join(', ') + ')' : ''}</p>`;
   }
+  const diffsByClause = {};
+  (result.clause_diffs || []).forEach(d => { diffsByClause[d.clause_id] = d; });
   html += `<h3>Clause-by-clause review</h3><table><thead><tr><th>Clause</th><th>Type</th><th>Verdict</th><th>Playbook</th><th>Rationale</th></tr></thead><tbody>
-    ${result.clause_verdicts.map(v => { const u = units[v.clause_id] || {}; return `<tr>
+    ${result.clause_verdicts.map(v => { const u = units[v.clause_id] || {}; const diff = diffsByClause[v.clause_id]; return `<tr>
       <td>${esc(v.clause_id)}${u.ref ? ' (§' + esc(u.ref) + ')' : ''}<br><span class="note">${esc(u.heading || '')}</span></td>
       <td>${esc(v.clause_type)}</td>
       <td>${posPill(v.position)}${v.escalated ? '<br><span class="flag">escalated (cross-check)</span>' : ''}<br><span class="note">${esc(v.resolution)}</span></td>
       <td>${(v.playbook_refs || []).map(r => '[' + esc(r) + ']').join(' ') || '—'}</td>
-      <td>${esc(v.rationale)}${v.fallback_language ? '<br><span class="note">Fallback: ' + esc(v.fallback_language) + '</span>' : ''}</td></tr>`; }).join('')}
+      <td>${esc(v.rationale)}${v.fallback_language ? '<br><span class="note">Fallback: ' + esc(v.fallback_language) + '</span>' : ''}</td></tr>` +
+      (diff ? `<tr><td colspan="5"><details><summary class="note">Diff — counterparty text vs playbook fallback</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px">
+          <div><strong>Counterparty text</strong><pre style="max-height:200px">${esc(diff.counterparty_text || '(no text captured)')}</pre></div>
+          <div><strong>Playbook fallback ${(diff.playbook_refs || []).map(r => '[' + esc(r) + ']').join(' ')}</strong><pre style="max-height:200px">${esc(diff.playbook_fallback || 'None in the playbook — counsel to draft.')}</pre></div>
+        </div></details></td></tr>` : ''); }).join('')}
   </tbody></table>`;
   html += `<h3>Computed facts (code, never the model)</h3><dl class="kv">
     <dt>Clauses</dt><dd>${esc(f.clause_count)} · positions: ${Object.entries(f.positions_count).map(([k, n]) => esc(n) + ' ' + esc(k)).join(', ') || 'none'}</dd>

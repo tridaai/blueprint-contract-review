@@ -53,8 +53,11 @@ For each contract, the pipeline:
    `escalate_to_senior_counsel`, `request_counterparty_info`) — the
    model never does this arithmetic.
 8. **Drafts** a clause-by-clause review packet (verdict, playbook
-   citation, rationale, proposed fallback language) and a counterparty
-   response that proposes changes and asserts nothing as agreed.
+   citation, rationale, proposed fallback language, and — for every
+   flagged clause — a diff pairing the counterparty's own text with
+   the playbook fallback, also in the console's clause table) and a
+   counterparty response that proposes changes and asserts nothing
+   as agreed.
 9. **Verifies** the drafts (self-check), sends them to an
    **independent reviewer**, then runs **guardrails as code**:
    `no_legal_conclusion`, `no_agreement_language`,

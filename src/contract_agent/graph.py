@@ -54,6 +54,7 @@ from langgraph.types import interrupt
 
 from .assessment import build_assessment, citations_for, memory_evidence_lines
 from .autonomy import recommend_autonomy
+from .clause_diffs import build_clause_diffs
 from .clause_review import review_clause
 from .clarify import build_information_request
 from .config import env_int, env_str, load_dotenv
@@ -73,6 +74,7 @@ from .schemas import (
     AgentResult,
     Assessment,
     AutonomyRecommendation,
+    ClauseDiff,
     ClauseExtraction,
     ClauseOption,
     ClauseUnit,
@@ -205,6 +207,7 @@ class AgentState(TypedDict, total=False):
     extractions: list[dict[str, Any]]
     injection_flags: list[str]
     verdicts: list[dict[str, Any]]
+    clause_diffs: list[dict[str, Any]]
     facts: dict[str, Any]
     playbook: list[dict[str, Any]]
     retrieval_info: str
@@ -287,6 +290,7 @@ def _draft_context(
         posture=facts.posture,
         positions_summary=format_position_counts(facts.positions_count),
         clause_rows=_rows(state),
+        clause_diffs=state.get("clause_diffs", []),
         missing_clauses=facts.missing_standard_clauses,
         discrepancies=facts.discrepancies,
         cover_text=sanitized_cover(contract),
@@ -407,7 +411,13 @@ def _build_graph(backend, retriever, sink, checkpointer=None):
         extractions = [ClauseExtraction.model_validate(e) for e in state["extractions"]]
         verdicts = [ClauseVerdict.model_validate(v) for v in state["verdicts"]]
         facts = compute_facts(contract, units, extractions, verdicts)
-        return {"facts": facts.model_dump(), "clause_rows": _rows(state)}
+        return {
+            "facts": facts.model_dump(),
+            "clause_rows": _rows(state),
+            "clause_diffs": [
+                d.model_dump() for d in build_clause_diffs(units, verdicts)
+            ],
+        }
 
     @node("retrieve", "Playbook retrieval")
     def _retrieve(state: AgentState) -> dict[str, Any]:
@@ -989,6 +999,9 @@ def run_contract(
         facts=ContractFacts.model_validate(state["facts"]),
         injection_flags=state.get("injection_flags", []),
         clause_verdicts=[ClauseVerdict.model_validate(v) for v in state.get("verdicts", [])],
+        clause_diffs=[
+            ClauseDiff.model_validate(d) for d in state.get("clause_diffs", [])
+        ],
         playbook=[RetrievedPlaybook.model_validate(g) for g in state.get("playbook", [])],
         vector_store=state.get("retrieval_info", ""),
         assessment=Assessment.model_validate(state["assessment"]),
