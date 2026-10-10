@@ -87,8 +87,9 @@ typed signals listed for that clause type — nothing invented.
 Respond with a single JSON object and nothing else:
 {"clause_type": one of "liability_cap" | "indemnity" | "ip_ownership" |
 "confidentiality" | "term_termination" | "payment_terms" |
-"governing_law" | "data_protection" | "limitation_of_warranty" |
-"assignment" | "other", "confidence": a number between 0 and 1,
+"governing_law" | "data_protection" | "subprocessor_terms" |
+"data_transfer" | "audit_rights" | "data_deletion" |
+"limitation_of_warranty" | "assignment" | "other", "confidence": a number between 0 and 1,
 "signals": {typed facts you found, e.g. "uncapped": true,
 "cap_months_fees": 12, "net_days": 45, "notice_days": 90,
 "jurisdiction": "delaware", "mutual": true — use the signal names the

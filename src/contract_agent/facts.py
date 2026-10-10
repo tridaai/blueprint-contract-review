@@ -45,6 +45,13 @@ STANDARD_CLAUSES: dict[str, list[str]] = {
     "nda": ["confidentiality", "governing_law", "term_termination"],
     "amendment": ["governing_law"],
     "order_form": ["payment_terms", "term_termination", "liability_cap"],
+    # A standalone DPA is measured on the processor machinery, not
+    # the commercial matrix: security/breach terms, sub-processor
+    # control, transfer mechanisms, audit rights, exit deletion.
+    "dpa": [
+        "data_protection", "subprocessor_terms", "data_transfer",
+        "audit_rights", "data_deletion", "confidentiality",
+    ],
     "general": ["liability_cap", "confidentiality", "governing_law"],
 }
 

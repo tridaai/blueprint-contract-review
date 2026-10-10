@@ -243,6 +243,132 @@ def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdi
                         "processing addendum the rules can find (PB-DP-02).",
                         ["PB-DP-02"])
 
+    if t == "subprocessor_terms":
+        if s.get("no_objection_window"):
+            return _verdict(unit, extraction, "walk_away", 0.9,
+                            "The processor may add or replace sub-processors "
+                            "with no notice and no objection window — a "
+                            "walk-away (PB-SUB-02).",
+                            ["PB-SUB-02"])
+        if s.get("consent_required"):
+            return _verdict(unit, extraction, "preferred", 0.9,
+                            "Sub-processor changes need the controller's "
+                            "prior written consent — beyond the preferred "
+                            "position (PB-SUB-01).",
+                            ["PB-SUB-01"])
+        window = s.get("objection_window_days")
+        if s.get("notice_required") and window is not None and window >= 30:
+            return _verdict(unit, extraction, "preferred", 0.88,
+                            f"Sub-processor changes come with notice and a "
+                            f"{window}-day objection window — the preferred "
+                            "position (PB-SUB-01).",
+                            ["PB-SUB-01"])
+        if s.get("notice_required"):
+            return _verdict(unit, extraction, "acceptable_fallback", 0.8,
+                            "Sub-processor changes are notified in advance, "
+                            "but the objection window is shorter than thirty "
+                            "days or unstated — an acceptable fallback "
+                            "(PB-SUB-01).",
+                            ["PB-SUB-01"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The clause names sub-processors but states no "
+                        "notice, objection, or consent machinery the rules "
+                        "can measure; counsel must read it (PB-SUB-02).",
+                        ["PB-SUB-02"])
+
+    if t == "data_transfer":
+        if s.get("transfer_prohibited"):
+            return _verdict(unit, extraction, "preferred", 0.88,
+                            "The clause prohibits third-country transfers "
+                            "outright — no transfer risk arises (PB-TRF-01).",
+                            ["PB-TRF-01"])
+        if s.get("has_mechanism"):
+            return _verdict(unit, extraction, "preferred", 0.9,
+                            "Transfers rest on a recognised mechanism "
+                            "(standard contractual clauses, an adequacy "
+                            "decision, or an equivalent instrument) — the "
+                            "preferred position (PB-TRF-01).",
+                            ["PB-TRF-01"])
+        if s.get("intra_eea"):
+            return _verdict(unit, extraction, "preferred", 0.85,
+                            "Processing stays within the EEA/EU, so no "
+                            "third-country transfer mechanism is needed "
+                            "(PB-TRF-01).",
+                            ["PB-TRF-01"])
+        if s.get("safeguards_generic"):
+            return _verdict(unit, extraction, "acceptable_fallback", 0.78,
+                            "The clause promises 'appropriate safeguards' "
+                            "without naming the mechanism — an acceptable "
+                            "fallback counsel should pin down (PB-TRF-01).",
+                            ["PB-TRF-01"])
+        if s.get("third_country") or s.get("transfers_worldwide"):
+            return _verdict(unit, extraction, "walk_away", 0.88,
+                            "Personal data may flow to third countries "
+                            "with no transfer mechanism in place — a "
+                            "walk-away (PB-TRF-02).",
+                            ["PB-TRF-02"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The clause addresses transfers but names no "
+                        "mechanism, boundary, or prohibition the rules "
+                        "can measure; counsel must read it (PB-TRF-02).",
+                        ["PB-TRF-02"])
+
+    if t == "audit_rights":
+        if s.get("audit_excluded"):
+            return _verdict(unit, extraction, "walk_away", 0.9,
+                            "The clause excludes audit altogether — a "
+                            "walk-away (PB-AUD-02).",
+                            ["PB-AUD-02"])
+        if s.get("direct_audit"):
+            return _verdict(unit, extraction, "preferred", 0.88,
+                            "The controller holds a direct audit right "
+                            "over the processing — the preferred position "
+                            "(PB-AUD-01).",
+                            ["PB-AUD-01"])
+        if s.get("reports_only"):
+            return _verdict(unit, extraction, "acceptable_fallback", 0.8,
+                            "Assurance runs on third-party reports and "
+                            "certifications only, with no direct audit "
+                            "right — an acceptable fallback (PB-AUD-01).",
+                            ["PB-AUD-01"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The clause touches audit or inspection but "
+                        "grants no right the rules can identify; counsel "
+                        "must read it (PB-AUD-02).",
+                        ["PB-AUD-02"])
+
+    if t == "data_deletion":
+        if s.get("deletion_refused"):
+            return _verdict(unit, extraction, "walk_away", 0.88,
+                            "The processor refuses or is not obliged to "
+                            "delete the personal data — a walk-away "
+                            "(PB-DEL-02).",
+                            ["PB-DEL-02"])
+        if s.get("indefinite_retention"):
+            return _verdict(unit, extraction, "review_required", 0.85,
+                            "Personal data may be retained indefinitely "
+                            "beyond the engagement — counsel review "
+                            "required (PB-DEL-02).",
+                            ["PB-DEL-02"])
+        if s.get("deletion_on_exit") and s.get("controller_choice"):
+            return _verdict(unit, extraction, "preferred", 0.9,
+                            "On exit the data is returned or deleted at "
+                            "the controller's choice — the preferred "
+                            "position (PB-DEL-01).",
+                            ["PB-DEL-01"])
+        if s.get("deletion_on_exit"):
+            return _verdict(unit, extraction, "acceptable_fallback", 0.82,
+                            "Data is returned or deleted on exit, but at "
+                            "the processor's choice rather than the "
+                            "controller's — an acceptable fallback "
+                            "(PB-DEL-01).",
+                            ["PB-DEL-01"])
+        return _verdict(unit, extraction, "review_required", 0.6,
+                        "The clause addresses deletion or retention but "
+                        "states no exit outcome the rules can measure; "
+                        "counsel must read it (PB-DEL-02).",
+                        ["PB-DEL-02"])
+
     if t == "limitation_of_warranty":
         months = s.get("warranty_months")
         if months is not None and months > 12:

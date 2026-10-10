@@ -45,9 +45,15 @@ CONTRACT_TYPE_ALIASES = {
     "order form": "order_form",
     "purchase_order": "order_form",
     "po": "order_form",
+    "dpa": "dpa",
+    "data_processing_addendum": "dpa",
+    "data processing addendum": "dpa",
+    "data_processing_agreement": "dpa",
+    "data processing agreement": "dpa",
+    "data_protection_addendum": "dpa",
 }
 
-CONTRACT_TYPES = {"msa", "sow", "nda", "amendment", "order_form"}
+CONTRACT_TYPES = {"msa", "sow", "nda", "amendment", "order_form", "dpa"}
 
 DOC_TYPE_ALIASES = {
     "agreement": "agreement",
@@ -120,7 +126,7 @@ class DocumentInput(BaseModel):
 
 class ContractInput(BaseModel):
     contract_id: str
-    doc_type: str = "msa"  # msa | sow | nda | amendment | order_form
+    doc_type: str = "msa"  # msa | sow | nda | amendment | order_form | dpa
     supersedes: str = ""  # contract_id of the previous negotiation round this draft replaces
     title: str = ""
     counterparty_name: str = ""
@@ -163,6 +169,14 @@ CLAUSE_TYPES = [
     "payment_terms",
     "governing_law",
     "data_protection",
+    # The standalone-DPA family (doc_type "dpa"): a data processing
+    # addendum reviewed as the primary document gets its own clause
+    # matrix — the processor machinery an MSA's single data
+    # protection clause only points at.
+    "subprocessor_terms",
+    "data_transfer",
+    "audit_rights",
+    "data_deletion",
     "limitation_of_warranty",
     "assignment",
     "other",

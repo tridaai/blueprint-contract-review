@@ -241,6 +241,21 @@ def build_obligations(
                     **ref,
                 ))
 
+        elif extraction.clause_type == "subprocessor_terms":
+            window = _positive(signals.get("objection_window_days"))
+            if window:
+                add(Obligation(
+                    kind="notice_period",
+                    description=(
+                        f"The controller may object to a new or "
+                        f"replacement sub-processor within {window} "
+                        "days of the processor's notice of the change."
+                    ),
+                    detail=f"{window} days' sub-processor objection window",
+                    days=window,
+                    **ref,
+                ))
+
         elif extraction.clause_type == "confidentiality":
             years = _positive(signals.get("duration_years"))
             if years:

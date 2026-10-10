@@ -322,6 +322,193 @@ PLAYBOOK: list[dict] = [
         ),
     },
     {
+        "id": "PB-SUB-01",
+        "title": "Sub-processors — preferred position (standalone DPA)",
+        "clause_type": "subprocessor_terms",
+        "text": (
+            "Preferred (standalone DPA): the processor gives at least thirty "
+            "days' prior written notice of any new or replacement "
+            "sub-processor, the controller may object within that window, "
+            "and a change needing the controller's prior written consent is "
+            "stronger still. The current sub-processor list is maintained "
+            "and available to the controller."
+        ),
+        "fallback_language": (
+            "The Processor shall give the Controller at least thirty (30) "
+            "days' prior written notice of any intended addition or "
+            "replacement of a sub-processor, and the Controller may object "
+            "in writing within that period; the Processor shall not proceed "
+            "with a change while a reasonable objection remains unresolved."
+        ),
+    },
+    {
+        "id": "PB-SUB-02",
+        "title": "Sub-processors — silent changes are a walk-away (standalone DPA)",
+        "clause_type": "subprocessor_terms",
+        "text": (
+            "Review required: a sub-processor clause that states no notice, "
+            "objection, or consent machinery at all. Walk-away: the "
+            "processor may engage or replace sub-processors at its sole "
+            "discretion or without notice — personal data would flow to "
+            "parties the controller never saw. Escalate to senior counsel."
+        ),
+        "fallback_language": (
+            "The Processor shall give the Controller at least thirty (30) "
+            "days' prior written notice of any intended addition or "
+            "replacement of a sub-processor, and the Controller may object "
+            "in writing within that period; the Processor shall not proceed "
+            "with a change while a reasonable objection remains unresolved."
+        ),
+        "walk_away_line": (
+            "Final position on sub-processors: no sub-processor may be added "
+            "or replaced without prior written notice and a thirty (30) day "
+            "objection window. Changes at the processor's sole discretion "
+            "end the negotiation."
+        ),
+    },
+    {
+        "id": "PB-TRF-01",
+        "title": "International transfers — preferred position (standalone DPA)",
+        "clause_type": "data_transfer",
+        "text": (
+            "Preferred (standalone DPA): transfers of personal data to a "
+            "third country rest on a recognised mechanism in place before "
+            "the transfer begins — standard contractual clauses, an "
+            "adequacy decision, or an equivalent instrument. Processing "
+            "that stays within the EEA/EU, and an outright prohibition on "
+            "third-country transfers, are equally preferred."
+        ),
+        "fallback_language": (
+            "The Processor shall not transfer personal data to a third "
+            "country unless a valid transfer mechanism is in place — the "
+            "European Commission's standard contractual clauses, an "
+            "adequacy decision, or another safeguard recognised by "
+            "applicable data protection law — and shall notify the "
+            "Controller before any new transfer begins."
+        ),
+    },
+    {
+        "id": "PB-TRF-02",
+        "title": "International transfers — no mechanism is a walk-away (standalone DPA)",
+        "clause_type": "data_transfer",
+        "text": (
+            "Walk-away: personal data may be transferred to third "
+            "countries with no transfer mechanism in place — the transfer "
+            "itself would be unlawful, not merely unfavourable. Escalate "
+            "to senior counsel and propose the mechanism language. A "
+            "promise of 'appropriate safeguards' with no mechanism named "
+            "is an acceptable fallback only with counsel approval."
+        ),
+        "fallback_language": (
+            "The Processor shall not transfer personal data to a third "
+            "country unless a valid transfer mechanism is in place — the "
+            "European Commission's standard contractual clauses, an "
+            "adequacy decision, or another safeguard recognised by "
+            "applicable data protection law — and shall notify the "
+            "Controller before any new transfer begins."
+        ),
+        "walk_away_line": (
+            "Final position on transfers: no transfer of personal data to "
+            "a third country without a valid transfer mechanism in place "
+            "before the transfer begins. A transfer with no mechanism ends "
+            "the negotiation."
+        ),
+    },
+    {
+        "id": "PB-AUD-01",
+        "title": "Audit rights — preferred position (standalone DPA)",
+        "clause_type": "audit_rights",
+        "text": (
+            "Preferred (standalone DPA): the controller (or its designated "
+            "auditor) holds a direct audit right over the facilities, "
+            "systems, and records relevant to the processing, on "
+            "reasonable notice. Acceptable fallback: assurance through "
+            "current third-party audit reports and certifications (SOC 2, "
+            "ISO 27001) where a direct right is refused — with a direct "
+            "right reviving on a personal-data breach."
+        ),
+        "fallback_language": (
+            "The Controller (or its designated auditor) may, on at least "
+            "thirty (30) days' written notice and no more than once per "
+            "year absent a personal-data breach, audit the Processor's "
+            "facilities, systems, and records relevant to the processing, "
+            "during business hours and subject to reasonable "
+            "confidentiality duties."
+        ),
+    },
+    {
+        "id": "PB-AUD-02",
+        "title": "Audit rights — exclusion is a walk-away (standalone DPA)",
+        "clause_type": "audit_rights",
+        "text": (
+            "Walk-away: the addendum excludes audit altogether (no right "
+            "to audit, inspection barred, a self-issued summary stated to "
+            "be conclusive). A controller who cannot verify the processing "
+            "cannot answer for it. Escalate to senior counsel and propose "
+            "the audit language."
+        ),
+        "fallback_language": (
+            "The Controller (or its designated auditor) may, on at least "
+            "thirty (30) days' written notice and no more than once per "
+            "year absent a personal-data breach, audit the Processor's "
+            "facilities, systems, and records relevant to the processing, "
+            "during business hours and subject to reasonable "
+            "confidentiality duties."
+        ),
+        "walk_away_line": (
+            "Final position on audit: the Controller must hold a real audit "
+            "right — direct audit on reasonable notice, with reports alone "
+            "acceptable only as a fallback. A clause that excludes audit "
+            "ends the negotiation."
+        ),
+    },
+    {
+        "id": "PB-DEL-01",
+        "title": "Return and deletion — preferred position (standalone DPA)",
+        "clause_type": "data_deletion",
+        "text": (
+            "Preferred (standalone DPA): when the processing ends, the "
+            "processor returns all personal data to the controller or "
+            "securely deletes it, AT THE CONTROLLER'S CHOICE, and "
+            "certifies the deletion in writing; backup copies follow "
+            "within a stated short period. Deletion at the processor's "
+            "choice is an acceptable fallback."
+        ),
+        "fallback_language": (
+            "On termination or expiry of the processing, the Processor "
+            "shall, at the Controller's choice, return all personal data "
+            "to the Controller or securely delete it, and shall certify "
+            "the deletion in writing; backup copies shall be deleted "
+            "within thirty (30) days thereafter."
+        ),
+    },
+    {
+        "id": "PB-DEL-02",
+        "title": "Return and deletion — keeping the data is a walk-away (standalone DPA)",
+        "clause_type": "data_deletion",
+        "text": (
+            "Review required: personal data may be retained indefinitely "
+            "beyond the engagement, or on terms the clause does not state. "
+            "Walk-away: the processor refuses, or is not obliged, to "
+            "delete the data — the controller's data would outlive the "
+            "relationship on the processor's say-so. Escalate to senior "
+            "counsel and propose the return-or-delete language."
+        ),
+        "fallback_language": (
+            "On termination or expiry of the processing, the Processor "
+            "shall, at the Controller's choice, return all personal data "
+            "to the Controller or securely delete it, and shall certify "
+            "the deletion in writing; backup copies shall be deleted "
+            "within thirty (30) days thereafter."
+        ),
+        "walk_away_line": (
+            "Final position on exit: personal data is returned or deleted "
+            "at the Controller's choice when the processing ends, and the "
+            "deletion is certified. Keeping the data indefinitely, or "
+            "refusing to delete it, ends the negotiation."
+        ),
+    },
+    {
         "id": "PB-WAR-01",
         "title": "Warranties — preferred position",
         "clause_type": "limitation_of_warranty",

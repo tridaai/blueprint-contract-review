@@ -61,6 +61,25 @@ _TYPE_KEYWORDS: dict[str, list[str]] = {
         "data protection", "personal data", "data processing", "privacy",
         "security measures", "data breach", "sub-processor", "subprocessor", "gdpr",
     ],
+    "subprocessor_terms": [
+        "sub-processors", "sub-processor", "subprocessor", "subprocessors",
+        "new sub-processor", "sub-processor list", "list of sub-processors",
+        "objection period", "engage a sub-processor", "appoint a sub-processor",
+    ],
+    "data_transfer": [
+        "international transfer", "international transfers", "data transfer",
+        "transfer mechanism", "standard contractual clauses", "third country",
+        "adequacy decision", "cross-border", "transfer impact assessment", "sccs",
+    ],
+    "audit_rights": [
+        "audit rights", "right to audit", "audit the processor", "may audit",
+        "conduct audits", "inspection rights", "audit", "inspect",
+    ],
+    "data_deletion": [
+        "data deletion", "deletion of personal data", "delete all personal data",
+        "return or delete", "return of personal data", "certify deletion",
+        "erasure", "deletion", "destruction of personal data",
+    ],
     "limitation_of_warranty": [
         "warranty", "warranties", "as is", "disclaims", "merchantability",
         "fitness for a particular purpose",
@@ -226,6 +245,92 @@ def extract_signals_rules(unit: ClauseUnit, clause_type: str) -> dict:
         if signals["breach_notice_hours"] is None and m and "breach" in text:
             signals["breach_notice_hours"] = int(m.group(1)) * 24
         signals["security_measures"] = "security" in text
+    elif clause_type == "subprocessor_terms":
+        signals["consent_required"] = any(
+            p in text
+            for p in ("prior written consent", "written consent of the controller",
+                      "consent of the controller")
+        )
+        signals["no_objection_window"] = any(
+            p in text
+            for p in (
+                "without prior notice", "without notice to the controller",
+                "at its sole discretion", "at the processor's discretion",
+                "no obligation to notify", "without notifying",
+            )
+        )
+        signals["notice_required"] = bool(
+            re.search(r"(notify|notice|inform)", text)
+        ) and not signals["no_objection_window"]
+        # The objection window is the notice period tied to objecting:
+        # measured only when the clause talks about objections at all.
+        signals["objection_window_days"] = (
+            _notice_days(text) if "object" in text else None
+        )
+    elif clause_type == "data_transfer":
+        signals["sccs"] = "standard contractual clauses" in text or "sccs" in text
+        signals["adequacy"] = "adequacy" in text
+        signals["idta"] = "international data transfer agreement" in text or "idta" in text
+        signals["has_mechanism"] = bool(
+            signals["sccs"] or signals["adequacy"] or signals["idta"]
+        )
+        signals["safeguards_generic"] = "appropriate safeguards" in text
+        signals["intra_eea"] = any(
+            p in text
+            for p in ("within the european economic area", "within the eea",
+                      "within the european union", "within the eu")
+        )
+        signals["transfer_prohibited"] = any(
+            p in text
+            for p in ("shall not transfer", "must not transfer", "may not transfer",
+                      "no transfer of personal data")
+        )
+        signals["third_country"] = "third country" in text or "third countries" in text
+        signals["transfers_worldwide"] = any(
+            p in text
+            for p in ("any country", "any jurisdiction", "worldwide",
+                      "as it sees fit", "wherever it")
+        )
+    elif clause_type == "audit_rights":
+        signals["audit_excluded"] = any(
+            p in text
+            for p in ("no right to audit", "shall not audit", "may not audit",
+                      "no audit rights", "waives any audit", "shall have no right to audit")
+        )
+        signals["direct_audit"] = any(
+            p in text
+            for p in ("right to audit", "may audit", "shall be entitled to audit",
+                      "conduct audits", "audit the processor", "audit its facilities",
+                      "audit the facilities", "inspect the", "right to inspect")
+        ) and not signals["audit_excluded"]
+        signals["reports_only"] = any(
+            p in text
+            for p in ("soc 2", "iso 27001", "audit reports", "third-party reports",
+                      "summary letter", "certification reports")
+        ) and not signals["direct_audit"]
+        signals["notice_days"] = _notice_days(text)
+    elif clause_type == "data_deletion":
+        signals["deletion_on_exit"] = bool(
+            ("delete" in text or "return" in text)
+            and ("termination" in text or "expiry" in text or "expiration" in text)
+        )
+        signals["controller_choice"] = any(
+            p in text
+            for p in ("controller's choice", "controller's election",
+                      "choice of the controller", "as instructed by the controller",
+                      "at the election of the controller")
+        )
+        signals["indefinite_retention"] = any(
+            p in text
+            for p in ("indefinitely", "indefinite period", "retain all personal data",
+                      "retain copies indefinitely")
+        )
+        signals["deletion_refused"] = any(
+            p in text
+            for p in ("shall not delete", "will not delete", "may refuse to delete",
+                      "not obliged to delete", "no obligation to delete")
+        )
+        signals["deletion_certified"] = "certif" in text and "delet" in text
     elif clause_type == "limitation_of_warranty":
         m = re.search(r"(\d+)\s*months?", text)
         signals["warranty_months"] = int(m.group(1)) if m and "warrant" in text else None

@@ -62,9 +62,9 @@ def _gap_service() -> ContractService:
 
 
 def test_nearest_covered_type_by_shared_name_tokens():
-    donor, basis = nearest_covered_type("data_transfer")
-    assert donor == "data_protection"
-    assert "data" in basis
+    donor, basis = nearest_covered_type("confidentiality_breach")
+    assert donor == "confidentiality"
+    assert "confidentiality" in basis
     donor, basis = nearest_covered_type("other")
     # No family shares a token with "other": the largest covered
     # family (liability_cap, 3 entries) donates its shape, and the
@@ -75,15 +75,15 @@ def test_nearest_covered_type_by_shared_name_tokens():
 
 def test_related_donor_carries_its_language_labelled_as_adapted():
     proposal = draft_playbook_proposal(
-        "data_transfer", flagged=3, without_fallback=3
+        "confidentiality_breach", flagged=3, without_fallback=3
     )
-    assert proposal.based_on_type == "data_protection"
+    assert proposal.based_on_type == "confidentiality"
     by_id = {e.id: e for e in proposal.entries}
-    fallback = by_id["PROP-DATA-TRANSFER-02"]
-    assert "seventy-two (72) hours" in fallback.fallback_language  # PB-DP-01's
-    assert "adapted from PB-DP-01" in fallback.text
-    walk = by_id["PROP-DATA-TRANSFER-03"]
-    assert "seventy-two (72) hours" in walk.walk_away_line  # PB-DP-02's line
+    fallback = by_id["PROP-CONFIDENTIALITY-BREACH-02"]
+    assert "five (5) years" in fallback.fallback_language  # PB-CON-01's
+    assert "adapted from PB-CON-01" in fallback.text
+    walk = by_id["PROP-CONFIDENTIALITY-BREACH-03"]
+    assert "Final position on confidentiality" in walk.walk_away_line  # PB-CON-02's
 
 
 def test_unrelated_donor_carries_structure_only():
