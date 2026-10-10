@@ -92,12 +92,16 @@ def test_no_existing_commercial_sample_gains_a_phantom_covenant(samples):
     # The boilerplate guard, over the whole commercial set: a
     # non-exclusive licence and an exclusive-jurisdiction
     # clause are not covenants, and no commercial sample in the
-    # set states one — so none registers one.
+    # set states one — so none registers one. The samples that
+    # DO state covenants are named: CTR-2038/2039 (round 18's
+    # chain) and CTR-2040/2041/2042 (round 19's master + SOWs).
     for contract in samples.values():
         if contract.doc_type == "employment":
             continue
         result = _run(contract)
-        if contract.contract_id in ("CTR-2038", "CTR-2039"):
+        if contract.contract_id in (
+            "CTR-2038", "CTR-2039", "CTR-2040", "CTR-2041", "CTR-2042",
+        ):
             continue
         assert _covenants(result.obligations) == {}, contract.contract_id
 
