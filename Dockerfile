@@ -16,7 +16,8 @@ COPY pyproject.toml constraints.txt README.md ./
 COPY src ./src
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install -c constraints.txt ".[llm]"
+    && /opt/venv/bin/pip install -r constraints.txt \
+    && /opt/venv/bin/pip install --no-deps ".[llm]"
 
 FROM python:3.12-slim AS runtime
 
