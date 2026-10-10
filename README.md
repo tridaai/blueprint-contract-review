@@ -73,7 +73,17 @@ For each contract, the pipeline:
    processor the list engages must be one the clause authorises
    (a processor the clause never named is undeclared), and where
    the transfer clause confines processing to the EEA/EU, no
-   listed processor may sit outside it.
+   listed processor may sit outside it. The newest family checks
+   **prior-invention schedules**: an employment assignment that
+   excludes inventions listed on a schedule of prior inventions
+   makes that schedule load-bearing — promised but absent is
+   `exhibit_missing`, and where a schedule is attached and lists
+   inventions, an assignment clause that never excludes them
+   would swallow them (a `mismatch`). And across rounds of a
+   chain, the sub-processor annex is **diffed** — processors
+   added, removed, or moved — with any addition read against the
+   notice clock: one that first appears inside the promised
+   notice window is a finding, not just a change.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -195,7 +205,12 @@ line also carries its **origin** — the join with the decision's
 own edit outcomes: sent intact, modified by counsel, or rejected
 at counsel's desk before the counterparty ever saw it — and the
 profile aggregates held rates by origin, so "the line keeps being
-lost" resolves into whose desk loses it.
+lost" resolves into whose desk loses it. The negotiation brief
+reads those origins back as **line-provenance warnings** ahead
+of its proposed edits — lines counsel's desk moved, lines the
+counterparty moved anyway, and the desk's own pattern where
+most of a type's decided lines were counsel-modified and the
+current packet proposes the playbook's line for it again.
 
 **Pattern-term calibration.** The pattern term's six points are a
 stated guess, so the guess is audited: a calibration report
@@ -205,7 +220,12 @@ ever actually decided which option the packet recommended, and
 what counsel did with those escalations on decided records. A
 type whose term was applied repeatedly and decided nothing is
 flagged a calibration candidate — for counsel. The report
-proposes; it changes nothing.
+proposes; it changes nothing. Counsel can act on a candidate:
+**suspend** the term for that type (a named act, reason
+required, reversible by a recorded lift), and the scorer stops
+applying it to the type while the report reads the type as
+suspended — who set it aside, when, and why — instead of
+re-flagging it every run.
 
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
@@ -357,8 +377,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 308 tests (307 run + 1 Postgres-gated skip)
-make evals                 # golden set: 76/76 (gate ≥ 95%)
+make test                  # 344 tests (343 run + 1 Postgres-gated skip)
+make evals                 # golden set: 82/82 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -416,7 +436,7 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 77 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 82 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
 DPA family and 8 for the employment family), 19 document-level
 (posture, per-type positions, absence detection, injection flags,
@@ -424,14 +444,17 @@ information requests, repair behaviour — the clean and
 adversarial DPAs and employment drafts among them), 1
 negotiation-round case (verdict movement between the CTR-2014/
 CTR-2015 round pair), 1 round-chain case (re-trades and cumulative
-movement across CTR-2014 → 2016), and 10 exhibit-consistency cases
+movement across CTR-2014 → 2016), and 15 exhibit-consistency cases
 (the CTR-2017 DPA mismatch pair, the CTR-2018 consistent pair,
 the no-exhibit-promises case, the CTR-2019/2020 order-form pair,
 the CTR-2021/2022 SOW pair, the CTR-2027/2028
-insurance-certificate pair, and CTR-2029 — the certificate that
-passes review and is then caught by the renewal watch).
+insurance-certificate pair, CTR-2029 — the certificate that
+passes review and is then caught by the renewal watch, the
+CTR-2030/2031 sub-processor pair, and the prior-invention trio:
+CTR-2025's promised-but-absent schedule, CTR-2032's swallowed
+schedule, CTR-2033's clean one).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 79/79).
+gate is ≥ 95% (currently 82/82).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
@@ -440,7 +463,7 @@ drafts and calling that an LLM result.
 
 ```
 src/contract_agent/   the package (pipeline, AI layer, guardrails, infra)
-migrations/           numbered SQL migrations (records, playbook vectors, proposals)
+migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions)
 evals/                golden set + deterministic runner + opt-in judge pack
 tests/                hermetic pytest suite (in-memory doubles)
 docs/architecture.md  the full pipeline + production topology

@@ -154,6 +154,43 @@ states no locations cannot be checked and reports
 three of its own DPA's terms) and CTR-2031 (an annex that honours
 them) pin the family in the CTR-2023/2024 lineage.
 
+**Prior-invention schedule exhibits** (`exhibit_review.py`,
+round 11). A sixth family, in the employment lineage: an
+invention assignment that excludes "inventions listed on the
+schedule of prior inventions" makes the schedule load-bearing —
+the employee's pre-existing work stays theirs only if the
+schedule exists and names it. Two checks, generated when an
+`ip_assignment` clause relies on such a schedule or one is
+attached: `prior_invention_schedule` (the schedule must be in
+the package and list inventions — promised but absent is
+`exhibit_missing`, attached but empty `missing_in_exhibit`) and
+`prior_invention_exclusion` (read back against an attached,
+non-empty schedule: an assignment clause that never excludes
+the scheduled inventions would swallow them — a `mismatch`).
+CTR-2025's clean offer letter now shows the first finding,
+honestly: its exclusion points at a schedule nobody attached.
+Samples CTR-2032 (schedule attached, assignment swallows it)
+and CTR-2033 (schedule attached and excluded — clean) pin the
+family, with eval cases X13–X15.
+
+**Sub-processor list drift** (`subprocessor_drift.py`, round
+11). The annex is a living list, so the single-round checks are
+joined by a cross-round one: consecutive rounds of a chain have
+their annexes diffed like clauses are — processors **added**,
+**removed**, or **moved** (same processor, different stated
+location) — and an addition is read against the notice clock:
+it first appears in this round, so if this round was received
+fewer days after the previous round than the notice period the
+clause promises, the promised notice cannot have run — a
+finding (`mismatch`), not just a change. Changes that break
+nothing are still reported, as `consistent` with the movement
+spelled out: drift is information, the notice violation is the
+contradiction. The check rides on the result separately from
+the single-round exhibit checks (attached by the service after
+the run, like the round diff — the comparison needs the prior
+round's stored package) and surfaces in the brief's exhibit
+findings and the console's exhibit table.
+
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
 can paste. Each flagged clause's tier language is aligned against
@@ -303,6 +340,22 @@ fact behind every future tier policy: a line the counterparty
 keeps moving and a line counsel keeps giving up look identical in
 the outcome counts until the origin is joined.
 
+**Line provenance in the brief** (`brief.py`, round 11). The
+origin join is read back where counsel can still act on it: the
+negotiation brief gains a **Line provenance** section ahead of
+its proposed edits, warning — per decided line — when counsel's
+own desk modified the line before it went out (with what the
+follow-up then did with the settled language), when counsel
+rejected the line's edit outright (the line never reached the
+counterparty; read its outcome with that provenance), and when
+a line went out intact and the counterparty moved it anyway
+(provenance clean; the movement is theirs). Where most of a
+clause type's decided lines in the chain were counsel-modified
+and the current packet again proposes the playbook's line for
+that type, the brief names the desk's own pattern while the
+choice is still counsel's. New warnings also surface in the
+since-the-last-brief delta.
+
 **Negotiation brief** (`brief.py`). One markdown document per
 chain, assembled in code from the stored results — never
 model-composed, so every figure traces to a record: the
@@ -397,6 +450,26 @@ with the headline in `/metrics`. The report proposes; it changes
 nothing. The cap moves only when a human moves it, with this
 evidence on the table — the playbook-proposal discipline applied
 to the scorer itself.
+
+**Acting on a candidate** (`calibration_store.py`,
+`migrations/0004_pattern_term_suspensions.sql`, round 11). The
+loop closes the way the proposals' loop does: counsel may
+**suspend** the pattern term for a flagged clause type — a named
+act requiring a reason, both stamped on the suspension record —
+and from the next analysis the scorer does not apply the term
+to that type (the service filters the chain's pattern types
+through the active suspensions before scoring). The calibration
+report then reads the type as **suspended**, naming who set it
+aside, when, and why, instead of re-flagging it as a candidate
+every run; the historical facts the act was taken on are
+reported as they stand. The suspension is reversible by a
+recorded **lift**, with both acts kept on the one record, so why
+the scorer treats a type as it does is always answerable. The
+cap itself never moves — only its application to one type is
+set aside. Suspensions live in their own store, PostgreSQL in
+production, and surface at
+`GET /options/pattern-calibration/suspensions`, in the report,
+in `/metrics`, and in the console's calibration panel.
 
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
