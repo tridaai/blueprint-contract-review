@@ -48,3 +48,7 @@
 {"case_id": "X01", "kind": "exhibit", "contract_id": "CTR-2017", "expected_checks": 2, "expected_failed": {"breach_notice_window": "mismatch", "subprocessor_list": "missing_in_exhibit"}, "expected_posture": "negotiable"}
 {"case_id": "X02", "kind": "exhibit", "contract_id": "CTR-2018", "expected_checks": 2, "expected_failed": {}, "expected_posture": "aligned"}
 {"case_id": "X03", "kind": "exhibit", "contract_id": "CTR-2001", "expected_checks": 0, "expected_failed": {}, "expected_posture": "aligned"}
+{"case_id": "X04", "kind": "exhibit", "contract_id": "CTR-2019", "expected_checks": 3, "expected_failed": {}, "expected_posture": "aligned"}
+{"case_id": "X05", "kind": "exhibit", "contract_id": "CTR-2020", "expected_checks": 3, "expected_failed": {"order_form_payment_terms": "mismatch", "order_form_term": "mismatch"}, "expected_posture": "negotiable"}
+{"case_id": "X06", "kind": "exhibit", "contract_id": "CTR-2021", "expected_checks": 3, "expected_failed": {}, "expected_posture": "negotiable"}
+{"case_id": "X07", "kind": "exhibit", "contract_id": "CTR-2022", "expected_checks": 3, "expected_failed": {"sow_delivery_dates": "missing_in_exhibit", "sow_acceptance_period": "mismatch"}, "expected_posture": "negotiable"}

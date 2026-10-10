@@ -24,11 +24,35 @@ def missing_items(facts: ContractFacts) -> list[str]:
     for exhibit in facts.exhibits_missing:
         items.append(f"Exhibit {exhibit}, which the agreement references but the package does not include")
     if facts.exhibit_absent:
-        items.append(
-            "the Data Processing Addendum exhibit the agreement's data "
-            "protection clause relies on for its breach-notification "
-            "window and sub-processor list"
-        )
+        # Ask for the missing exhibit by the family that is actually
+        # absent (facts carry the exhibit_missing check names) — a
+        # missing order form is not a missing DPA.
+        missing = set(facts.exhibit_missing_checks)
+        named = False
+        if missing & {"breach_notice_window", "subprocessor_list"}:
+            items.append(
+                "the Data Processing Addendum exhibit the agreement's data "
+                "protection clause relies on for its breach-notification "
+                "window and sub-processor list"
+            )
+            named = True
+        if "order_form_fees_total" in missing:
+            items.append(
+                "the order form the agreement's payment clause relies "
+                "on for the fees payable"
+            )
+            named = True
+        if missing & {"sow_deliverables", "sow_delivery_dates", "sow_acceptance_period"}:
+            items.append(
+                "the Statement of Work the agreement relies on for the "
+                "deliverables and delivery dates"
+            )
+            named = True
+        if not named:
+            items.append(
+                "an exhibit the agreement relies on, which the package "
+                "does not include"
+            )
     if not facts.signature_pages_present:
         items.append("the signature pages for the agreement")
     return items

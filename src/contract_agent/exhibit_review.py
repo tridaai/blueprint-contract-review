@@ -25,6 +25,24 @@ Processing Addendum between the parties") with no exhibit attached
 and none promised generates no checks — the DPA's absence there is
 already the clause verdict's business, and this module does not
 double-flag it.
+
+Two more families follow the same discipline (round 5):
+
+- **Order forms.** When the payment clause ties the fees to an order
+  form / schedule, the order form must state the total it charges
+  (``order_form_fees_total``). When the order form restates payment
+  terms or a term of its own, those restatements are checked against
+  the agreement's (``order_form_payment_terms``, ``order_form_term``)
+  — an order form that quietly moves Net 30 to Net 60, or a 12-month
+  term to 24, contradicts the agreement it is issued under. A silent
+  order form asserts nothing, so silence alone generates no check:
+  the agreement's terms govern.
+- **Statements of work.** When the agreement ties deliverables to
+  statements of work, an attached SOW must actually list its
+  deliverables and state delivery dates (``sow_deliverables``,
+  ``sow_delivery_dates``), and an acceptance period it states is
+  checked against the agreement's acceptance window
+  (``sow_acceptance_period``).
 """
 
 from __future__ import annotations
@@ -41,6 +59,19 @@ _NUMBERED_LINE = re.compile(r"^\s*\d+[.)]\s+(.+)$", re.M)
 _SUBPROCESSOR = re.compile(r"sub-?processors?", re.I)
 _WITHIN_HOURS = re.compile(r"within\s+(\d+)\s*hours", re.I)
 _WITHIN_DAYS = re.compile(r"within\s+(\d+)\s*(?:business\s+)?days", re.I)
+_ORDER_FORM_DOC = re.compile(r"order form", re.I)
+_SOW_DOC = re.compile(r"statement of work|\bSOW\b", re.I)
+_MONEY = re.compile(r"(?:USD|US\$|\$|£|€)\s?\d[\d,]*(?:\.\d{2})?")
+_NET_DAYS = re.compile(r"net\s*\(?(\d+)\)?", re.I)
+_DAYS_COUNT = re.compile(r"\(?(\d+)\)?\s*(?:business\s+)?days", re.I)
+_MONTHS_COUNT = re.compile(r"\(?(\d+)\)?\s*(months?|years?)", re.I)
+_DATE_STATED = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}\b"
+    r"|\b(?:January|February|March|April|May|June|July|August|September|"
+    r"October|November|December)\s+\d{1,2},?\s+\d{4}\b"
+    r"|\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
+    r"September|October|November|December)\s+\d{4}\b"
+)
 
 
 def _dpa_exhibit_promised(clause_text: str) -> bool:
@@ -83,20 +114,60 @@ def _breach_window_hours(exhibit_text: str) -> int | None:
     return None
 
 
+def _list_item_count(text: str) -> int:
+    """How many list-shaped items a document carries: bullet lines,
+    plus numbered lines that are single short items — a numbered
+    section paragraph ("3. Breach notification. The Provider shall
+    notify...") is prose, not a list entry."""
+    bullets = len(_BULLET_LINE.findall(text))
+    items = [
+        entry
+        for entry in _NUMBERED_LINE.findall(text)
+        if ". " not in entry and len(entry) <= 80
+    ]
+    return bullets + len(items)
+
+
 def _has_subprocessor_list(exhibit_text: str) -> bool:
     """A list is a list: the exhibit names its sub-processors as
-    items, not as a passing mention. Bullets count directly; a
-    numbered line counts only when it is a single short item — a
-    numbered section paragraph ("3. Breach notification. The
-    Provider shall notify...") is prose, not a list entry."""
-    if len(_BULLET_LINE.findall(exhibit_text)) >= 2:
-        return True
-    items = [
-        text
-        for text in _NUMBERED_LINE.findall(exhibit_text)
-        if ". " not in text and len(text) <= 80
-    ]
-    return len(items) >= 2
+    items, not as a passing mention."""
+    return _list_item_count(exhibit_text) >= 2
+
+
+def _find_schedule_document(contract: ContractInput, marker: re.Pattern):
+    """The attached exhibit/schedule whose text matches ``marker``."""
+    for doc in contract.documents:
+        if doc.doc_type in {"exhibit", "schedule"} and doc.raw_text.strip():
+            if marker.search(doc.raw_text):
+                return doc
+    return None
+
+
+def _months_near(text: str, anchor: str) -> int | None:
+    """A duration in months stated in a sentence containing
+    ``anchor`` (years convert at 12). None when no such sentence
+    states one."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n", text):
+        if anchor not in sentence.lower():
+            continue
+        m = _MONTHS_COUNT.search(sentence)
+        if m:
+            value = int(m.group(1))
+            return value * 12 if m.group(2).startswith("year") else value
+    return None
+
+
+def _acceptance_days(text: str) -> int | None:
+    """The acceptance window a text states, in days: a sentence
+    about accepting (deliverables, work) that carries a day count."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n", text):
+        lower = sentence.lower()
+        if "accept" not in lower:
+            continue
+        m = _DAYS_COUNT.search(sentence)
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def build_exhibit_checks(
@@ -207,6 +278,318 @@ def build_exhibit_checks(
             exhibit_document_id=exhibit.document_id or exhibit.doc_type,
             promised=promised,
             found=found,
+            status=status,
+            detail=detail,
+        ))
+    checks.extend(_order_form_checks(contract, units, extractions))
+    checks.extend(_sow_checks(contract, units, extractions))
+    return checks
+
+
+# ---------------------------------------------------------------------------
+# Order forms: the schedule must charge what the agreement says it charges
+# ---------------------------------------------------------------------------
+
+
+def _order_form_total(text: str) -> str:
+    """The total an order form states: a money amount on a line that
+    says "total". "" when the document states amounts but no total,
+    or no amounts at all (the caller distinguishes via the text)."""
+    for line in text.splitlines():
+        if "total" in line.lower():
+            m = _MONEY.search(line)
+            if m:
+                return m.group(0)
+    return ""
+
+
+def _order_form_checks(
+    contract: ContractInput,
+    units,
+    extractions: list[ClauseExtraction],
+) -> list[ExhibitCheck]:
+    """Order-form checks: generated from the payment clause's tie to
+    the order form, and from whatever the order form itself asserts."""
+    unit_text = {u.clause_id: u.text or "" for u in units}
+    payment = next(
+        (e for e in extractions if e.clause_type == "payment_terms"), None
+    )
+    if payment is None:
+        return []
+    clause_text = unit_text.get(payment.clause_id, "")
+    lower = clause_text.lower()
+    fees_tied = "order form" in lower or (
+        "schedule" in lower and ("fee" in lower or "charge" in lower)
+    )
+    doc = _find_schedule_document(contract, _ORDER_FORM_DOC)
+    checks: list[ExhibitCheck] = []
+    doc_id = (doc.document_id or doc.doc_type) if doc else ""
+
+    if fees_tied:
+        expectation = (
+            "The payment clause sets the fees by the order form; the "
+            "order form must state the total it charges."
+        )
+        if doc is None:
+            checks.append(ExhibitCheck(
+                name="order_form_fees_total",
+                expectation=expectation,
+                promised="fees total in the order form",
+                status="exhibit_missing",
+                detail=(
+                    "The payment clause ties the fees to an order form, "
+                    "but no order form is in the package — the amount "
+                    "payable cannot be checked against anything."
+                ),
+            ))
+        else:
+            total = _order_form_total(doc.raw_text)
+            if total:
+                checks.append(ExhibitCheck(
+                    name="order_form_fees_total",
+                    expectation=expectation,
+                    exhibit_document_id=doc_id,
+                    promised="fees total in the order form",
+                    found=total,
+                    status="consistent",
+                    detail=(
+                        f"The order form states a total of {total}, as "
+                        "the payment clause relies on it doing."
+                    ),
+                ))
+            else:
+                checks.append(ExhibitCheck(
+                    name="order_form_fees_total",
+                    expectation=expectation,
+                    exhibit_document_id=doc_id,
+                    promised="fees total in the order form",
+                    found="amounts itemised, no total" if _MONEY.search(doc.raw_text) else "",
+                    status="missing_in_exhibit",
+                    detail=(
+                        "The order form itemises amounts but states no "
+                        "total — the figure the payment clause relies "
+                        "on is not there to check."
+                        if _MONEY.search(doc.raw_text)
+                        else "The order form states no fees at all — "
+                        "the total the payment clause relies on is "
+                        "not there."
+                    ),
+                ))
+    if doc is None:
+        return checks
+
+    # Restatements: only checked when the order form makes them —
+    # silence asserts nothing and the agreement's terms govern.
+    net_days = (payment.signals or {}).get("net_days")
+    stated_net = _NET_DAYS.search(doc.raw_text)
+    if isinstance(net_days, int) and net_days > 0 and stated_net:
+        stated = int(stated_net.group(1))
+        if stated == net_days:
+            status, detail = (
+                "consistent",
+                f"The order form's Net {stated} matches the payment "
+                f"clause's Net {net_days}.",
+            )
+        else:
+            status, detail = (
+                "mismatch",
+                f"The order form states Net {stated}, but the payment "
+                f"clause states Net {net_days} — the order form "
+                "contradicts the agreement it is issued under.",
+            )
+        checks.append(ExhibitCheck(
+            name="order_form_payment_terms",
+            expectation=(
+                "An order form that restates payment terms must restate "
+                "the agreement's; the agreement governs where they differ."
+            ),
+            exhibit_document_id=doc_id,
+            promised=f"Net {net_days}",
+            found=f"Net {stated}",
+            status=status,
+            detail=detail,
+        ))
+
+    term = next(
+        (e for e in extractions if e.clause_type == "term_termination"), None
+    )
+    if term is not None:
+        msa_months = _months_near(unit_text.get(term.clause_id, ""), "initial term")
+        form_months = _months_near(doc.raw_text, "term")
+        if msa_months and form_months:
+            if form_months == msa_months:
+                status, detail = (
+                    "consistent",
+                    f"The order form's {form_months}-month term matches "
+                    f"the agreement's initial term of {msa_months} months.",
+                )
+            else:
+                status, detail = (
+                    "mismatch",
+                    f"The order form states a term of {form_months} "
+                    f"months, but the agreement's initial term is "
+                    f"{msa_months} months — the order form runs longer "
+                    "than the agreement it is issued under."
+                    if form_months > msa_months
+                    else f"The order form states a term of {form_months} "
+                    f"months, but the agreement's initial term is "
+                    f"{msa_months} months.",
+                )
+            checks.append(ExhibitCheck(
+                name="order_form_term",
+                expectation=(
+                    "An order form that states its own term must state "
+                    "the agreement's initial term; it cannot extend "
+                    "the agreement by itself."
+                ),
+                exhibit_document_id=doc_id,
+                promised=f"{msa_months} months",
+                found=f"{form_months} months",
+                status=status,
+                detail=detail,
+            ))
+    return checks
+
+
+# ---------------------------------------------------------------------------
+# Statements of work: deliverables and dates the agreement relies on
+# ---------------------------------------------------------------------------
+
+
+def _sow_checks(
+    contract: ContractInput,
+    units,
+    extractions: list[ClauseExtraction],
+) -> list[ExhibitCheck]:
+    """SOW checks: generated when the agreement ties deliverables to
+    statements of work, checked against the attached SOW document."""
+    unit_text = {u.clause_id: u.text or "" for u in units}
+    tied_text = ""
+    for extraction in extractions:
+        text = unit_text.get(extraction.clause_id, "")
+        lower = text.lower()
+        if ("statement of work" in lower or "sow" in lower) and "deliverab" in lower:
+            tied_text = text
+            break
+    doc = _find_schedule_document(contract, _SOW_DOC)
+    if not tied_text and doc is None:
+        return []
+    doc_id = (doc.document_id or doc.doc_type) if doc else ""
+    promised = "attached" in tied_text.lower() and (
+        "exhibit" in tied_text.lower() or "schedule" in tied_text.lower()
+    )
+    checks: list[ExhibitCheck] = []
+
+    deliverables_expectation = (
+        "The agreement ties the deliverables to each statement of "
+        "work; the SOW must list the deliverables it commits to."
+    )
+    dates_expectation = (
+        "The agreement relies on each statement of work to state its "
+        "delivery dates; the SOW must carry at least one explicit date."
+    )
+    if doc is None:
+        if not promised:
+            return []
+        for name, expectation, promised_value in (
+            ("sow_deliverables", deliverables_expectation, "deliverables list in the SOW"),
+            ("sow_delivery_dates", dates_expectation, "delivery dates in the SOW"),
+        ):
+            checks.append(ExhibitCheck(
+                name=name,
+                expectation=expectation,
+                promised=promised_value,
+                status="exhibit_missing",
+                detail=(
+                    "The agreement ties this to a statement of work "
+                    "attached as an exhibit/schedule, but no SOW is in "
+                    "the package — there is nothing to check against."
+                ),
+            ))
+        return checks
+
+    if _list_item_count(doc.raw_text) >= 2 or re.search(
+        r"^\s*deliverable\b", doc.raw_text, re.I | re.M
+    ):
+        checks.append(ExhibitCheck(
+            name="sow_deliverables",
+            expectation=deliverables_expectation,
+            exhibit_document_id=doc_id,
+            promised="deliverables list in the SOW",
+            found="deliverables listed",
+            status="consistent",
+            detail="The SOW lists its deliverables as items, as the agreement relies on it doing.",
+        ))
+    else:
+        checks.append(ExhibitCheck(
+            name="sow_deliverables",
+            expectation=deliverables_expectation,
+            exhibit_document_id=doc_id,
+            promised="deliverables list in the SOW",
+            found="deliverables mentioned, no list" if "deliverab" in doc.raw_text.lower() else "",
+            status="missing_in_exhibit",
+            detail=(
+                "The SOW mentions deliverables but lists none — a "
+                "mention is not the list the agreement relies on."
+                if "deliverab" in doc.raw_text.lower()
+                else "The SOW names no deliverables at all — the list "
+                "the agreement relies on is not there."
+            ),
+        ))
+
+    date_match = _DATE_STATED.search(doc.raw_text)
+    if date_match:
+        checks.append(ExhibitCheck(
+            name="sow_delivery_dates",
+            expectation=dates_expectation,
+            exhibit_document_id=doc_id,
+            promised="delivery dates in the SOW",
+            found=date_match.group(0),
+            status="consistent",
+            detail=(
+                f"The SOW states explicit delivery dates (first: "
+                f"{date_match.group(0)}), as the agreement relies on."
+            ),
+        ))
+    else:
+        checks.append(ExhibitCheck(
+            name="sow_delivery_dates",
+            expectation=dates_expectation,
+            exhibit_document_id=doc_id,
+            promised="delivery dates in the SOW",
+            found="",
+            status="missing_in_exhibit",
+            detail=(
+                "The SOW states no delivery date anywhere — the "
+                "schedule the agreement relies on is not there."
+            ),
+        ))
+
+    msa_days = _acceptance_days(contract.agreement_text())
+    sow_days = _acceptance_days(doc.raw_text)
+    if msa_days and sow_days:
+        if sow_days == msa_days:
+            status, detail = (
+                "consistent",
+                f"The SOW's {sow_days}-day acceptance period matches "
+                f"the agreement's {msa_days} days.",
+            )
+        else:
+            status, detail = (
+                "mismatch",
+                f"The SOW states an acceptance period of {sow_days} "
+                f"days, but the agreement allows {msa_days} — the SOW "
+                "contradicts the agreement it is issued under.",
+            )
+        checks.append(ExhibitCheck(
+            name="sow_acceptance_period",
+            expectation=(
+                "An SOW that states its own acceptance period must "
+                "state the agreement's; the agreement governs."
+            ),
+            exhibit_document_id=doc_id,
+            promised=f"{msa_days} days",
+            found=f"{sow_days} days",
             status=status,
             detail=detail,
         ))

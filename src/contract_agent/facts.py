@@ -123,7 +123,10 @@ def compute_facts(
         c for c in (exhibit_checks or []) if c.status != "consistent"
     ]
     exhibit_mismatches = sorted({c.name for c in failed_checks})
-    exhibit_absent = any(c.status == "exhibit_missing" for c in failed_checks)
+    exhibit_missing_checks = sorted(
+        {c.name for c in failed_checks if c.status == "exhibit_missing"}
+    )
+    exhibit_absent = bool(exhibit_missing_checks)
     if exhibit_mismatches and posture == "aligned":
         posture = "negotiable"
 
@@ -144,6 +147,7 @@ def compute_facts(
         exhibits_referenced=referenced,
         exhibits_missing=exhibits_missing,
         exhibit_mismatches=exhibit_mismatches,
+        exhibit_missing_checks=exhibit_missing_checks,
         exhibit_absent=exhibit_absent,
         signature_pages_present=signature_present,
         package_complete=not exhibits_missing and not exhibit_absent,

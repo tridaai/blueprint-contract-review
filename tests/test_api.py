@@ -26,7 +26,7 @@ def test_console_and_samples():
     assert "Contract Review Agent" in console.text
     samples = client.get("/samples")
     assert samples.status_code == 200
-    assert len(samples.json()) == 18
+    assert len(samples.json()) == 22
     playbook = client.get("/playbook")
     assert playbook.status_code == 200
     assert len(playbook.json()) >= 20

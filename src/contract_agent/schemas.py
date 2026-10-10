@@ -377,7 +377,7 @@ class ExhibitCheck(BaseModel):
     different) | missing_in_exhibit (the exhibit is silent on it) |
     exhibit_missing (the promised exhibit is not in the package)."""
 
-    name: str  # breach_notice_window | subprocessor_list
+    name: str  # breach_notice_window | subprocessor_list | order_form_fees_total | order_form_payment_terms | order_form_term | sow_deliverables | sow_delivery_dates | sow_acceptance_period
     expectation: str = ""
     exhibit_document_id: str = ""  # "" when no DPA exhibit is attached
     promised: str = ""  # the value as the clause states it
@@ -404,6 +404,7 @@ class ContractFacts(BaseModel):
     exhibits_referenced: list[str] = Field(default_factory=list)
     exhibits_missing: list[str] = Field(default_factory=list)
     exhibit_mismatches: list[str] = Field(default_factory=list)  # failed exhibit-check names
+    exhibit_missing_checks: list[str] = Field(default_factory=list)  # failed names whose status is exhibit_missing
     exhibit_absent: bool = False  # a promised exhibit is not in the package at all
     signature_pages_present: bool = False
     package_complete: bool = True
