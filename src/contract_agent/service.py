@@ -1760,7 +1760,18 @@ class ContractService:
         its own window, not the obligations ``days``) draws one
         ``certificate_expiring`` event, so cover that passed review
         and lapses mid-term is announced by the same machinery.
-        **Report-only by design**: the
+
+        Restrictive-covenant expiries are announced distinctly
+        (round 15): a due ``non_compete`` / ``non_solicit`` entry
+        draws a ``covenant_expiring`` event, not an
+        ``obligation_due``. The date on a covenant is the day a
+        restriction LIFTS — operationally the opposite of a duty
+        falling due — and consumers route the two differently:
+        "a former employee may now be hired" is not "a notice
+        deadline is near". The event carries the covenant kind
+        and ``effect: restriction_lapses``; the report counts
+        covenant announcements separately and lists them under
+        ``covenants``. **Report-only by design**: the
         sweep emits events to the configured sink and returns a
         report — it sends nothing to any counterparty or counsel
         address itself. Delivery (email, ticket, queue) is the
@@ -1770,11 +1781,35 @@ class ContractService:
         from datetime import date as _date
 
         from .events import NullSink, RunEvent
+        from .obligations import COVENANT_KINDS
 
         today = today or _date.today()
         due = self.obligations_due(days=days, today=today)
         sink = event_sink if event_sink is not None else NullSink()
+        covenants: list[dict] = []
         for row in due["obligations"]:
+            if row["kind"] in COVENANT_KINDS:
+                covenants.append(row)
+                sink.emit(
+                    RunEvent(
+                        type="covenant_expiring",
+                        contract_id=row["contract_id"],
+                        detail={
+                            "via": "deadline_sweep",
+                            "kind": row["kind"],
+                            "effect": "restriction_lapses",
+                            "date": row["date"],
+                            "days_until": row["days_until"],
+                            "overdue": row["overdue"],
+                            "computed": row["computed"],
+                            "description": row["description"],
+                            "source_clause_id": row["source_clause_id"],
+                            "counterparty_name": row["counterparty_name"],
+                            "contract_status": row["status"],
+                        },
+                    )
+                )
+                continue
             sink.emit(
                 RunEvent(
                     type="obligation_due",
@@ -1817,18 +1852,25 @@ class ContractService:
             "contracts_swept": swept,
             "due_count": due["count"],
             "events_emitted": due["count"],
+            "obligation_events_emitted": due["count"] - len(covenants),
+            "covenant_count": len(covenants),
+            "covenant_events_emitted": len(covenants),
             "certificate_watch_window_days": watches["window_days"],
             "certificate_expiring_count": watches["count"],
             "certificate_events_emitted": watches["count"],
             "report_only": True,
             "note": (
                 "Report-only sweep: one obligation_due event per due "
-                "deadline and one certificate_expiring event per "
-                "watched certificate were emitted to the event sink "
-                "and this report was produced. Nothing was sent to "
-                "any counterparty or counsel address by this operation."
+                "deadline, one covenant_expiring event per due "
+                "restrictive-covenant expiry (a restriction lapsing, "
+                "not a duty falling due), and one "
+                "certificate_expiring event per watched certificate "
+                "were emitted to the event sink and this report was "
+                "produced. Nothing was sent to any counterparty or "
+                "counsel address by this operation."
             ),
             "obligations": due["obligations"],
+            "covenants": covenants,
             "certificates": watches["certificates"],
         }
 

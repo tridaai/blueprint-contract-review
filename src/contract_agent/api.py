@@ -402,9 +402,12 @@ def obligations_due(days: int = 90) -> dict:
 @app.post("/obligations/sweep", dependencies=_AUTH)
 def obligations_sweep(days: int = 90) -> dict:
     """The deadline dispatch sweep: emit one ``obligation_due`` event
-    per stored-contract deadline due within ``days`` and return the
-    dispatch report. Report-only — the sweep sends nothing itself;
-    delivery belongs to the event consumer."""
+    per stored-contract deadline due within ``days`` — except
+    restrictive-covenant expiries, which are announced as
+    ``covenant_expiring`` (a restriction lapsing, counted separately
+    in the report) — and return the dispatch report. Report-only —
+    the sweep sends nothing itself; delivery belongs to the event
+    consumer."""
     if days < 0:
         raise HTTPException(status_code=422, detail="days must be >= 0.")
     return service.dispatch_obligation_sweep(days=days)

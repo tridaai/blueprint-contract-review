@@ -64,6 +64,12 @@ _MONTHS = {
     )
 }
 
+# The restrictive-covenant register kinds (round 14). Their
+# dates are expiries — the day a restriction lifts — so the
+# deadline sweep announces them distinctly from duties falling
+# due (round 15).
+COVENANT_KINDS = ("non_compete", "non_solicit")
+
 _ISO_DATE = re.compile(r"\b(20\d{2})-(0[1-9]|1[0-2])-([0-3]\d)\b")
 _LONG_DATE = re.compile(
     r"\b(january|february|march|april|may|june|july|august|september|"

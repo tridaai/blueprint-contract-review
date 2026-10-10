@@ -141,6 +141,17 @@ def _run_sweep(contracts: list[ContractInput], days: int) -> None:
             f"({row['counterparty_name']}): {row['kind']} — {row['description']}"
         )
     print(
+        f"Covenant expiries: {report['covenant_count']} restrictive "
+        "covenant(s) lapse within the window (announced as "
+        "covenant_expiring — a restriction lifting, not a duty due)"
+    )
+    for row in report["covenants"]:
+        state = "LAPSED" if row["overdue"] else f"in {row['days_until']}d"
+        print(
+            f"  {row['date']} [{state}] {row['contract_id']} "
+            f"({row['counterparty_name']}): {row['kind']} — {row['description']}"
+        )
+    print(
         f"Certificate watch: {report['certificate_expiring_count']} "
         f"relied-upon certificate(s) expire within "
         f"{report['certificate_watch_window_days']} day(s)"
