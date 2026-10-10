@@ -1,0 +1,80 @@
+# Production-shaped stack for the Contract Review Agent.
+#
+# `docker compose up` runs the PRODUCTION TOPOLOGY locally: a stateless
+# API, PostgreSQL (records + LangGraph checkpoints + pgvector) as the
+# system of record, and MinIO as the S3-compatible document store.
+# State lives in the services (named volumes only — no host
+# bind-mounts), so the same shape scales out unchanged.
+#
+# NOTE: maintained in-repo, not yet verified end-to-end in CI
+# (build-unverified, like the Dockerfile).
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # The system of record: decisions store, checkpoints, vectors.
+      DATABASE_URL: postgresql://contract:contract@postgres:5432/contracts
+      # S3-compatible document storage (MinIO here; AWS S3 in production
+      # by changing the endpoint + credentials).
+      S3_BUCKET: contract-documents
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_REGION: us-east-1
+      # Offline template backend by default; set a provider to go live
+      # (MODEL_BACKEND=openai|anthropic + the matching key), or use the
+      # ollama profile below for a local model.
+      MODEL_BACKEND: ${MODEL_BACKEND:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: contract
+      POSTGRES_PASSWORD: contract
+      POSTGRES_DB: contracts
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contract -d contracts"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Optional local model: `docker compose --profile ollama up`, then set
+  # MODEL_BACKEND=ollama and OLLAMA_MODEL on the api service.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollamadata:/root/.ollama
+
+volumes:
+  pgdata:
+  miniodata:
+  ollamadata:

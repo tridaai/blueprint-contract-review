@@ -28,9 +28,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest==9.1.1", "httpx==0.28.1"]
 llm = ["openai==3.27.0", "anthropic==1.13.0"]
-# Optional local vector store for RETRIEVER=semantic|hybrid. Without it,
-# semantic retrieval falls back to in-memory cosine behind the same interface.
-vectordb = ["chromadb==1.5.9"]
+# Vectors live in pgvector (the same PostgreSQL as the records): the
+# semantic/hybrid retrievers need no extra package — psycopg is a core
+# dependency. Without DATABASE_URL they fall back to in-memory cosine
+# behind the same interface (tests and offline demos only).
 
 [project.scripts]
 contract-agent = "contract_agent.cli:main"

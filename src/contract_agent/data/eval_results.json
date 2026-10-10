@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-10-10T12:38:21.567806+00:00",
+  "backend": "mock (offline fallback)",
+  "total": 42,
+  "correct": 42,
+  "accuracy": 1.0,
+  "per_kind": {
+    "clause": {
+      "total": 30,
+      "correct": 30,
+      "accuracy": 1.0
+    },
+    "document": {
+      "total": 12,
+      "correct": 12,
+      "accuracy": 1.0
+    }
+  },
+  "threshold": 0.95,
+  "passed": true,
+  "failures": []
+}

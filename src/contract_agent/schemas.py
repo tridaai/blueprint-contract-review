@@ -328,6 +328,7 @@ class InformationRequest(BaseModel):
 class AutonomyRecommendation(BaseModel):
     eligible_for_auto_triage: bool = False
     reasons: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
 
 
 class RunTelemetry(BaseModel):
