@@ -53,7 +53,13 @@ For each contract, the pipeline:
    the **severance itself** — a figure computed in code from the
    letter's formula against its stated salary basis, flagged
    computed — joining the due view and the deadline sweep alongside
-   the commercial clocks. The same pass also runs **exhibit
+   the commercial clocks. The letter's **restrictive covenants**
+   join the same register: the non-compete and non-solicit
+   durations the covenant reading extracts become entries of
+   their own, each period read from the sentences that state
+   that covenant, undated while termination is a future event —
+   and expiring at termination + duration, computed and flagged
+   computed, when the letter states its termination date. The same pass also runs **exhibit
    consistency checks**: when the data protection clause ties its
    promises to an attached DPA exhibit (a 24-hour breach window, a
    sub-processor list), the exhibit's own text is checked against
@@ -112,11 +118,22 @@ For each contract, the pipeline:
    fires a signed event on the same HMAC seam as the approval
    and SLA-breach dispatches, payloads carrying findings and
    identifiers, never contract text, with the dispatch outcome
-   on the result's trace. And the renewal check names **where
-   each requirement came from** — the round and clause that set
-   it ("set by CTR-2029 §7"), per requirement — so a limit
-   raised by a mid-chain amendment is judged from the
-   amendment, not the root bargain.
+   on the result's trace. Every one of those dispatches —
+   approvals, breaches, drift findings — also lands in a
+   persistent **webhook outbox** (`GET /webhooks/outbox`) with
+   the exact payload posted: a failed delivery is re-sent from
+   the stored payload under a named operator
+   (`POST /webhooks/outbox/{id}/resend`), the attempt on record,
+   instead of re-running whatever produced the event — no
+   silent loss at the last mile. And the renewal check's
+   requirement set is **composed across the whole chain**: each
+   requirement from the round that last set it — a round sets a
+   limit when it first states it or states it changed, a
+   restatement merely carries it, endorsements once imposed
+   persist — named per requirement ("set by CTR-2029 §7"), so a
+   limit raised by a mid-chain amendment is judged, and cited,
+   from the amendment, and a short round that restates nothing
+   cannot thin the set the renewal is judged against.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -221,6 +238,14 @@ own chain earns the same-sized **pattern term** on escalation
 only, in its own breakdown component: the tiers already escalate
 such a clause to the walk-away line, and the options now tell the
 same story instead of scoring it as if nothing had happened twice.
+The profile can also be **scoped to one matter**
+(`?matter=<tag>`): only records carrying the tag count — chains,
+decisions, tendencies all of it — so a counterparty's behaviour
+on the platform renewal does not bleed into the dispute, and a
+review carrying a matter tag reads its priors and its history
+term from its own matter's profile alone (a matter with no
+multi-round history yet borrows nothing). The all-matters
+profile stays the default.
 
 **Walk-away line outcomes.** The profile also counts decision
 evidence, not just verdict movement: when counsel decides a
@@ -427,7 +452,7 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 416 tests (415 run + 1 Postgres-gated skip)
+make test                  # 441 tests (440 run + 1 Postgres-gated skip)
 make evals                 # golden set: 84/84 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
@@ -514,7 +539,7 @@ drafts and calling that an LLM result.
 
 ```
 src/contract_agent/   the package (pipeline, AI layer, guardrails, infra)
-migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions)
+migrations/           numbered SQL migrations (records, playbook vectors, proposals, suspensions, webhook outbox)
 evals/                golden set + deterministic runner + opt-in judge pack
 tests/                hermetic pytest suite (in-memory doubles)
 docs/architecture.md  the full pipeline + production topology

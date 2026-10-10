@@ -214,6 +214,24 @@ severance — a formula with no salary basis anywhere — is not
 entered as a number: the exhibit check already reports it as
 unverifiable, and the register does not invent figures.
 
+**Covenant clocks in the register** (`obligations.py`, round
+14). The restrictive covenants join the same discipline: the
+durations the covenant reading extracts (`non_compete`
+extractions) become `non_compete` / `non_solicit` entries,
+each covenant's period read from the sentences that state
+*that* covenant — a clause carrying a 18-month compete and a
+6-month solicit registers both lengths, not the clause's
+longest twice; a period in a lead-in sentence that names
+neither covenant belongs to the compete covenant when the
+clause has one, and an undifferentiated covenant falls back
+to the extraction's own duration signal. A `non_solicit_only`
+clause registers no compete clock. The entries ride the
+termination clock exactly like notice and severance: undated
+while the letter states no termination date, and expiring at
+termination + duration (calendar months, day clamped) when
+it does — computed in code, flagged `computed`, and flowing
+into `/obligations/due` and the deadline sweep on their dates.
+
 **Sub-processor list drift** (`subprocessor_drift.py`, round
 11). The annex is a living list, so the single-round checks are
 joined by a cross-round one: consecutive rounds of a chain have
@@ -279,6 +297,26 @@ the requirement's provenance is the amendment's clause, not
 the root round's — the failed renewal shows which round's
 bargain each drop broke.
 
+**Chain-composed requirements** (`certificate_renewal.py`,
+round 14). Provenance named the setter; the set itself was
+still read from the prior round alone, so an uplift imposed by
+an amendment vanished whenever the round before the renewal
+restated nothing. The set is now composed walking the whole
+chain (the service threads the stored `supersedes` links,
+`_chain_contracts`): each requirement is taken from the round
+that **last set** it. A round sets a coverage limit when it
+first states the cover or states it at a different amount —
+an amendment moves the requirement and its provenance — while
+a restatement at the standing amount merely carries both.
+Endorsements are sticky: once any round imposes one it stays
+required, attributed to the round that imposed it, and no
+later round's silence un-requires it; the named-insured term
+is attributed to the round that imposed the certificate
+regime. Provenance is then computed per setter round with the
+round-13 placement rule, so every requirement cites the clause
+of the round that set it. Without a stored chain the prior
+round alone composes the set — the pre-round-14 reading.
+
 **Drift findings on the wire** (`ContractService.
 dispatch_drift_finding_webhook`, round 13). Drift findings
 used to wait on the record for someone to open the brief; the
@@ -294,6 +332,29 @@ text. Only findings fire: consistent movement stays on the
 result, the dispatch outcome is stamped on the result
 (`drift_dispatches`, with a trace step), and a failed delivery
 is recorded as failed without disturbing the finding.
+
+**The webhook outbox** (`webhook_outbox.py`, round 14). The
+three signed families kept their outcomes in three places —
+a status on the decision record, a stamp on the breached
+record, a list on the analysis result — and none of them could
+answer "what did we fail to deliver?" Now every dispatch is
+recorded in one persistent outbox (migration `0005`, its own
+store on the approval-record pattern: Postgres JSONB in
+production, in-memory double in tests) with the family, the
+contract, a human label, the **exact payload posted**, and the
+attempt history. A failed delivery is an operator act to
+repair, not a pipeline re-run: `POST /webhooks/outbox/{id}/
+resend` posts the stored payload through the same signed seam
+and appends the attempt — actor, time, outcome — to the entry;
+the event is never regenerated to fix a delivery, and a
+refused re-send (a sent entry, a blank actor, no endpoint
+configured) spends no attempt. `GET /webhooks/outbox`
+(optionally `?status=failed`) and a `webhooks` block in
+`/metrics` serve the view — counts and attempt history, the
+payloads themselves stay out of it — and the console carries
+an outbox panel with the re-send act. Dispatches are recorded
+only when an endpoint is configured: with no webhook there is
+no delivery to lose, and no entry.
 
 **Proposed edits** (`proposed_edits.py`). The clause diff pairs two
 texts; the edit script turns the pair into instructions counsel
@@ -399,6 +460,25 @@ history dict as `concession_lines`, which
 `assessment.memory_evidence_lines` renders as evidence — the next
 review of that counterparty is informed by how they have actually
 moved, as priors beside the posture memory and counsel feedback.
+
+**Matter-scoped profiles** (`concessions.py`, round 14). One
+blend per counterparty was the wrong unit of memory: behaviour
+is matter-specific, and a tendency averaged across a renewal and
+a dispute describes neither. `build_concession_profile` takes an
+optional matter tag and filters the counterparty's records to
+those carrying it **before** threading chains — a chain that
+crosses matters contributes each matter's rounds to that
+matter's profile alone. The profile names its scope (`matter` /
+`scope` keys), and its evidence lines name the matter in the
+headline. The service scopes a review's priors by the review's
+own tag: `_concession_lines` and `_concession_tendencies` pass
+the contract's matter, so a matter-tagged analysis is informed
+only by its own matter's history, and a matter with no
+multi-round history yet yields no lines and no history term —
+it borrows nothing. Untagged reviews keep the all-matters
+reading; `GET /counterparties/{name}/profile?matter=` exposes
+the scope explicitly, and the console's panel follows the
+analyzed contract's tag.
 
 **Walk-away line acceptance tracking** (`walkaway.py`). The
 profile's verdict movement says how drafts moved; it does not say
