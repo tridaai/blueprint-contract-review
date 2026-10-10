@@ -57,6 +57,7 @@ from .schemas import (
     EditOutcomeInput,
     PatternTermSuspension,
     PlaybookProposal,
+    SuspensionReconfirmation,
 )
 from .store import ApprovalRecord, counterparty_summary, default_store
 
@@ -2089,8 +2090,8 @@ class ContractService:
         kept on the one record. ``review_by`` (an ISO date) gives
         the set-aside a shelf life: past it, the calibration
         report reads the suspension as stale and the queue carries
-        it as a review alert, until counsel re-confirms (by
-        lifting and re-suspending) or lifts it."""
+        it as a review alert, until counsel re-confirms it
+        (``reconfirm_pattern_suspension``) or lifts it."""
         clause_type = (clause_type or "").strip()
         if not clause_type:
             raise ValueError("Suspending a pattern term requires a clause type.")
@@ -2128,6 +2129,7 @@ class ContractService:
         )
         suspension.reason = reason
         suspension.review_by = review_by
+        suspension.reconfirmations = []
         suspension.lifted_by = ""
         suspension.lifted_at = ""
         suspension.lift_note = ""
@@ -2148,6 +2150,73 @@ class ContractService:
         return suspension_review_alerts(
             self._get_calibration_store().all(), today or _date.today()
         )
+
+    def reconfirm_pattern_suspension(
+        self, clause_type: str, actor: str, note: str = "",
+        review_by: str = "",
+    ) -> PatternTermSuspension:
+        """Counsel renews a suspension (round 13): the set-aside
+        was looked at and deliberately kept, before its review
+        date arrived or after it went stale. The act is stamped
+        on the record's re-confirmation history — actor, time,
+        note, and the review date in force after the act — and
+        the review clock resets to that date. It is NOT a lift
+        (the term stays set aside; the scorer keeps honouring
+        the suspension throughout) and NOT a second suspension
+        (the original act's stamps — who set the term aside,
+        when, and why — stand untouched, so the record keeps the
+        continuity of one set-aside, renewed). ``review_by``
+        names the new review date; left empty, the date already
+        on the record stands — including no date, for a
+        suspension that never carried one. A note is required,
+        as the suspension's reason was: a renewal nobody
+        explained is the same silent rot as a set-aside nobody
+        explained."""
+        clause_type = (clause_type or "").strip()
+        if not (note or "").strip():
+            raise ValueError(
+                "Re-confirming a pattern-term suspension requires "
+                "a note — it is recorded on the suspension, beside "
+                "the actor."
+            )
+        review_by = (review_by or "").strip()
+        if review_by:
+            from datetime import date as _date
+
+            try:
+                _date.fromisoformat(review_by)
+            except ValueError:
+                raise ValueError(
+                    f"review_by {review_by!r} is not an ISO date "
+                    "(YYYY-MM-DD) — the renewed review the "
+                    "suspension promises has to be a date the "
+                    "report can read."
+                ) from None
+        store = self._get_calibration_store()
+        suspension = store.get(clause_type)
+        if suspension is None:
+            raise KeyError(
+                f"No pattern-term suspension on record for {clause_type!r}."
+            )
+        if suspension.status != "active":
+            raise ValueError(
+                f"The pattern term for {clause_type} is not suspended "
+                f"(lifted by {suspension.lifted_by} on "
+                f"{suspension.lifted_at}) — there is nothing to "
+                "re-confirm."
+            )
+        if review_by:
+            suspension.review_by = review_by
+        suspension.reconfirmations.append(
+            SuspensionReconfirmation(
+                actor=actor,
+                at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                note=note,
+                review_by=suspension.review_by,
+            )
+        )
+        store.save(suspension)
+        return suspension
 
     def lift_pattern_suspension(
         self, clause_type: str, actor: str, note: str = ""

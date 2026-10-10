@@ -324,6 +324,38 @@ def lift_pattern_suspension(request: PatternSuspensionRequest):
     return suspension.model_dump(mode="json")
 
 
+@app.post("/options/pattern-calibration/reconfirm", dependencies=_AUTH)
+def reconfirm_pattern_suspension(request: PatternSuspensionRequest):
+    """Counsel re-confirms a pattern-term suspension: the
+    set-aside was reviewed and deliberately kept, and its review
+    clock resets. A distinct act from lifting (the term stays
+    set aside) and from re-suspending (the original act's stamps
+    stand). Requires the actor's name and a note — both go on
+    the record's re-confirmation history; 'review_by' may name
+    the new review date. The agent never calls this."""
+    actor = (request.actor or "").strip()
+    if not actor:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'actor' — the counsel member re-confirming this suspension.",
+        )
+    if not (request.note or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 'note' — why the set-aside still stands.",
+        )
+    try:
+        suspension = service.reconfirm_pattern_suspension(
+            request.clause_type or "", actor=actor, note=request.note or "",
+            review_by=request.review_by or "",
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return suspension.model_dump(mode="json")
+
+
 @app.get("/queue", dependencies=_AUTH)
 def counsel_queue() -> dict:
     """The counsel worklist: contracts awaiting a decision — SLA

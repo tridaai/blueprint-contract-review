@@ -360,7 +360,7 @@ async function loadCalibration() {
     if (rows.length) {
       html += rows.map(r => `<div class="row" style="margin-top:6px"><span class="note">${esc(r.clause_type)}: ${esc(r.detail)}</span>` +
         (r.calibration_candidate ? `<button data-suspend="${esc(r.clause_type)}" style="padding:3px 9px;font-size:12px">Suspend term (counsel)</button>` : '') +
-        (r.suspended ? `<button data-lift="${esc(r.clause_type)}" style="padding:3px 9px;font-size:12px">Lift suspension (counsel)</button>` : '') +
+        (r.suspended ? `<button data-reconfirm="${esc(r.clause_type)}" style="padding:3px 9px;font-size:12px">Re-confirm suspension (counsel)</button><button data-lift="${esc(r.clause_type)}" style="padding:3px 9px;font-size:12px">Lift suspension (counsel)</button>` : '') +
         '</div>').join('');
     }
     $('calibration').innerHTML = html;
@@ -386,6 +386,19 @@ async function loadCalibration() {
         });
         if (r.ok) loadCalibration();
         else alert('Lift failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));
+      }));
+    $('calibration').querySelectorAll('button[data-reconfirm]').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        const actor = $('actor').value.trim();
+        if (!actor) { alert('Enter counsel name (section 3) first — a re-confirmation carries a name.'); return; }
+        const note = prompt('Why does the set-aside for ' + btn.dataset.reconfirm + ' still stand? (goes on the record):');
+        if (!note) return;
+        const reviewBy = prompt('New review-by date (YYYY-MM-DD, blank keeps the date on record) — the review clock resets to it:', '') || '';
+        const r = await fetch('/options/pattern-calibration/reconfirm', {
+          method: 'POST', headers: headers(), body: JSON.stringify({clause_type: btn.dataset.reconfirm, actor, note, review_by: reviewBy})
+        });
+        if (r.ok) loadCalibration();
+        else alert('Re-confirmation failed: ' + r.status + ' ' + (await r.text()).slice(0, 200));
       }));
   } catch (e) {
     $('calibration').textContent = '';

@@ -876,6 +876,22 @@ class ProposalDecisionRequest(BaseModel):
 # Pattern-term suspensions (calibration acted on — counsel owns the cap)
 # ---------------------------------------------------------------------------
 
+class SuspensionReconfirmation(BaseModel):
+    """One re-confirmation of a pattern-term suspension (round
+    13): counsel looked at the set-aside before its review date
+    and deliberately kept it, resetting the review clock. A
+    distinct act from lifting (the term stays set aside) and
+    from re-suspending (the original suspension's stamps stand —
+    the set-aside was taken once, and this act renews its shelf
+    life without pretending otherwise). ``review_by`` is the
+    review date in force after the act."""
+
+    actor: str = ""
+    at: str = ""
+    note: str = ""
+    review_by: str = ""
+
+
 class PatternTermSuspension(BaseModel):
     """Counsel's act on a calibration candidate (round 11): the
     reflection-pattern score term for one clause type, set aside.
@@ -892,7 +908,10 @@ class PatternTermSuspension(BaseModel):
     re-flagging it as a candidate every run. The suspension is
     reversible — counsel lifts it, again with a name — and the
     record keeps both acts, so why the scorer treats the type the
-    way it does is always answerable from the record. The cap
+    way it does is always answerable from the record. It is also
+    renewable: counsel may re-confirm it before its review date
+    (round 13), a stamped act that resets the review clock while
+    leaving the original suspension's stamps standing. The cap
     itself never moves; what is suspended is the term's
     application to one type, nothing wider."""
 
@@ -902,6 +921,7 @@ class PatternTermSuspension(BaseModel):
     suspended_at: str = ""
     reason: str = ""  # required at suspension — an unexplained set-aside is how scorers silently rot
     review_by: str = ""  # ISO date the set-aside falls due for review (round 12) — a suspension is a decision with a shelf life; past it, the calibration report reads the suspension as stale until counsel re-confirms or lifts it
+    reconfirmations: list[SuspensionReconfirmation] = Field(default_factory=list)  # counsel's renewals of the set-aside (round 13) — each act stamped, the original suspension's stamps untouched
     lifted_by: str = ""
     lifted_at: str = ""
     lift_note: str = ""

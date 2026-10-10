@@ -160,6 +160,20 @@ def _review_sentence(review: dict | None) -> str:
     return f" Review falls due on {review['review_by']}."
 
 
+def _reconfirmation_sentence(suspension) -> str:
+    """The set-aside's renewals as a sentence on a suspended
+    row: how often counsel has re-confirmed it, and the latest
+    act — the continuity of the one suspension, in the open."""
+    reconfirmations = getattr(suspension, "reconfirmations", None) or []
+    if not reconfirmations:
+        return ""
+    last = reconfirmations[-1]
+    return (
+        f" Re-confirmed {len(reconfirmations)} time(s), most "
+        f"recently by {last.actor} on {last.at} ({last.note})."
+    )
+
+
 def _suspension_block(suspension, today: date) -> dict:
     """A suspension as the report carries it: the act, and its
     review position when it carries a review date."""
@@ -168,6 +182,17 @@ def _suspension_block(suspension, today: date) -> dict:
         "suspended_at": suspension.suspended_at,
         "reason": suspension.reason,
     }
+    reconfirmations = getattr(suspension, "reconfirmations", None) or []
+    if reconfirmations:
+        last = reconfirmations[-1]
+        block.update(
+            {
+                "reconfirmations": len(reconfirmations),
+                "last_reconfirmed_by": last.actor,
+                "last_reconfirmed_at": last.at,
+                "last_reconfirmation_note": last.note,
+            }
+        )
     review = suspension_review_state(suspension, today)
     if review is not None:
         block.update(
@@ -253,7 +278,9 @@ def pattern_calibration(
                 f"{slot['applications']} application(s), "
                 f"{slot['decisive']} decisive. Counsel can lift the "
                 "suspension to restore the term."
-            ) + _review_sentence(suspension_review_state(suspension, today))
+            ) + _reconfirmation_sentence(suspension) + _review_sentence(
+                suspension_review_state(suspension, today)
+            )
         elif candidate:
             detail = (
                 f"The pattern term has been applied to "
@@ -327,7 +354,9 @@ def pattern_calibration(
                     "The term has not been applied to any scored "
                     "option for this type; while the suspension "
                     "stands, the scorer will not apply it."
-                ) + _review_sentence(suspension_review_state(suspension, today)),
+                ) + _reconfirmation_sentence(suspension) + _review_sentence(
+                    suspension_review_state(suspension, today)
+                ),
             }
         )
     rows.sort(key=lambda row: (-row["applications"], row["clause_type"]))
