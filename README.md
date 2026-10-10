@@ -59,7 +59,14 @@ For each contract, the pipeline:
    a mismatch, silence is not) and **statements of work** (the
    deliverables list and delivery dates the agreement relies on,
    and an acceptance period checked against the agreement's own
-   window).
+   window). The newest family checks **certificates of
+   insurance**: where the agreement states the cover the
+   counterparty must carry, the certificate is read against it —
+   the named insured must be the counterparty itself, each
+   required coverage must be stated at or above its limit, the
+   certificate must be in force, and the additional-insured and
+   waiver-of-subrogation endorsements the agreement requires must
+   be shown, not merely mentioned.
 6. **Retrieves** playbook entries (keyword / semantic / hybrid + RRF)
    and composes a document assessment — an LLM over retrieved
    evidence with a bounded tool loop (`search_playbook`,
@@ -159,6 +166,11 @@ counterparty concedes, and escalating a type they hold or have
 re-traded, each earn a small **history term** (capped at 6 of 100
 points, shown in every option's score breakdown) — enough to
 order close calls, never enough to outweigh the playbook terms.
+A clause type under a **reflection pattern** in the contract's
+own chain earns the same-sized **pattern term** on escalation
+only, in its own breakdown component: the tiers already escalate
+such a clause to the walk-away line, and the options now tell the
+same story instead of scoring it as if nothing had happened twice.
 
 **Playbook proposals.** The coverage analytics in `/metrics` name
 the playbook's own gaps: clause types that keep arriving flagged
@@ -187,6 +199,25 @@ review) — with the family's own playbook entries, tiers, absence
 detection, samples (a clean DPA, and an adversarial one whose
 transfer clause instructs the reviewer — screened, flagged, and
 still judged on its substance), and eval cases.
+
+**Standalone employment reviews.** An offer letter or employment
+agreement sent as the primary document (`doc_type: "employment"`)
+is reviewed on the employment matrix, not the services one:
+restrictive covenants (twelve months, bounded to competing
+businesses and a stated geography, preferred; over twenty-four
+months, or any-business anywhere scope, is a walk-away),
+invention assignment (course-of-employment and business-related,
+prior inventions excluded, preferred; an assignment reaching
+prior inventions or unbounded own-time work is a walk-away),
+arbitration (mutual with statutory carve-outs is the acceptable
+fallback; one-sided machinery with a class waiver is a
+walk-away), and the at-will core (stated and preserved is
+preferred; only-for-cause promises and outsized severance need
+review) — with the family's own playbook entries, tiers, absence
+detection, samples (a clean offer letter, and an adversarial
+executive draft whose assignment clause instructs the reviewer —
+screened, flagged, and still judged on its substance), and eval
+cases.
 
 **Deadline operations.** Deadlines computed at analysis time matter
 weeks later, so `POST /obligations/sweep` (or the CLI's
@@ -247,8 +278,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 226 tests (225 run + 1 Postgres-gated skip)
-make evals                 # golden set: 64/64 (gate ≥ 95%)
+make test                  # 251 tests (250 run + 1 Postgres-gated skip)
+make evals                 # golden set: 76/76 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -306,19 +337,21 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 64 synthetic cases: 38 clause-level (clause
+`evals/golden.jsonl` — 76 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
-DPA family), 17 document-level (posture, per-type positions,
-absence detection, injection flags, information requests, repair
-behaviour — the clean and adversarial DPAs among them), 1
+DPA family and 8 for the employment family), 19 document-level
+(posture, per-type positions, absence detection, injection flags,
+information requests, repair behaviour — the clean and
+adversarial DPAs and employment drafts among them), 1
 negotiation-round case (verdict movement between the CTR-2014/
 CTR-2015 round pair), 1 round-chain case (re-trades and cumulative
-movement across CTR-2014 → 2016), and 7 exhibit-consistency cases
+movement across CTR-2014 → 2016), and 9 exhibit-consistency cases
 (the CTR-2017 DPA mismatch pair, the CTR-2018 consistent pair,
 the no-exhibit-promises case, the CTR-2019/2020 order-form pair,
-and the CTR-2021/2022 SOW pair).
+the CTR-2021/2022 SOW pair, and the CTR-2027/2028
+insurance-certificate pair).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 64/64).
+gate is ≥ 95% (currently 76/76).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.

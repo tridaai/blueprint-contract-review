@@ -35,7 +35,7 @@ ingest → extract → screen → classify → facts
 | facts | Document posture counted in code: position counts, worst position, absence detection (missing standard clauses; liability cap + data protection are critical absences); exhibit consistency checks (the DPA exhibit's text vs the clause's promises); the obligations register | code |
 | retrieve | Playbook entries by keyword / semantic / hybrid (RRF fusion); query built from clause content | code |
 | assess | Risk summary composed over evidence; with a provider, a bounded tool loop (`search_playbook`, `clause_facts`, `counterparty_history`); template fallback offline | LLM over evidence |
-| options | Per flagged clause, options scored in code (position fit + posture fit + package completeness + a capped history term from the counterparty profile) | code |
+| options | Per flagged clause, options scored in code (position fit + posture fit + package completeness + a capped history term from the counterparty profile + a capped pattern term from the chain's reflection patterns) | code |
 | draft | Review packet (clause table: verdict, citation, rationale, fallback language) + counterparty response asserting nothing as agreed | LLM / template |
 | verify | Grounding checklist (citations must be retrieved playbook ids; figures and foreign ids flagged) + optional LLM critique | code + LLM |
 | review | Independent reviewer — a second pass, not the drafter; can block | LLM / checklist |
@@ -116,7 +116,20 @@ restatement that differs is a `mismatch`, silence asserts nothing
 and generates no check) and **statements of work** (the SOW must
 list the deliverables and state the delivery dates the agreement
 relies on; an acceptance period it states is checked against the
-agreement's acceptance window). The information request names the
+agreement's acceptance window). A fourth family (round 8) checks
+**certificates of insurance**: when the agreement states the
+insurance the counterparty must carry — coverage types with
+minimum limits (parsed per coverage phrase, so two coverages in
+one sentence keep their own amounts), a certificate to be
+furnished, additional-insured or waiver-of-subrogation
+endorsements — the certificate exhibit is checked on each
+statement: the named insured must be the counterparty itself (a
+differently-suffixed entity is a `mismatch`, not a near-miss),
+each required coverage must be stated at or above its limit
+(absent cover is `missing_in_exhibit`, short cover a `mismatch`),
+the certificate must be in force (unexpired at receipt, and
+covering a stated initial term), and required endorsements must
+be shown, not merely mentioned to be withheld. The information request names the
 missing exhibit by family (`facts.exhibit_missing_checks`), so a
 missing order form is never requested as a missing DPA.
 
@@ -261,6 +274,25 @@ close calls without ever outweighing the playbook terms. No
 profile, no tendencies, no term: cold counterparties score exactly
 as before.
 
+**Pattern-aware option scoring** (`options.py`,
+`reflection_patterns.py`). Round 8 adds the sharper sibling term.
+A clause type under an active **reflection pattern** in the
+contract's own chain — counsel agreed its edit, the follow-up did
+not show it, counsel agreed again, and that follow-up did not show
+it either — already escalates the clause's proposed tier to the
+walk-away line; the options now tell the same story.
+`pattern_adjustment` adds `PATTERN_TERM_CAP` (6 of 100, the same
+size as the history term) to `escalate_to_senior_counsel` only,
+in its own `pattern` breakdown component, separately capped from
+the history term so both cousin signals stay legible. The service
+computes the set from the stored rounds before the run
+(`_reflection_pattern_types`, walking the supersedes links), so
+the scorer reads the patterns in force when drafting begins: a
+pattern that forms only on this round's own reflection moves this
+round's tiers at once, and this term from the next round onward —
+stated, not backdated. Patterns are chain-scoped: another chain
+of the same counterparty does not leak in.
+
 **Playbook proposals** (`playbook_proposals.py`,
 `proposal_store.py`, `playbook_registry.py`,
 `migrations/0003_playbook_proposals.sql`). The playbook is
@@ -313,6 +345,38 @@ carry a clean DPA (CTR-2023, aligned) and an adversarial one
 transfers, audit excluded, indefinite retention — plus an
 instruction planted in the transfer clause, screened and flagged
 while the clause is still judged on its substance).
+
+**Employment family** (`doc_type: "employment"`). An offer letter
+or employment agreement arriving as the primary document is
+normalised from its names (employment agreement/contract, offer
+letter) and measured on its own absence matrix in
+`STANDARD_CLAUSES["employment"]` — the at-will core, restrictive
+covenants, invention assignment, dispute machinery,
+confidentiality — with four clause types of its own, each with
+extractor signals, deterministic verdict rules, a two-entry
+playbook family, and tier lines: `non_compete` (duration in
+months, geographic bound, competitor bound, solicitation-only;
+over twenty-four months or any-business/nationwide scope is a
+walk-away), `ip_assignment` (assignment reaching prior inventions
+or unbounded own-time work is a walk-away; course-of-employment
+and business-related, with prior inventions excluded, is
+preferred), `arbitration` (mandatory requires binding/exclusive
+framing — a bare agreement to arbitrate is voluntary; one-sided
+machinery with a class waiver is a walk-away, a waiver with no
+statutory carve-out needs review, mutual arbitration with
+carve-outs is the acceptable fallback), and `employment_terms`
+(at-will stated and preserved is preferred; only-for-cause or
+guaranteed-term promises, and severance beyond twelve months,
+need review). The samples carry a clean offer letter (CTR-2025 —
+preferred across the matrix, at the arbitration fallback) and an
+adversarial executive draft (CTR-2026: a thirty-six-month
+worldwide covenant, an assignment reaching prior inventions, a
+one-sided arbitration clause — plus an instruction planted in
+the assignment clause, screened and flagged while the clauses are
+judged on their substance). The DPA and employment families
+together prove the pattern: a document type earns its own
+matrix, signals, playbook family, samples, and eval cases, or it
+is reviewed on a matrix that was written for another document.
 
 **Deadline dispatch sweep** (`ContractService.dispatch_obligation_sweep`).
 Per-run `obligation_due` events announce deadlines at analysis
