@@ -688,7 +688,7 @@ docker compose up --build
 Or natively, offline, in about a minute:
 
 ```bash
-uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
+uv sync --extra dev        # or: make install-pip (the pip fallback)
 make demo                  # one contract, traced end to end
 make test                  # 635 tests (634 run + 1 Postgres-gated skip)
 make evals                 # golden set: 96/96 (gate ≥ 95%)

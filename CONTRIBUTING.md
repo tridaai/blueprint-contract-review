@@ -12,7 +12,8 @@ uv sync --extra dev
 ```
 
 No uv? `python3 -m venv .venv && source .venv/bin/activate`, then
-`pip install -e ".[dev]" -c constraints.txt`.
+`make install-pip` (the frozen set first, then the package itself —
+pip cannot do both in one step under a hashed constraints file).
 
 ## Before opening a PR
 

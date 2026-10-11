@@ -4,7 +4,12 @@ install:  ## Install the locked set with uv (primary workflow)
 	uv sync --extra dev
 
 install-pip:  ## Fallback install: pip with the pinned/frozen set
-	pip install -e ".[dev]" -c constraints.txt
+	# The frozen set first (hash-verified), then the package itself with
+	# --no-deps: pip refuses an editable install under a hashed
+	# constraints file ("no single file to hash"), so the two never mix.
+	pip install -r constraints.txt
+	pip install --no-deps -e .
+	pip install "pytest==9.1.1" "httpx==0.28.1"
 
 demo:  ## Traced demo: one sample contract, end to end (offline)
 	uv run contract-agent-demo
