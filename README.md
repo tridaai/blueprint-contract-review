@@ -18,6 +18,8 @@ happens without a human decision.
 > Reference prototype. All contracts, counterparties, and playbook
 > entries are synthetic. Not legal advice; not a law firm.
 
+**Deep-dive:** [Contract Review Agent Blueprint](https://trida.ai/blog/contract-review-agent-blueprint) — how the agent works, where it stops, and what the evals actually prove.
+
 ## What it does
 
 For each contract, the pipeline:
