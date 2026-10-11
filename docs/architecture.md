@@ -844,23 +844,52 @@ chain: several chains sharing one counterparty and one matter tag
 (intake metadata, `ContractInput.matter`). The matter brief
 assembles across them, reading each chain's latest round for the
 current state: a chain table (rounds, latest status and decision,
-worst position, open walk-away lines), the open positions of every
+worst position, posture, open walk-away lines), the open positions of every
 chain combined and grouped by proposed tier, the reflection
 patterns anywhere in the matter, the exhibit findings across all
 the documents, and every obligation in the matter sorted by
 deadline — dated first, in due order, undated duties after. The
+assembly is structured data first (`build_matter_brief_data`);
+the markdown is one rendering of it and the JSON export
+(`GET /matters/brief?format=json`, stored beside the markdown as
+`matter-brief.json`) is the other, so the two cannot drift. The
 export keeps the chain brief's lineage discipline under
 `matters/<counterparty>--<matter>/`: versioned keys, the canonical
 latest copy, and a retained source digest per export
 (`matter_source_digest` — chains keyed by root with their latest
 rounds, decisions, open walk-away counts, exhibit failures,
-obligations), so the next export leads with "Since the last matter
+obligations, matter patterns, shared-obligation conflicts), so the next export leads with "Since the last matter
 brief" (`matter_delta_lines`): chains added or advanced, decisions
 recorded, walk-away lines opened or closed, obligations opened or
 closed, exhibit failures appearing or clearing. Served by
 `ContractService.matter_brief` and `GET /matters/brief`; an
 untagged contract is in no matter, and an unknown pair is a 404,
 not an empty document.
+
+Three of the brief's views exist only at matter scope. **Lineage**
+rides on every open walk-away line: the chain's rounds are read
+back aligned by clause type, so the line names the round that
+first saw the clause, the round that first proposed the walk-away
+line for it, how many rounds it has sat at the line, and whether
+its position moved on the way. **Matter patterns**
+(`find_matter_patterns`) lift the reflection check across chains:
+a clause type flagged agreed-but-not-reflected, with the miss
+still open, in two or more of the matter's chains is a pattern of
+the matter even when no single chain forms one — the same ask
+being missed on two documents is a fact about the counterparty's
+drafting that per-chain briefs cannot state. **Shared obligations**
+(`shared_obligations`) group the register's duties across chains
+by kind and operative text with the figures set aside, then
+compare the figures: chains stating different day counts,
+operative text, or explicit dates for the same duty are flagged a
+conflict in code — the MSA's 120 days of non-renewal notice
+against the SOW's 90 is the canonical shape — while computed dates,
+which follow from each document's own figures, are shown but never
+compared. A **roll-up** counts the matter in code alongside:
+clauses by position and open lines by tier summed across the
+current rounds, and the chains counted by posture. The brief
+remains a read model throughout: assembling it writes only the
+export objects, decides nothing, and states no legal conclusion.
 
 **History-aware option scoring** (`options.py`). The concession
 profile also feeds the options node as a scoring term — small,

@@ -603,16 +603,30 @@ story two ways. A re-export with no changes says exactly that.
 several — the platform MSA and its SOW, the renewal and the
 amendment — sharing a counterparty and a `matter` tag on intake.
 `GET /matters/brief?counterparty=…&matter=…` downloads one
-markdown document across the matter's chains: a chain table with
-each negotiation's current state, the open positions of every
-chain combined and grouped by tier, the exhibit findings across
-all the documents, the reflection patterns, and every obligation
-in the matter sorted by deadline. It exports through the same
+document across the matter's chains: a chain table with each
+negotiation's current state and posture, a roll-up counting the
+matter's clauses by position and its chains by posture, the open
+positions of every chain combined and grouped by tier — each open
+walk-away line carrying its **lineage** (the round that first saw
+the clause, the round that first proposed the line, whether its
+position moved on the way) — the exhibit findings across all the
+documents, the reflection patterns, and every obligation in the
+matter sorted by deadline. Two views exist only at this scope:
+**patterns visible only across the matter** — a clause type whose
+agreed edits were flagged not-reflected in two or more chains,
+though no single chain forms a pattern — and **shared
+obligations**, the register's duties grouped across chains with
+their stated terms side by side, a group flagged in code when the
+chains state different figures for the same duty (the MSA's 120
+days of non-renewal notice against the SOW's 90). The brief is
+assembled once as structured data and exported in two renderings
+— markdown, and JSON via `?format=json` — through the same
 object-store lineage as the chain brief (`matters/<slug>/`,
 versioned keys, a retained digest per export), so each new matter
 brief also leads with what changed since the last one — chains
 advanced, decisions recorded, obligations opened or closed,
-exhibit failures appearing or clearing.
+exhibit failures appearing or clearing, matter-level patterns and
+shared-obligation conflicts forming or resolving.
 
 ## Quickstart
 
@@ -629,8 +643,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 602 tests (601 run + 1 Postgres-gated skip)
-make evals                 # golden set: 86/86 (gate ≥ 95%)
+make test                  # 609 tests (608 run + 1 Postgres-gated skip)
+make evals                 # golden set: 89/89 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -697,7 +711,7 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 86 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 89 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
 DPA family and 8 for the employment family), 19 document-level
 (posture, per-type positions, absence detection, injection flags,
@@ -717,9 +731,14 @@ schedule, CTR-2033's clean one, and the severance-arithmetic
 pair: CTR-2034's agreeing figures, CTR-2035's $20,000 gap). 2
 `sow_master` cases seed a master agreement and read the SOW
 under it (CTR-2040 with CTR-2041's conflicts and CTR-2042's
-alignment).
+alignment). 3 `matter` cases assemble briefs across chains and
+score the matter-scope views: a cross-chain pattern neither chain
+shows alone (the same payment ask missed in two chains), a
+shared-obligation conflict (120 days of non-renewal notice in the
+MSA against 90 in the SOW), and a walk-away line whose lineage
+moved (acceptable fallback in round one, walk-away in round two).
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 86/86).
+gate is ≥ 95% (currently 89/89).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
