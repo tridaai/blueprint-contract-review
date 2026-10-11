@@ -20,6 +20,16 @@ how many cited the new entries, how many still arrived flagged
 with no fallback language (the gap recurring — the activation did
 not take), and the position spread.
 
+The baseline sits on the other side of the stamp: the same
+clause-type counts over the records analysed BEFORE activation
+(``before_activation``). "Since" alone can only say whether the
+gap appeared again; before-vs-since is what says it STOPPED —
+``gap_stopped_recurring`` is set only when the gap was real
+before the stamp (flagged verdicts with no fallback language)
+and has not appeared since. A clause type with no gap before
+activation has nothing to stop, and the view says so by leaving
+the flag unset rather than crediting the activation.
+
 Nothing here judges whether the activation was *wise* — it reports
 what happened under it, on the proposal record's surfaces
 (``/playbook/proposals`` and ``/metrics``), so counsel can.
@@ -91,6 +101,13 @@ def proposal_effectiveness(
             "flagged_for_type": 0,
             "flagged_without_fallback_since": 0,
             "gap_recurring": False,
+            "before_activation": {
+                "runs": 0,
+                "verdicts_for_type": 0,
+                "flagged_for_type": 0,
+                "flagged_without_fallback": 0,
+            },
+            "gap_stopped_recurring": False,
             "post_retirement": None,
         }
     since = _parse_ts(proposal.decided_at)
@@ -134,6 +151,35 @@ def proposal_effectiveness(
                 flagged += 1
                 if not verdict.fallback_language:
                     without_fallback += 1
+    # The baseline: the same clause-type counts over the stamped
+    # records analysed before the activation stamp. Unstamped
+    # records belong to neither window — they are counted once,
+    # as unstamped, above.
+    before_records = [
+        r
+        for r in stamped
+        if since is not None
+        and _parse_ts(r.analyzed_at) is not None
+        and _parse_ts(r.analyzed_at) < since
+    ]
+    before_verdicts = 0
+    before_flagged = 0
+    before_without_fallback = 0
+    for record in before_records:
+        for verdict in record.result.clause_verdicts:
+            if verdict.clause_type != proposal.clause_type:
+                continue
+            before_verdicts += 1
+            if verdict.position != "preferred":
+                before_flagged += 1
+                if not verdict.fallback_language:
+                    before_without_fallback += 1
+    before_activation = {
+        "runs": len(before_records),
+        "verdicts_for_type": before_verdicts,
+        "flagged_for_type": before_flagged,
+        "flagged_without_fallback": before_without_fallback,
+    }
     post_retirement = None
     if proposal.status == "retired":
         after = [
@@ -182,5 +228,10 @@ def proposal_effectiveness(
         "flagged_for_type": flagged,
         "flagged_without_fallback_since": without_fallback,
         "gap_recurring": without_fallback > 0,
+        "before_activation": before_activation,
+        # The gap stopped only if it was real before the stamp
+        # and absent since: a type that never gapped has nothing
+        # for the activation to have stopped.
+        "gap_stopped_recurring": before_without_fallback > 0 and without_fallback == 0,
         "post_retirement": post_retirement,
     }

@@ -216,3 +216,107 @@ def test_effectiveness_api():
         p for p in listing["proposals"] if p["proposal_id"] == "PROP-EFF-API"
     )
     assert row["effectiveness"]["proposal_id"] == "PROP-EFF-API"
+
+
+# ---------------------------------------------------------------------------
+# The baseline: before vs since — did the gap STOP recurring?
+# ---------------------------------------------------------------------------
+
+
+def test_effectiveness_baseline_gap_stopped_recurring():
+    proposal = _proposal()
+    records = [
+        # Before activation the gap was real: two verdicts for the
+        # type, both flagged, both with no fallback language.
+        _record(
+            "CTR-B1",
+            [_verdict(["PB-CON-09"], fallback="")],
+            "2026-09-01T00:00:00+00:00",
+        ),
+        _record(
+            "CTR-B2",
+            [_verdict(["PB-CON-09"], fallback="")],
+            "2026-09-15T00:00:00+00:00",
+        ),
+        # Since activation the type still arrives — but the
+        # verdicts cite the new entries and carry language.
+        _record(
+            "CTR-A1",
+            [_verdict(["PROP-TEST-01"], position="acceptable_fallback")],
+            "2026-10-05T00:00:00+00:00",
+        ),
+        _record(
+            "CTR-A2",
+            [_verdict(["PROP-TEST-02"], position="preferred")],
+            "2026-10-06T00:00:00+00:00",
+        ),
+    ]
+    view = proposal_effectiveness(proposal, records)
+    assert view["before_activation"] == {
+        "runs": 2,
+        "verdicts_for_type": 2,
+        "flagged_for_type": 2,
+        "flagged_without_fallback": 2,
+    }
+    assert view["runs_since_activation"] == 2
+    assert view["verdicts_citing_entries"] == 2
+    assert view["flagged_without_fallback_since"] == 0
+    assert view["gap_recurring"] is False
+    # Before > 0 and since == 0: the gap stopped, and the view
+    # credits the activation window with exactly that.
+    assert view["gap_stopped_recurring"] is True
+
+
+def test_effectiveness_no_credit_when_there_was_no_gap_before():
+    # No flagged-without-fallback verdicts before the stamp and
+    # none since: nothing recurred, but nothing STOPPED either —
+    # the activation is not credited with closing a gap that
+    # never existed.
+    proposal = _proposal()
+    records = [
+        _record(
+            "CTR-B1",
+            [_verdict(["PB-CON-01"], position="preferred")],
+            "2026-09-01T00:00:00+00:00",
+        ),
+        _record(
+            "CTR-A1",
+            [_verdict(["PROP-TEST-01"], position="preferred")],
+            "2026-10-05T00:00:00+00:00",
+        ),
+    ]
+    view = proposal_effectiveness(proposal, records)
+    assert view["before_activation"]["flagged_without_fallback"] == 0
+    assert view["gap_stopped_recurring"] is False
+    assert view["gap_recurring"] is False
+    # A proposal never activated reports the zeroed baseline too.
+    cold = proposal_effectiveness(_proposal(status="proposed", decided_at=""), records)
+    assert cold["before_activation"]["runs"] == 0
+    assert cold["gap_stopped_recurring"] is False
+
+
+def test_service_effectiveness_before_window_with_backdated_runs():
+    svc = _service(proposal_store=InMemoryProposalStore())
+    svc.analyze(contract(_WITH_FM, contract_id="CTR-GAPB-1"))
+    svc.analyze(contract(_WITH_FM, contract_id="CTR-GAPB-2"))
+    (proposal,) = svc.generate_playbook_proposals()
+    svc.activate_playbook_proposal(proposal.proposal_id, actor="C. Ounsel")
+    store = svc._get_store()
+    for cid in ("CTR-GAPB-1", "CTR-GAPB-2"):
+        record = store.get(cid)
+        record.analyzed_at = "2026-09-01T00:00:00+00:00"
+        store.save(record)
+    svc.analyze(contract(_WITH_FM, contract_id="CTR-GAPB-3"))
+    view = svc.proposal_effectiveness(proposal.proposal_id)
+    # The two runs the activation was drafted from are the
+    # baseline: both carried the gap the proposal exists to close.
+    assert view["before_activation"]["runs"] == 2
+    assert view["before_activation"]["verdicts_for_type"] == 2
+    assert view["before_activation"]["flagged_without_fallback"] == 2
+    # And the structure-only activation still does not take: the
+    # gap recurs since, so it has not stopped.
+    assert view["flagged_without_fallback_since"] == 1
+    assert view["gap_recurring"] is True
+    assert view["gap_stopped_recurring"] is False
+    (row,) = svc.metrics()["proposal_effectiveness"]
+    assert row["before_activation"]["flagged_without_fallback"] == 2
