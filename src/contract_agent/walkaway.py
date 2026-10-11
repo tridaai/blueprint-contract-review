@@ -46,9 +46,19 @@ the edit outright — in which case the line was lost at counsel's
 desk before the counterparty ever saw it, whatever the follow-up
 draft later did. The profile aggregates held rates by origin, so
 "the line keeps being lost" resolves into whose desk loses it.
+
+**Acceptance** (this round): the briefs read the same outcomes
+through ``acceptance_report`` — the tally counsel asks for by
+name: of the walk-away lines counsel APPROVED (a rejected
+packet's lines never went out, so they are not acceptance
+lines), how many held, how many were softened, how many were
+dropped — with each line's lineage beside the count. The report
+only reports; it never blocks, scores, or alters a review.
 """
 
 from __future__ import annotations
+
+from collections import Counter
 
 from .concessions import _chains
 from .schemas import POSITION_SEVERITY, AgentResult, WalkAwayOutcome
@@ -270,3 +280,59 @@ def resolve_walk_away_outcomes(
                 )
         resolved.append(updated)
     return resolved
+
+
+# ---------------------------------------------------------------------------
+# Acceptance: what became of the lines counsel approved, tallied
+# ---------------------------------------------------------------------------
+
+
+def acceptance_report(results: list[AgentResult]) -> dict:
+    """The acceptance tally over ``results`` (one chain's rounds,
+    or every chain of a matter, oldest → newest): of the walk-away
+    lines counsel APPROVED, how many held, were softened, or were
+    dropped — and each line's lineage beside the count.
+
+    The population is the approved lines only. Capture records
+    lines on rejected packets too (the record of what counsel
+    refused matters elsewhere), but a rejected packet's lines
+    never went to the counterparty, so they are not acceptance
+    lines and are not counted here. A line whose follow-up round
+    has not arrived is ``still_open`` (the record's ``pending``);
+    a line whose clause left the draft entirely is
+    ``clause_removed`` — neither held nor tested, counted
+    separately from the three outcomes the follow-up pronounced
+    on. Every figure is counted here, in code, from the stored
+    outcomes; the briefs render this dict and add nothing to it.
+    """
+    counts: Counter = Counter()
+    lines: list[dict] = []
+    for result in results:
+        for outcome in result.walk_away_outcomes:
+            if outcome.decision != "approved":
+                continue
+            counts[outcome.status] += 1
+            lines.append(
+                {
+                    "clause_id": outcome.clause_id,
+                    "clause_type": outcome.clause_type,
+                    "decided_in": result.contract_id,
+                    "decided_by": outcome.decided_by,
+                    "captured_at": outcome.captured_at,
+                    "position_at_decision": outcome.position_at_decision,
+                    "status": outcome.status,
+                    "final_position": outcome.final_position,
+                    "resolved_in": outcome.resolved_in,
+                    "origin": outcome.origin,
+                    "line_language": outcome.line_language,
+                }
+            )
+    return {
+        "approved_lines": len(lines),
+        "held": counts.get("held", 0),
+        "softened": counts.get("softened", 0),
+        "dropped": counts.get("dropped", 0),
+        "clause_removed": counts.get("clause_removed", 0),
+        "still_open": counts.get("pending", 0),
+        "lines": lines,
+    }

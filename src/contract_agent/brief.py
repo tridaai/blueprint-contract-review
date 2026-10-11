@@ -3,7 +3,9 @@
 Everything counsel needs about a negotiation is already in the
 store — the chain of rounds and how each clause moved through it,
 the re-trades, the positions still open and the tier proposed for
-each, the proposed edits, the exhibit findings, the obligations —
+each, what became of the walk-away lines counsel approved in
+earlier rounds (the acceptance section), the proposed edits, the
+exhibit findings, the obligations —
 but it is spread across per-round results and console panels. This
 module assembles it into a single markdown document, in code, from
 the stored records: every number in the brief traces to a stored
@@ -39,6 +41,7 @@ from __future__ import annotations
 import hashlib
 
 from .schemas import AgentResult, WalkAwayOutcome
+from .walkaway import acceptance_report
 
 
 def _flagged_count(result: AgentResult) -> int:
@@ -473,6 +476,75 @@ def line_provenance_warnings(
     return warnings
 
 
+def _acceptance_lines(chain: list[AgentResult]) -> list[str]:
+    """The walk-away acceptance section: of the lines counsel
+    approved in this chain, how many held, were softened, or were
+    dropped — tallied by ``walkaway.acceptance_report`` and
+    rendered with each line's lineage (the round that decided it,
+    the position then, the follow-up round and the position
+    there). The section reports what happened to counsel's own
+    lines; it recommends nothing and blocks nothing."""
+    report = acceptance_report(chain)
+    lines: list[str] = []
+    lines.append("## Walk-away line acceptance")
+    lines.append("")
+    if not report["approved_lines"]:
+        lines.append(
+            "No walk-away lines have been approved in this chain "
+            "yet — acceptance is tracked from the moment counsel "
+            "approves a packet that proposed one, and read against "
+            "the follow-up round's draft."
+        )
+        lines.append("")
+        return lines
+    total = report["approved_lines"]
+    headline = (
+        f"Of the {total} walk-away line{'s' if total != 1 else ''} "
+        f"counsel approved in this chain, {report['held']} held, "
+        f"{report['softened']} softened, {report['dropped']} dropped"
+    )
+    extras = []
+    if report["clause_removed"]:
+        extras.append(
+            f"{report['clause_removed']} clause(s) left the draft "
+            "entirely — neither held nor tested"
+        )
+    if report["still_open"]:
+        extras.append(
+            f"{report['still_open']} still open — no follow-up "
+            "round has answered them yet"
+        )
+    if extras:
+        headline += "; " + "; ".join(extras)
+    lines.append(headline + ".")
+    lines.append("")
+    for entry in report["lines"]:
+        status = entry["status"]
+        if status == "pending":
+            fate = "no follow-up round yet — **still open**"
+        elif status == "clause_removed":
+            fate = (
+                f"the clause does not appear in the follow-up "
+                f"round ({entry['resolved_in']}) — **clause "
+                "removed**, neither held nor tested"
+            )
+        else:
+            fate = (
+                f"the follow-up round ({entry['resolved_in']}) "
+                f"placed it at {entry['final_position']} — "
+                f"**{status}**"
+            )
+        lines.append(
+            f"- **{entry['clause_type']}** ({entry['clause_id']}) — "
+            f"approved on {entry['decided_in']} at "
+            f"{entry['position_at_decision']}; {fate}."
+        )
+        if entry["line_language"]:
+            lines.append(f"  - The line: {entry['line_language']}")
+    lines.append("")
+    return lines
+
+
 def build_negotiation_brief(
     chain: list[AgentResult],
     latest: AgentResult,
@@ -647,6 +719,9 @@ def build_negotiation_brief(
         for warning in provenance_warnings:
             lines.append(f"- ⚠ {warning}")
         lines.append("")
+
+    # -- Walk-away line acceptance: what became of counsel's lines --------
+    lines.extend(_acceptance_lines(chain))
 
     # -- Proposed edits ----------------------------------------------------
     lines.append("## Proposed edits (draft for counsel review)")

@@ -53,6 +53,12 @@ the views that only exist at matter scope:
 - **A matter roll-up** — clauses by position and open lines by
   tier summed across the chains' current rounds, and the chains
   counted by posture.
+- **Walk-away line acceptance across the matter** — the chain
+  briefs tally what became of each chain's approved walk-away
+  lines (``walkaway.acceptance_report``); the matter brief sums
+  the same report across all its chains and lists every approved
+  line with its chain lineage, so "did our lines hold on this
+  matter?" is answered in one place.
 """
 
 from __future__ import annotations
@@ -62,6 +68,7 @@ import re
 from .concessions import _chains
 from .schemas import POSITIONS, POSITION_SEVERITY, AgentResult
 from .store import ApprovalRecord
+from .walkaway import acceptance_report
 
 
 def matter_records(
@@ -700,6 +707,9 @@ def build_matter_brief_data(
         "rollup": _rollup(chains, latest),
         "chains": chain_rows,
         "open_positions": open_positions,
+        "acceptance": acceptance_report(
+            [result for chain in chains for result in _results(chain)]
+        ),
         "patterns": patterns,
         "matter_patterns": find_matter_patterns(chains),
         "exhibit_findings": exhibit_findings,
@@ -850,6 +860,62 @@ def render_matter_brief_markdown(data: dict) -> str:
                 if tier == 2 and entry["lineage"]:
                     lines.append(f"  - {_lineage_line(entry['lineage'])}")
             lines.append("")
+
+    # -- Walk-away line acceptance across the matter -----------------------
+    acceptance = data["acceptance"]
+    lines.append("## Walk-away line acceptance across the matter")
+    lines.append("")
+    if not acceptance["approved_lines"]:
+        lines.append(
+            "No walk-away lines have been approved anywhere in "
+            "this matter yet — acceptance is tracked from the "
+            "moment counsel approves a packet that proposed one, "
+            "and read against the follow-up round's draft."
+        )
+    else:
+        total = acceptance["approved_lines"]
+        headline = (
+            f"Of the {total} walk-away line{'s' if total != 1 else ''} "
+            f"counsel approved across this matter, {acceptance['held']} "
+            f"held, {acceptance['softened']} softened, "
+            f"{acceptance['dropped']} dropped"
+        )
+        extras = []
+        if acceptance["clause_removed"]:
+            extras.append(
+                f"{acceptance['clause_removed']} clause(s) left the "
+                "draft entirely — neither held nor tested"
+            )
+        if acceptance["still_open"]:
+            extras.append(
+                f"{acceptance['still_open']} still open — no "
+                "follow-up round has answered them yet"
+            )
+        if extras:
+            headline += "; " + "; ".join(extras)
+        lines.append(headline + ".")
+        lines.append("")
+        status_words = {
+            "held": "held",
+            "softened": "softened",
+            "dropped": "dropped",
+            "clause_removed": "clause removed",
+            "pending": "still open",
+        }
+        lines.append(
+            "| Decided in | Clause | Position at decision | Follow-up round | Final position | Outcome |"
+        )
+        lines.append("|---|---|---|---|---|---|")
+        for entry in acceptance["lines"]:
+            lines.append(
+                f"| {entry['decided_in']} "
+                f"| {entry['clause_type']} ({entry['clause_id']}) "
+                f"| {entry['position_at_decision'] or '—'} "
+                f"| {entry['resolved_in'] or '—'} "
+                f"| {entry['final_position'] or '—'} "
+                f"| {status_words.get(entry['status'], entry['status'])} |"
+            )
+    lines.append("")
 
     # -- Reflection patterns across the matter -----------------------------
     if data["patterns"]:
