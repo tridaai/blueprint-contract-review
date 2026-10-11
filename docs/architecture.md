@@ -325,6 +325,29 @@ the run, like the round diff — the comparison needs the prior
 round's stored package) and surfaces in the brief's exhibit
 findings and the console's exhibit table.
 
+**Sub-processor exhibit** (`subprocessor_exhibit.py`). The
+checks judge one package and the drift follows one chain; the
+exhibit assembles across a matter. Reading each chain's latest
+round, it extracts every list-annex entry as stated — name,
+purpose (the gloss after the item's dash, extracted here for
+the first time), and location — with its lineage (contract,
+chain root, document, the annex's own heading, the line as the
+list machinery reads it), groups appearances by the normalised
+name the checks match on, and flags a **cross-document
+conflict** when one processor carries two different stated
+purposes, or two different stated locations, across documents:
+a computed comparison on normalised values, both sources cited,
+a document's silence read as an absence rather than a position,
+and a restatement inside one document read as one source, not
+a conflict. List items with no readable name, and prose lines
+engaging a named party outside the item shape, are carried as
+**unparsed** with their source lines — never dropped, never
+guessed into structure. Served by
+`ContractService.subprocessor_exhibit` at
+`GET /matters/subprocessor-exhibit` in JSON and text renderings
+of one assembly: a read model that changes nothing and draws
+no conclusion about adequacy or authorisation.
+
 **Prior-invention schedule drift** (`prior_invention_drift.py`,
 round 12). The schedule gets the drift treatment too, and here
 the direction of movement is the substance: an **addition**
@@ -1205,6 +1228,22 @@ on its own. Certificates whose checks failed are deliberately
 watch exists for the cover nobody had a reason to doubt. The
 sample CTR-2029 is the demonstration — fully consistent at
 review, expiring 2026-12-31, flagged by an autumn sweep.
+
+**Coverage on the row, and the draft.** A row names its state
+(`expired` once the date has passed, `expiring` while it
+approaches) and its chain's root beside the operative round,
+and carries the coverage facts as the review recorded them
+(`coverage_facts`, read off the stored checks, never
+recomputed): the named insured the certificate showed, each
+coverage limit with the agreement's recorded requirement beside
+the certificate's stated figure, and each required endorsement
+beside what the certificate showed. From those facts alone the
+row composes `renewal_request_draft` — a deterministic
+renewal request naming the certificate, its expiry and its
+distance, and the required coverage in the recorded terms,
+worded for the state (before expiry, or as a matter of urgency
+once lapsed), headed as a draft and sent nowhere: a review
+that stored no limits gives the draft no limits to quote.
 
 **Closing the watch takes evidence** (round 12). A renewal
 supersedes the earlier certificate for the watch only when the

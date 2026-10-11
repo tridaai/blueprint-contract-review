@@ -517,7 +517,18 @@ included) draw a `certificate_expiring` event and a report section
 Certificates that failed review are findings already, not watches;
 the watch exists for the cover nobody had a reason to doubt
 (sample CTR-2029: consistent at review, expiring 2026-12-31,
-flagged by an autumn sweep). And the watch closes on **evidence**,
+flagged by an autumn sweep). Each row also carries the coverage
+facts as its review recorded them — the named insured the
+certificate showed, each limit the agreement required beside
+what the certificate stated, the endorsements required beside
+what was shown — an explicit state (`expired` once the date has
+passed, `expiring` while it approaches, so a lapsed certificate
+is never lumped in with the upcoming), its chain's root, and a
+deterministic **renewal-request draft** composed from those
+recorded facts alone: the certificate, its expiry, the required
+coverage in the agreement's own recorded terms. The draft is
+headed as a draft and sent nowhere, and it names no fact the
+record does not carry. And the watch closes on **evidence**,
 not on arrival: a renewal certificate supersedes the watched
 one only when it evidences the original requirement set in full
 — a renewal that quietly dropped a limit or an endorsement
@@ -647,6 +658,23 @@ advanced, decisions recorded, obligations opened or closed,
 exhibit failures appearing or clearing, matter-level patterns and
 shared-obligation conflicts forming or resolving.
 
+**The sub-processor exhibit.** Where a matter's documents carry
+sub-processor list annexes, `GET
+/matters/subprocessor-exhibit?counterparty=…&matter=…` assembles
+the exhibit in code from each chain's current round: every entry
+as its document states it — name, purpose, location — with its
+lineage (contract, chain root, document, annex heading, the line
+as written), served as JSON or readable text (`?format=text`)
+from one assembly. Mentions that do not structure — a prose line
+engaging a named party outside the list's item shape, a list
+item with no readable name — are carried as **unparsed** with
+their source line, never dropped and never guessed into an
+entry; and the same processor stated two ways across documents
+(a different purpose, a different location) is flagged as a
+conflict with both sources cited. The exhibit assembles what
+the documents say; it draws no conclusion about adequacy or
+authorisation.
+
 ## Quickstart
 
 Runs the **production topology locally** — a stateless API backed by
@@ -662,8 +690,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 617 tests (616 run + 1 Postgres-gated skip)
-make evals                 # golden set: 93/93 (gate ≥ 95%)
+make test                  # 635 tests (634 run + 1 Postgres-gated skip)
+make evals                 # golden set: 96/96 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -766,8 +794,12 @@ a seeded activation whose gap stops recurring (two fallback-free
 gap verdicts before the stamp, none since) and the real gap flow,
 whose baseline must count the runs the activation was drafted
 from while its structure-only entries leave the gap recurring.
+3 `subprocessor_exhibit` cases assemble a matter's sub-processor
+lists across two documents with their lineage, flag a purpose
+conflict and a location conflict with both sources cited, and
+carry a prose mention as unparsed.
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 93/93).
+gate is ≥ 95% (currently 96/96).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
