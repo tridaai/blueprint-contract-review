@@ -816,6 +816,28 @@ that type, the brief names the desk's own pattern while the
 choice is still counsel's. New warnings also surface in the
 since-the-last-brief delta.
 
+**Acceptance in the briefs** (`walkaway.acceptance_report`,
+this round). The provenance section warns; it does not tally.
+Both briefs now also carry the tally itself. `acceptance_report`
+counts — in code, off the stored outcomes — the walk-away lines
+counsel **approved**: a rejected packet's lines are captured on
+the record (the refusal matters) but never went to the
+counterparty, so they are not acceptance lines and are excluded
+here. Each approved line is counted once — `held` / `softened`
+/ `dropped`, with `clause_removed` (the clause left the draft;
+the line was neither held nor tested) and `still_open` (the
+record's `pending`: no follow-up round yet) tallied separately
+— and listed with its lineage: the round that decided it, the
+position at decision, the follow-up round and the position
+there. The chain brief renders it as the **Walk-away line
+acceptance** section after Line provenance; the matter brief
+adds the same report to its data assembly (`acceptance`) summed
+across all the matter's chains and renders the per-line table,
+so the JSON export and the markdown carry one set of numbers.
+The report reports: it never blocks a review, moves a score, or
+alters a record — what counsel does with a softened line is
+counsel's call, taken with the tally in front of them.
+
 **Negotiation brief** (`brief.py`). One markdown document per
 chain, assembled in code from the stored results — never
 model-composed, so every figure traces to a record: the
@@ -1073,6 +1095,20 @@ scaffold, whose entries carry no language for counsel to have
 written yet) reports the gap still recurring rather than dressing
 the decision up, and records saved before the stamp existed are
 counted as unstamped, never silently backdated into a window.
+
+**The effectiveness baseline** (`proposal_effectiveness.py`,
+this round). A since-activation window can say the gap appeared
+again; it cannot say the gap *stopped* — that needs the other
+side of the stamp. The view therefore also counts the baseline
+(`before_activation`): the same clause-type figures over the
+stamped records analysed before activation. `gap_stopped_recurring`
+is set only when the gap was real before the stamp (flagged
+verdicts carrying no fallback language) and absent since; where
+the type never gapped before, the flag stays unset — the
+activation is not credited with closing a gap that never
+existed. The console's proposal panel shows the movement as
+"N before activation → M since" beside the verdict, so the
+number and its reading travel together.
 
 **Proposal retirement** (`ContractService.retire_playbook_proposal`,
 round 10). Activation is no longer a one-way door. Counsel may

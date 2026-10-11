@@ -348,6 +348,18 @@ of its proposed edits — lines counsel's desk moved, lines the
 counterparty moved anyway, and the desk's own pattern where
 most of a type's decided lines were counsel-modified and the
 current packet proposes the playbook's line for it again.
+Both briefs now also **tally acceptance** outright: a
+**Walk-away line acceptance** section counts the lines counsel
+*approved* (a rejected packet's lines never went out, so they
+are not acceptance lines) — of N approved, how many held, how
+many softened, how many dropped, with clauses that left the
+draft and lines still awaiting a follow-up counted separately,
+and every line's lineage beside the count: the round that
+decided it, the position then, the follow-up round and the
+position there. The matter brief sums the same tally across
+all its chains, as data and as a table, so "did our lines hold
+on this matter?" is answered in one place. The sections report
+what happened to counsel's own lines; they decide nothing.
 
 **Pattern-term calibration.** The pattern term's six points are a
 stated guess, so the guess is audited: a calibration report
@@ -415,7 +427,14 @@ The view rides on the proposal record, at
 `GET /playbook/proposals/{id}/effectiveness`, and in `/metrics`
 beside the coverage analytics. It is honest in both directions: a
 structure-only activation whose entries carry no language yet
-reports the gap still recurring, not a success. And activation is
+reports the gap still recurring, not a success. The view now
+also carries the **before-activation baseline** — the same
+counts over the records analysed before the stamp — so the
+question legal ops actually asks is answerable: `gap_stopped_recurring`
+is set only when the gap was real before activation and has not
+appeared since; a clause type that never gapped earns the
+activation no credit. The console's proposal panel shows the
+movement (N before activation → M since) beside that verdict. And activation is
 no longer a one-way door: counsel may **retire** an activated
 proposal (`POST /playbook/proposals/{id}/retire` — a named act,
 a reason required) — the entries leave the playbook and
@@ -643,8 +662,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: pip install -e ".[dev]" -c constraints.txt
 make demo                  # one contract, traced end to end
-make test                  # 609 tests (608 run + 1 Postgres-gated skip)
-make evals                 # golden set: 89/89 (gate ≥ 95%)
+make test                  # 617 tests (616 run + 1 Postgres-gated skip)
+make evals                 # golden set: 93/93 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -711,7 +730,7 @@ is a labelled offline fallback, never the story.
 
 ## Evals
 
-`evals/golden.jsonl` — 89 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 93 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
 DPA family and 8 for the employment family), 19 document-level
 (posture, per-type positions, absence detection, injection flags,
@@ -737,8 +756,18 @@ shows alone (the same payment ask missed in two chains), a
 shared-obligation conflict (120 days of non-renewal notice in the
 MSA against 90 in the SOW), and a walk-away line whose lineage
 moved (acceptable fallback in round one, walk-away in round two).
+2 `walkaway_acceptance` cases run whole chains through the service
+— analyse, counsel approves, the follow-up round arrives — and
+score the briefs' acceptance tally with each line's lineage (the
+Vertex chain's two approved lines held at preferred; an inline
+pair built to soften, its follow-up's own lines still open). 2
+`effectiveness` cases score the proposal report's numbers exactly:
+a seeded activation whose gap stops recurring (two fallback-free
+gap verdicts before the stamp, none since) and the real gap flow,
+whose baseline must count the runs the activation was drafted
+from while its structure-only entries leave the gap recurring.
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 89/89).
+gate is ≥ 95% (currently 93/93).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
