@@ -541,6 +541,28 @@ def _check_effectiveness_view(view: dict, expected: dict, problems: list[str]) -
 
 
 def _eval_effectiveness(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Effectiveness cases activate a proposal, and activation
+    registers its entries in the process-global playbook registry
+    — residue a later in-process caller (the pytest gate runs
+    this evaluator in-process) would read as playbook. Snapshot
+    the registry and restore it on the way out: the same
+    discipline the proposal test suite applies with its fixture."""
+    from contract_agent.playbook_registry import (
+        clear_registered,
+        register_entries,
+        registered_entries,
+    )
+
+    snapshot = registered_entries()
+    try:
+        return _eval_effectiveness_run(case, samples)
+    finally:
+        clear_registered()
+        if snapshot:
+            register_entries(snapshot)
+
+
+def _eval_effectiveness_run(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
     """Proposal effectiveness, two seedings. ``seeded``: an
     activated proposal and fabricated stamped records saved
     straight into the service's stores — the report's numbers are
