@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/tridaai-logo.png" alt="Trida AI" height="56">
+  <img src="https://trida.ai/logos-rounded/trida-rounded.png" alt="Trida AI" width="96">
 </p>
 
-# Trida AI Blueprint — Contract Review Agent
+# Blueprint — Contract Review Agent
 
 A first-pass contract review agent. A company receives counterparty
 contracts — MSAs, SOWs, NDAs, amendments, order forms — and in-house
@@ -17,6 +17,12 @@ happens without a human decision.
 
 > Reference prototype. All contracts, counterparties, and playbook
 > entries are synthetic. Not legal advice; not a law firm.
+
+<p align="center">
+  <a href="https://trida.ai/blog/contract-review-agent-blueprint">
+    <img src="https://geeytzpdwvjojoie.public.blob.vercel-storage.com/blog/1791674316336-cover.webp" alt="Contract Review Agent Blueprint" width="600">
+  </a>
+</p>
 
 **Deep-dive:** [Contract Review Agent Blueprint](https://trida.ai/blog/contract-review-agent-blueprint) — how the agent works, where it stops, and what the evals actually prove.
 
