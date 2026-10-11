@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-11T14:52:42.913295+00:00",
+  "generated_at": "2026-10-11T16:02:03.281437+00:00",
   "backend": "mock (offline fallback)",
-  "total": 93,
-  "correct": 93,
+  "total": 96,
+  "correct": 96,
   "accuracy": 1.0,
   "per_kind": {
     "clause": {
@@ -43,6 +43,11 @@
     "sow_master": {
       "total": 2,
       "correct": 2,
+      "accuracy": 1.0
+    },
+    "subprocessor_exhibit": {
+      "total": 3,
+      "correct": 3,
       "accuracy": 1.0
     },
     "walkaway_acceptance": {

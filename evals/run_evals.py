@@ -540,6 +540,105 @@ def _check_effectiveness_view(view: dict, expected: dict, problems: list[str]) -
             problems.append(f"{path}: expected {want}, got {got}")
 
 
+def _eval_subprocessor_exhibit(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Sub-processor exhibit cases: analyse the case's packages
+    into one matter, then assemble the exhibit with
+    ``ContractService.subprocessor_exhibit`` (the same assembly
+    the endpoint renders) and compare the counts, the assembled
+    processors and their appearances across documents, the
+    cross-document conflicts (processor + field, with the cited
+    values), and the unparsed mentions carried with their
+    lineage — plus any lines the case expects in the text
+    rendering."""
+    from contract_agent.matter_brief import matter_records
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+    from contract_agent.subprocessor_exhibit import (
+        render_subprocessor_exhibit_text,
+    )
+
+    service = ContractService(store=InMemoryStore(), checkpointer=False)
+    for step in case.get("steps") or []:
+        if "analyze" in step:
+            contract = samples.get(step["analyze"])
+            if contract is None:
+                return False, f"unknown sample {step['analyze']}"
+            service.analyze(contract)
+        elif "analyze_inline" in step:
+            service.analyze(ContractInput(**step["analyze_inline"]))
+        else:
+            return False, f"unknown exhibit step {step}"
+    chains = matter_records(
+        service._get_store().all_records(), case["counterparty"], case["matter"]
+    )
+    if not chains:
+        return False, "no chains in the case's matter"
+    data = service.subprocessor_exhibit(case["counterparty"], case["matter"])
+    problems = []
+    for key, expected in (case.get("expected_counts") or {}).items():
+        if data["counts"].get(key) != expected:
+            problems.append(
+                f"counts {key}: expected {expected}, got {data['counts'].get(key)}"
+            )
+    if case.get("expected_processors") is not None:
+        got = sorted(p["name"] for p in data["processors"])
+        if got != sorted(case["expected_processors"]):
+            problems.append(
+                f"processors: expected {sorted(case['expected_processors'])}, got {got}"
+            )
+    for name, expected in (case.get("expected_appearances") or {}).items():
+        processor = next(
+            (p for p in data["processors"] if p["name"] == name), None
+        )
+        if processor is None:
+            problems.append(f"{name}: not assembled")
+            continue
+        got = sorted(a["contract_id"] for a in processor["appearances"])
+        if got != sorted(expected):
+            problems.append(
+                f"{name} appearances: expected {sorted(expected)}, got {got}"
+            )
+    if case.get("expected_conflicts") is not None:
+        got = sorted(f"{c['name']}|{c['field']}" for c in data["conflicts"])
+        if got != sorted(case["expected_conflicts"]):
+            problems.append(
+                f"conflicts: expected {sorted(case['expected_conflicts'])}, got {got}"
+            )
+    for key, expected in (case.get("expected_conflict_values") or {}).items():
+        name, field = key.split("|")
+        conflict = next(
+            (
+                c
+                for c in data["conflicts"]
+                if c["name"] == name and c["field"] == field
+            ),
+            None,
+        )
+        if conflict is None:
+            problems.append(f"{key}: no such conflict")
+            continue
+        got = sorted(v["value"] for v in conflict["values"])
+        if got != sorted(expected):
+            problems.append(
+                f"{key} values: expected {sorted(expected)}, got {got}"
+            )
+    for expected in case.get("expected_unparsed") or []:
+        if not any(
+            item["contract_id"] == expected["contract_id"]
+            and expected["contains"] in item["line"]
+            for item in data["unparsed"]
+        ):
+            problems.append(
+                f"unparsed: no line carrying {expected['contains']!r} "
+                f"from {expected['contract_id']}"
+            )
+    text = render_subprocessor_exhibit_text(data)
+    for needle in case.get("expected_in_text") or []:
+        if needle not in text:
+            problems.append(f"text rendering missing {needle!r}")
+    return not problems, "; ".join(problems)
+
+
 def _eval_effectiveness(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
     """Effectiveness cases activate a proposal, and activation
     registers its entries in the process-global playbook registry
@@ -693,6 +792,8 @@ def evaluate(cases: list[dict]) -> dict:
             ok, detail = _eval_walkaway_acceptance(case, samples)
         elif kind == "effectiveness":
             ok, detail = _eval_effectiveness(case, samples)
+        elif kind == "subprocessor_exhibit":
+            ok, detail = _eval_subprocessor_exhibit(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:
