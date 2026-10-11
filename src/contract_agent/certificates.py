@@ -82,6 +82,26 @@ watch whose risk counsel accepted stops announcing at all:
 the decision closed the loop the announcement was chasing,
 so the sweep counts it accepted instead, the way the covenant
 sweep counts a confirmed lapse closed.
+
+**The row carries the coverage, and drafts the ask**: a watch
+row named a contract and a date, but not the cover at stake —
+counsel reading the sweep still had to open the review record
+to learn what limits lapse, and then write the renewal request
+from scratch. Each row now carries the coverage facts AS
+RECORDED on the review it stands on (the named insured the
+certificate showed, each coverage limit the agreement required
+beside what the certificate stated, the endorsements required
+beside what was shown — read off the stored checks, never
+recomputed), an explicit ``state`` — ``expired`` once the date
+has passed, ``expiring`` while it approaches, so a lapsed
+certificate is never lumped in with the merely upcoming — the
+chain's root beside the operative round, and a deterministic
+renewal-request draft composed from those same recorded facts:
+the certificate, its expiry, the required coverage in the
+agreement's own recorded terms. The draft is a draft — headed
+as one, sent nowhere, and it names no fact the record does not
+carry: a record whose review stored no limits gives the draft
+no limits to quote.
 """
 
 from __future__ import annotations
@@ -231,6 +251,142 @@ def _relied_upon_expiry(record: ApprovalRecord):
     return None
 
 
+_ENDORSEMENT_CHECKS = (
+    "insurance_additional_insured",
+    "insurance_waiver_of_subrogation",
+)
+
+
+def coverage_facts(record: ApprovalRecord) -> dict:
+    """The coverage facts a record's review recorded, read off
+    its stored insurance checks: the named insured the
+    certificate showed, each coverage limit — what the agreement
+    required (the check's ``promised``) beside what the
+    certificate stated (its ``found``) — and each endorsement
+    the agreement required beside what the certificate showed.
+    Facts as recorded, never recomputed and never completed: a
+    check the review did not run contributes nothing, so the
+    facts a watch row carries are exactly the facts its review
+    left on the record."""
+    facts: dict = {"named_insured": "", "limits": [], "endorsements": []}
+    for check in record.result.exhibit_checks:
+        if check.name == "insurance_named_insured":
+            facts["named_insured"] = check.found or ""
+        elif check.name.startswith("insurance_limits_"):
+            facts["limits"].append(
+                {
+                    "coverage": check.name.removeprefix(
+                        "insurance_limits_"
+                    ).replace("_", " "),
+                    "required": check.promised,
+                    "found": check.found,
+                    "status": check.status,
+                }
+            )
+        elif check.name in _ENDORSEMENT_CHECKS:
+            facts["endorsements"].append(
+                {
+                    "name": check.name.removeprefix("insurance_").replace(
+                        "_", " "
+                    ),
+                    "required": check.promised,
+                    "found": check.found,
+                    "status": check.status,
+                }
+            )
+    return facts
+
+
+def renewal_request_draft(
+    *,
+    counterparty_name: str,
+    contract_id: str,
+    chain_root: str,
+    exhibit_document_id: str,
+    expiry: date,
+    days_until: int,
+    today: date,
+    coverage: dict,
+) -> str:
+    """The renewal request a flagged certificate draws: a
+    deterministic draft composed from the watch row's recorded
+    facts — the certificate and the contract it stands under,
+    the expiry and its distance, the coverage the agreement
+    requires in the terms the review recorded. Headed as a
+    draft and sent nowhere; the wording follows the state (a
+    certificate still in force is asked for before it expires,
+    a lapsed one is asked for as a matter of urgency), and no
+    line names a fact the record does not carry — with no
+    limits or endorsements on the record, the draft asks for
+    renewal of the recorded cover and quotes none."""
+    lines = [
+        "DRAFT — renewal request, prepared for counsel to send; not sent.",
+        "",
+        f"To: {counterparty_name}",
+        (
+            f"Re: Certificate of insurance under contract {contract_id}"
+            + (
+                f" (chain root {chain_root})"
+                if chain_root and chain_root != contract_id
+                else ""
+            )
+            + (
+                f" — certificate {exhibit_document_id}"
+                if exhibit_document_id
+                else ""
+            )
+        ),
+        "",
+    ]
+    if days_until < 0:
+        lines.append(
+            f"The certificate of insurance relied on under this "
+            f"contract expired on {expiry.isoformat()} "
+            f"({-days_until} days before {today.isoformat()})."
+        )
+    elif days_until == 0:
+        lines.append(
+            f"The certificate of insurance relied on under this "
+            f"contract expires today, {expiry.isoformat()}."
+        )
+    else:
+        lines.append(
+            f"The certificate of insurance relied on under this "
+            f"contract expires on {expiry.isoformat()} "
+            f"({days_until} days from {today.isoformat()})."
+        )
+    if coverage.get("named_insured"):
+        lines.append(
+            f"The certificate names {coverage['named_insured']} "
+            f"as the insured."
+        )
+    required = [f"- {limit['required']}" for limit in coverage.get("limits", []) if limit.get("required")]
+    required += [
+        f"- {endorsement['required']}"
+        for endorsement in coverage.get("endorsements", [])
+        if endorsement.get("required")
+    ]
+    lines.append("")
+    if required:
+        lines.append(
+            "Please furnish a renewal certificate evidencing the "
+            "coverage the agreement requires:"
+        )
+        lines.extend(required)
+    else:
+        lines.append(
+            "Please furnish a renewal certificate for the cover "
+            "recorded on the review of this contract."
+        )
+    lines.append(
+        "Please furnish it as a matter of urgency — the cover "
+        "this contract relies on has lapsed."
+        if days_until < 0
+        else "Please furnish it before the current certificate expires."
+    )
+    return "\n".join(lines)
+
+
 def certificate_watches(
     records: list[ApprovalRecord], today: date, window_days: int
 ) -> list[dict]:
@@ -238,7 +394,11 @@ def certificate_watches(
     ``today``, soonest first. Pure over the stored records: the
     expiry is the one the stored expiry check recorded in its
     ``found`` field — an unparseable value yields no watch, never
-    a guessed date.
+    a guessed date. Each row names its state (``expired`` once
+    the date has passed, ``expiring`` while it approaches), its
+    chain's root, the coverage facts its review recorded
+    (:func:`coverage_facts`), and the renewal-request draft those
+    facts compose (:func:`renewal_request_draft`).
 
     Per chain, the operative certificate is the latest round's —
     unless that round's renewal failed the evidence check
@@ -277,15 +437,29 @@ def certificate_watches(
         days_until = (expiry - today).days
         if days_until > window_days:
             continue
+        coverage = coverage_facts(source)
         row = {
             "contract_id": result.contract_id,
+            "chain_root": chain[0].result.contract_id,
             "counterparty_name": result.counterparty_name,
             "status": result.status,
             "expiry_date": expiry.isoformat(),
             "days_until": days_until,
             "overdue": days_until < 0,
+            "state": "expired" if days_until < 0 else "expiring",
             "exhibit_document_id": check.exhibit_document_id,
             "renewed": renewal is not None and renewal.status == "consistent",
+            "coverage": coverage,
+            "renewal_request_draft": renewal_request_draft(
+                counterparty_name=result.counterparty_name,
+                contract_id=result.contract_id,
+                chain_root=chain[0].result.contract_id,
+                exhibit_document_id=check.exhibit_document_id,
+                expiry=expiry,
+                days_until=days_until,
+                today=today,
+                coverage=coverage,
+            ),
         }
         if renewal_failed:
             row["renewal_evidence_failed"] = True
