@@ -5,8 +5,10 @@ backend) over ``golden.jsonl`` and reports clause-level accuracy
 (clause type + playbook position), document-level accuracy
 (posture, per-type positions, missing-clause detection, injection
 flags, information requests, repairs), negotiation-round movement,
-round-chain histories (re-trades, cumulative movement), and exhibit
-consistency checks. All cases are synthetic. Run from the repo root:
+round-chain histories (re-trades, cumulative movement), exhibit
+consistency checks, and matter briefs (cross-chain patterns,
+shared-obligation conflicts, walk-away lineage). All cases are
+synthetic. Run from the repo root:
 
     python evals/run_evals.py
 
@@ -295,6 +297,134 @@ def _eval_sow_master(case: dict, samples: dict[str, ContractInput]) -> tuple[boo
     return not problems, "; ".join(problems)
 
 
+def _eval_matter(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Matter briefs: run the case's steps — analyse sample or
+    inline contracts under one counterparty + matter tag, with
+    counsel edit agreements recorded between rounds where the case
+    scripts them — then assemble the matter brief AS DATA and
+    compare the matter-scope views: the cross-chain patterns, the
+    shared obligations and their conflicts, the open walk-away
+    lines' lineage, and the roll-up. The brief is a read model, so
+    the case scores the assembly itself, not a pipeline verdict."""
+    from contract_agent.matter_brief import build_matter_brief_data, matter_records
+    from contract_agent.schemas import EditOutcomeInput
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+
+    store = InMemoryStore()
+    service = ContractService(store=store, checkpointer=False)
+    results: dict[str, object] = {}
+    for step in case.get("steps") or []:
+        if "analyze" in step:
+            contract = samples.get(step["analyze"])
+            if contract is None:
+                return False, f"unknown sample {step['analyze']}"
+            if case.get("matter") and not contract.matter:
+                contract = contract.model_copy(update={"matter": case["matter"]})
+            results[contract.contract_id] = service.analyze(contract)
+        elif "analyze_inline" in step:
+            contract = ContractInput(**step["analyze_inline"])
+            results[contract.contract_id] = service.analyze(contract)
+        elif "agree" in step:
+            target = results.get(step["agree"]["contract_id"])
+            if target is None:
+                return False, f"agree step for unanalysed {step['agree']['contract_id']}"
+            clause_type = step["agree"]["clause_type"]
+            index = next(
+                (
+                    i
+                    for i, e in enumerate(target.proposed_edits)
+                    if e.clause_type == clause_type
+                ),
+                None,
+            )
+            if index is None:
+                return False, f"no proposed {clause_type} edit on {target.contract_id}"
+            service.record_edit_outcomes(
+                target.contract_id,
+                [
+                    EditOutcomeInput(
+                        edit_index=index,
+                        outcome="accepted",
+                        note="agreed on the call",
+                    )
+                ],
+                actor="Eval",
+            )
+        else:
+            return False, f"unknown matter step {step}"
+    chains = matter_records(store.all_records(), case["counterparty"], case["matter"])
+    data = build_matter_brief_data(case["counterparty"], case["matter"], chains)
+    problems = []
+    if case.get("expected_chains") is not None and len(chains) != case["expected_chains"]:
+        problems.append(f"chains: expected {case['expected_chains']}, got {len(chains)}")
+    if case.get("expected_open_walk_aways") is not None:
+        if data["rollup"]["open_walk_aways"] != case["expected_open_walk_aways"]:
+            problems.append(
+                f"open walk-aways: expected {case['expected_open_walk_aways']}, "
+                f"got {data['rollup']['open_walk_aways']}"
+            )
+    if case.get("expected_matter_patterns") is not None:
+        got = sorted(p["clause_type"] for p in data["matter_patterns"])
+        if got != sorted(case["expected_matter_patterns"]):
+            problems.append(
+                f"matter patterns: expected {case['expected_matter_patterns']}, got {got}"
+            )
+    for clause_type, expected in (case.get("expected_pattern_active_chains") or {}).items():
+        pattern = next(
+            (p for p in data["matter_patterns"] if p["clause_type"] == clause_type), None
+        )
+        if pattern is None:
+            problems.append(f"{clause_type}: no matter pattern")
+        elif pattern["chains_with_active_pattern"] != expected:
+            problems.append(
+                f"{clause_type} active-pattern chains: expected {expected}, "
+                f"got {pattern['chains_with_active_pattern']}"
+            )
+    for clause_type, expected in (case.get("expected_pattern_flags") or {}).items():
+        pattern = next(
+            (p for p in data["matter_patterns"] if p["clause_type"] == clause_type), None
+        )
+        if pattern is None:
+            problems.append(f"{clause_type}: no matter pattern")
+        elif pattern["total_flags"] != expected:
+            problems.append(
+                f"{clause_type} total flags: expected {expected}, got {pattern['total_flags']}"
+            )
+    groups = {g["kind"]: g for g in data["shared_obligations"]}
+    for kind, status in (case.get("expected_shared_obligations") or {}).items():
+        group = groups.get(kind)
+        if group is None:
+            problems.append(f"shared obligations: no {kind} group across chains")
+        elif group["status"] != status:
+            problems.append(
+                f"shared {kind}: expected {status}, got {group['status']}"
+            )
+    for kind, days in (case.get("expected_shared_days") or {}).items():
+        group = groups.get(kind)
+        if group is None:
+            problems.append(f"shared obligations: no {kind} group across chains")
+        elif sorted(m["days"] for m in group["members"]) != sorted(days):
+            problems.append(
+                f"shared {kind} days: expected {days}, "
+                f"got {[m['days'] for m in group['members']]}"
+            )
+    tier2 = {p["clause_type"]: p for p in data["open_positions"] if p["tier"] == 2}
+    for clause_type, expected in (case.get("expected_lineage") or {}).items():
+        entry = tier2.get(clause_type)
+        if entry is None or entry["lineage"] is None:
+            problems.append(f"{clause_type}: no open walk-away lineage")
+            continue
+        lineage = entry["lineage"]
+        for field in ("first_seen_in", "walk_away_since", "moved", "from_position", "to_position"):
+            if field in expected and lineage[field] != expected[field]:
+                problems.append(
+                    f"{clause_type} lineage {field}: expected {expected[field]}, "
+                    f"got {lineage[field]}"
+                )
+    return not problems, "; ".join(problems)
+
+
 def evaluate(cases: list[dict]) -> dict:
     samples = {c.contract_id: c for c in sample_contract_models()}
     correct = 0
@@ -314,6 +444,8 @@ def evaluate(cases: list[dict]) -> dict:
             ok, detail = _eval_exhibit(case, samples)
         elif kind == "sow_master":
             ok, detail = _eval_sow_master(case, samples)
+        elif kind == "matter":
+            ok, detail = _eval_matter(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:
