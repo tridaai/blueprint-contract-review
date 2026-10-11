@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-11T13:45:21.880501+00:00",
+  "generated_at": "2026-10-11T14:45:47.562469+00:00",
   "backend": "mock (offline fallback)",
-  "total": 89,
-  "correct": 89,
+  "total": 93,
+  "correct": 93,
   "accuracy": 1.0,
   "per_kind": {
     "clause": {
@@ -13,6 +13,11 @@
     "document": {
       "total": 19,
       "correct": 19,
+      "accuracy": 1.0
+    },
+    "effectiveness": {
+      "total": 2,
+      "correct": 2,
       "accuracy": 1.0
     },
     "exhibit": {
@@ -36,6 +41,11 @@
       "accuracy": 1.0
     },
     "sow_master": {
+      "total": 2,
+      "correct": 2,
+      "accuracy": 1.0
+    },
+    "walkaway_acceptance": {
       "total": 2,
       "correct": 2,
       "accuracy": 1.0

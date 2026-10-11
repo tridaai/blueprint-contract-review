@@ -6,9 +6,13 @@ backend) over ``golden.jsonl`` and reports clause-level accuracy
 (posture, per-type positions, missing-clause detection, injection
 flags, information requests, repairs), negotiation-round movement,
 round-chain histories (re-trades, cumulative movement), exhibit
-consistency checks, and matter briefs (cross-chain patterns,
-shared-obligation conflicts, walk-away lineage). All cases are
-synthetic. Run from the repo root:
+consistency checks, matter briefs (cross-chain patterns,
+shared-obligation conflicts, walk-away lineage), walk-away line
+acceptance (approved lines held / softened / dropped against the
+follow-up round, tallied for the briefs), and proposal
+effectiveness (verdicts citing an activated proposal's entries,
+and the coverage gap before vs after activation — stopped or
+still recurring). All cases are synthetic. Run from the repo root:
 
     python evals/run_evals.py
 
@@ -425,6 +429,223 @@ def _eval_matter(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, s
     return not problems, "; ".join(problems)
 
 
+def _eval_walkaway_acceptance(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Walk-away line acceptance: run the case's steps — analyse
+    rounds, approve the packets the case approves — then tally
+    the chain's approved walk-away lines with
+    ``walkaway.acceptance_report`` (the same assembly both briefs
+    render) and compare the counts and each line's lineage:
+    status, the round that decided it, the follow-up round that
+    resolved it, and the position it landed at."""
+    from contract_agent.brief import build_negotiation_brief
+    from contract_agent.service import ContractService
+    from contract_agent.store import InMemoryStore
+    from contract_agent.walkaway import acceptance_report, chain_for
+
+    service = ContractService(store=InMemoryStore(), checkpointer=False)
+    latest_id = ""
+    for step in case.get("steps") or []:
+        if "analyze" in step:
+            contract = samples.get(step["analyze"])
+            if contract is None:
+                return False, f"unknown sample {step['analyze']}"
+            latest_id = service.analyze(contract).contract_id
+        elif "analyze_inline" in step:
+            contract = ContractInput(**step["analyze_inline"])
+            latest_id = service.analyze(contract).contract_id
+        elif "approve" in step:
+            service.approve(step["approve"], approver="Eval")
+        else:
+            return False, f"unknown acceptance step {step}"
+    if not latest_id:
+        return False, "no round analysed"
+    chain = chain_for(service._get_store().all_records(), latest_id)
+    results = [record.result for record in chain]
+    report = acceptance_report(results)
+    problems = []
+    for key, expected in (case.get("expected_acceptance") or {}).items():
+        if report.get(key) != expected:
+            problems.append(
+                f"acceptance {key}: expected {expected}, got {report.get(key)}"
+            )
+    def _line_key(entry: dict) -> tuple:
+        return (
+            entry["clause_type"],
+            entry["decided_in"],
+            entry["status"],
+            entry["resolved_in"],
+            entry["final_position"],
+        )
+
+    expected_lines = sorted(_line_key(e) for e in case.get("expected_lines") or [])
+    got_lines = sorted(_line_key(e) for e in report["lines"])
+    if expected_lines and got_lines != expected_lines:
+        problems.append(f"lines: expected {expected_lines}, got {got_lines}")
+    markdown = build_negotiation_brief(results, service.get(latest_id))
+    if "## Walk-away line acceptance" not in markdown:
+        problems.append("chain brief carries no acceptance section")
+    headline = case.get("expected_headline")
+    if headline and headline not in markdown:
+        problems.append(f"headline missing from the brief: {headline!r}")
+    return not problems, "; ".join(problems)
+
+
+_GAP_TEXT = """1. Limitation of Liability
+Each party's aggregate liability shall not exceed the fees paid in the
+twelve (12) months preceding the claim.
+
+2. Indemnification
+Each party shall indemnify the other against third-party claims arising
+from its breach of this Agreement.
+
+3. Confidentiality
+Each party shall hold the other's Confidential Information in confidence
+for three (3) years.
+
+4. Term and Termination
+Either party may terminate this Agreement for convenience on thirty
+(30) days' written notice.
+
+5. Data Protection
+Each party shall protect personal data in accordance with the Data
+Processing Addendum. A party shall notify the other within 48 hours of
+a personal data breach.
+
+6. Governing Law
+This Agreement is governed by the laws of the State of Delaware.
+
+7. Force Majeure
+Neither party shall be liable for delay or failure to perform caused
+by events beyond its reasonable control, including acts of God, war,
+or embargo.
+"""
+
+
+def _dig(view: dict, path: str):
+    current = view
+    for part in path.split("."):
+        current = current[part]
+    return current
+
+
+def _check_effectiveness_view(view: dict, expected: dict, problems: list[str]) -> None:
+    for path, want in expected.items():
+        if path == "entries":
+            got = {e["entry_id"]: e["verdicts"] for e in view["entries"]}
+            if got != want:
+                problems.append(f"entries: expected {want}, got {got}")
+            continue
+        got = _dig(view, path)
+        if got != want:
+            problems.append(f"{path}: expected {want}, got {got}")
+
+
+def _eval_effectiveness(case: dict, samples: dict[str, ContractInput]) -> tuple[bool, str]:
+    """Proposal effectiveness, two seedings. ``seeded``: an
+    activated proposal and fabricated stamped records saved
+    straight into the service's stores — the report's numbers are
+    then exact arithmetic over known verdicts. ``pipeline``: the
+    real gap flow (analyse gap contracts, generate + activate the
+    proposal, backdate the gap runs, analyse one more) — the
+    baseline must count the runs the activation was drafted from,
+    and the structure-only activation must show the gap still
+    recurring rather than stopped."""
+    from contract_agent.proposal_store import InMemoryProposalStore
+    from contract_agent.schemas import (
+        AgentResult,
+        ClauseVerdict,
+        PlaybookProposal,
+        PlaybookProposalEntry,
+    )
+    from contract_agent.service import ContractService
+    from contract_agent.store import ApprovalRecord, InMemoryStore
+
+    service = ContractService(
+        store=InMemoryStore(),
+        checkpointer=False,
+        proposal_store=InMemoryProposalStore(),
+    )
+    problems: list[str] = []
+    if case.get("mode") == "pipeline":
+        ids = case["contract_ids"]
+        for contract_id in ids[:2]:
+            service.analyze(
+                ContractInput(
+                    contract_id=contract_id,
+                    doc_type="msa",
+                    title="Master Services Agreement",
+                    counterparty_name="Effectiveness Eval Co",
+                    our_role="vendor",
+                    documents=[
+                        DocumentInput(
+                            doc_type="agreement",
+                            document_id=f"AGR-{contract_id}",
+                            raw_text=_GAP_TEXT,
+                        )
+                    ],
+                )
+            )
+        proposals = service.generate_playbook_proposals()
+        if len(proposals) != 1:
+            return False, f"expected exactly 1 generated proposal, got {len(proposals)}"
+        proposal = proposals[0]
+        service.activate_playbook_proposal(proposal.proposal_id, actor="Eval")
+        store = service._get_store()
+        for contract_id in ids[:2]:
+            record = store.get(contract_id)
+            record.analyzed_at = case["restamp"]
+            store.save(record)
+        service.analyze(
+            ContractInput(
+                contract_id=ids[2],
+                doc_type="msa",
+                title="Master Services Agreement",
+                counterparty_name="Effectiveness Eval Co",
+                our_role="vendor",
+                documents=[
+                    DocumentInput(
+                        doc_type="agreement",
+                        document_id=f"AGR-{ids[2]}",
+                        raw_text=_GAP_TEXT,
+                    )
+                ],
+            )
+        )
+        view = service.proposal_effectiveness(proposal.proposal_id)
+        _check_effectiveness_view(view, case.get("expected") or {}, problems)
+        rows = service.metrics()["proposal_effectiveness"]
+        if len(rows) != 1:
+            problems.append(f"metrics rows: expected 1, got {len(rows)}")
+        else:
+            _check_effectiveness_view(rows[0], case.get("expected") or {}, problems)
+        return not problems, "; ".join(problems)
+    proposal = PlaybookProposal(
+        **{
+            **case["proposal"],
+            "entries": [
+                PlaybookProposalEntry(**entry) for entry in case["proposal"]["entries"]
+            ],
+        }
+    )
+    service._get_proposal_store().save(proposal)
+    store = service._get_store()
+    for record in case.get("records") or []:
+        store.save(
+            ApprovalRecord(
+                result=AgentResult(
+                    contract_id=record["contract_id"],
+                    clause_verdicts=[
+                        ClauseVerdict(**verdict) for verdict in record["verdicts"]
+                    ],
+                ),
+                analyzed_at=record["analyzed_at"],
+            )
+        )
+    view = service.proposal_effectiveness(proposal.proposal_id)
+    _check_effectiveness_view(view, case.get("expected") or {}, problems)
+    return not problems, "; ".join(problems)
+
+
 def evaluate(cases: list[dict]) -> dict:
     samples = {c.contract_id: c for c in sample_contract_models()}
     correct = 0
@@ -446,6 +667,10 @@ def evaluate(cases: list[dict]) -> dict:
             ok, detail = _eval_sow_master(case, samples)
         elif kind == "matter":
             ok, detail = _eval_matter(case, samples)
+        elif kind == "walkaway_acceptance":
+            ok, detail = _eval_walkaway_acceptance(case, samples)
+        elif kind == "effectiveness":
+            ok, detail = _eval_effectiveness(case, samples)
         else:
             ok, detail = _eval_document(case, samples)
         if ok:
