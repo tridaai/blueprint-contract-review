@@ -150,8 +150,9 @@
         <input type="text" id="matter-counterparty" placeholder="Counterparty (e.g. Vertex Analytics Ltd)">
         <input type="text" id="matter-tag" placeholder="Matter tag (e.g. Vertex platform renewal)">
         <button id="matter-brief-btn">Download matter brief (.md)</button>
+        <button id="matter-brief-json-btn">Download matter brief (.json)</button>
       </div>
-      <p class="note" id="matter-brief-status">one document across every chain sharing the counterparty + matter tag: combined open positions, exhibit findings across the documents, and all obligations sorted by deadline — assembled from the stored records</p>
+      <p class="note" id="matter-brief-status">one document across every chain sharing the counterparty + matter tag: combined open positions with their lineage, exhibit findings across the documents, obligations sorted by deadline and read across chains, and the patterns no single chain shows — assembled from the stored records, in markdown or the same assembly as structured JSON</p>
     </section>
     <section>
       <h2>How it works</h2>
@@ -895,19 +896,21 @@ async function slaSweep() {
   loadQueue();
 }
 
-$('matter-brief-btn').addEventListener('click', async () => {
+async function downloadMatterBrief(format) {
   const counterparty = $('matter-counterparty').value.trim();
   const matter = $('matter-tag').value.trim();
   if (!counterparty || !matter) { $('matter-brief-status').textContent = 'Enter both a counterparty and a matter tag — the brief covers the chains that share them.'; return; }
-  const res = await fetch('/matters/brief?counterparty=' + encodeURIComponent(counterparty) + '&matter=' + encodeURIComponent(matter), {headers: headers()});
+  const res = await fetch('/matters/brief?counterparty=' + encodeURIComponent(counterparty) + '&matter=' + encodeURIComponent(matter) + '&format=' + format, {headers: headers()});
   if (!res.ok) { $('matter-brief-status').textContent = 'No matter brief for that pair (' + res.status + ') — the tag is read off the stored contracts\' intake, exactly as submitted.'; return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'matter-brief.md'; a.click();
+  a.href = url; a.download = format === 'json' ? 'matter-brief.json' : 'matter-brief.md'; a.click();
   URL.revokeObjectURL(url);
   $('matter-brief-status').textContent = 'Matter brief downloaded — also exported to object storage at ' + (res.headers.get('X-Object-Key') || 'matters/…') + '.';
-});
+}
+$('matter-brief-btn').addEventListener('click', () => downloadMatterBrief('markdown'));
+$('matter-brief-json-btn').addEventListener('click', () => downloadMatterBrief('json'));
 $('due-refresh').addEventListener('click', () => { loadDue(); loadCertificates(); });
 $('queue-refresh').addEventListener('click', loadQueue);
 $('outbox-refresh').addEventListener('click', loadOutbox);

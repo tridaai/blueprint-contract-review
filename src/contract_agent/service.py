@@ -1876,26 +1876,32 @@ class ContractService:
         }
 
     def matter_brief(self, counterparty: str, matter: str) -> dict:
-        """The matter brief: one markdown document across every
+        """The matter brief: one document across every
         chain that shares this counterparty and matter tag (see
-        ``matter_brief.py``) — combined open positions, exhibit
-        findings across the documents, and all obligations sorted
-        by deadline — exported through the object-store port under
-        ``matters/<slug>/`` with the chain brief's lineage
-        discipline: versioned keys, a retained digest per export in
-        the index, and a "Since the last matter brief" delta
-        against the previous export. Raises KeyError when no stored
+        ``matter_brief.py``) — combined open positions with their
+        lineage, exhibit findings across the documents, obligations
+        sorted by deadline and read across chains, and the
+        patterns no single chain shows — exported through the
+        object-store port under ``matters/<slug>/`` with the chain
+        brief's lineage discipline: versioned keys, a retained
+        digest per export in the index, and a "Since the last
+        matter brief" delta against the previous export. The
+        brief is assembled once as structured data and exported in
+        two renderings — markdown (``matter-brief.md``) and JSON
+        (``matter-brief.json``) — so the renderings cannot drift.
+        Raises KeyError when no stored
         contract carries the counterparty + matter pair, ValueError
         when the matter tag is empty (an untagged contract is in no
         matter)."""
         if not (matter or "").strip():
             raise ValueError("A matter tag is required — untagged contracts form no matter.")
         from .matter_brief import (
-            build_matter_brief,
+            build_matter_brief_data,
             matter_delta_lines,
             matter_records,
             matter_slug,
             matter_source_digest,
+            render_matter_brief_markdown,
         )
 
         chains = matter_records(
@@ -1925,22 +1931,29 @@ class ContractService:
             if previous is not None
             else []
         )
-        markdown = build_matter_brief(
+        data = build_matter_brief_data(
             counterparty,
             matter,
             chains,
             delta_lines=delta,
             first_export=previous is None,
         )
+        markdown = render_matter_brief_markdown(data)
         seq = len(exports) + 1
         versioned_key = f"matters/{slug}/matter-brief-v{seq}.md"
         objects.put(versioned_key, markdown.encode("utf-8"), content_type="text/markdown")
         key = f"matters/{slug}/matter-brief.md"
         objects.put(key, markdown.encode("utf-8"), content_type="text/markdown")
+        json_payload = json.dumps(data, indent=2).encode("utf-8")
+        versioned_json_key = f"matters/{slug}/matter-brief-v{seq}.json"
+        objects.put(versioned_json_key, json_payload, content_type="application/json")
+        json_key = f"matters/{slug}/matter-brief.json"
+        objects.put(json_key, json_payload, content_type="application/json")
         exports.append(
             {
                 "seq": seq,
                 "key": versioned_key,
+                "json_key": versioned_json_key,
                 "exported_at": datetime.now(timezone.utc).isoformat(),
                 "digest": digest,
             }
@@ -1954,9 +1967,12 @@ class ContractService:
             "counterparty": counterparty,
             "matter": matter,
             "key": key,
+            "json_key": json_key,
+            "data": data,
             "markdown": markdown,
             "export_seq": seq,
             "versioned_key": versioned_key,
+            "versioned_json_key": versioned_json_key,
             "previous_export": (
                 {"key": previous["key"]} if previous is not None else None
             ),

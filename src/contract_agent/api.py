@@ -943,19 +943,35 @@ def negotiation_brief(contract_id: str):
 
 
 @app.get("/matters/brief", dependencies=_AUTH)
-def matter_brief(counterparty: str, matter: str):
-    """The matter brief as a markdown download: every chain sharing
-    this counterparty + matter tag — combined open positions,
-    exhibit findings across the documents, and all obligations
-    sorted by deadline — assembled in code from the stored records
+def matter_brief(counterparty: str, matter: str, format: str = "markdown"):
+    """The matter brief as a download, in two renderings of one
+    assembly: markdown (default) or the structured JSON data
+    (``?format=json``) — every chain sharing this counterparty +
+    matter tag: combined open positions with their lineage,
+    exhibit findings across the documents, obligations sorted by
+    deadline and read across chains, and the patterns no single
+    chain shows — assembled in code from the stored records
     and exported via the object-store port. Draft for counsel
     review; the agent sends it nowhere."""
+    if format not in ("markdown", "json"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown matter brief format {format!r} (markdown | json)",
+        )
     try:
         brief = service.matter_brief(counterparty, matter)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if format == "json":
+        return JSONResponse(
+            content=brief["data"],
+            headers={
+                "Content-Disposition": "attachment; filename=matter-brief.json",
+                "X-Object-Key": brief["json_key"],
+            },
+        )
     return PlainTextResponse(
         brief["markdown"],
         media_type="text/markdown",
