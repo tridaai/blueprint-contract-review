@@ -982,6 +982,47 @@ def matter_brief(counterparty: str, matter: str, format: str = "markdown"):
     )
 
 
+@app.get("/matters/subprocessor-exhibit", dependencies=_AUTH)
+def subprocessor_exhibit(counterparty: str, matter: str, format: str = "json"):
+    """The matter's sub-processor exhibit, in two renderings of
+    one assembly: the structured JSON (default) or readable text
+    (``?format=text``) — every sub-processor the matter's
+    documents engage, each entry as its document states it with
+    its document and line lineage, mentions that do not
+    structure carried as unparsed, and the same processor stated
+    two ways across documents flagged with both sources cited.
+    Assembled in code from the stored records; the exhibit
+    states what the documents say and draws no conclusion about
+    adequacy."""
+    if format not in ("json", "text"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown sub-processor exhibit format {format!r} (json | text)",
+        )
+    try:
+        data = service.subprocessor_exhibit(counterparty, matter)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if format == "text":
+        from .subprocessor_exhibit import render_subprocessor_exhibit_text
+
+        return PlainTextResponse(
+            render_subprocessor_exhibit_text(data),
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": "attachment; filename=subprocessor-exhibit.txt",
+            },
+        )
+    return JSONResponse(
+        content=data,
+        headers={
+            "Content-Disposition": "attachment; filename=subprocessor-exhibit.json",
+        },
+    )
+
+
 @app.post("/contracts/{contract_id}/approve", response_model=AgentResult, dependencies=_AUTH)
 def approve(contract_id: str, request: DecisionRequest) -> AgentResult:
     try:

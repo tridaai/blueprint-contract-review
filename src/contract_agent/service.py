@@ -1981,6 +1981,35 @@ class ContractService:
             "contracts": sum(len(chain) for chain in chains),
         }
 
+    def subprocessor_exhibit(self, counterparty: str, matter: str) -> dict:
+        """The matter's sub-processor exhibit
+        (``subprocessor_exhibit.py``): every sub-processor the
+        matter's documents engage, assembled in code from the
+        list annexes on each chain's latest round — each entry
+        as its document states it (name, purpose, location) with
+        its document and line lineage, mentions that do not
+        structure carried as UNPARSED, and the same processor
+        stated two ways across documents flagged as a conflict
+        with both sources cited. A read model like the brief:
+        it assembles what the documents say, changes nothing,
+        and draws no conclusion about adequacy. Raises KeyError
+        when no stored contract carries the counterparty + matter
+        pair, ValueError when the matter tag is empty."""
+        if not (matter or "").strip():
+            raise ValueError("A matter tag is required — untagged contracts form no matter.")
+        from .matter_brief import matter_records
+        from .subprocessor_exhibit import build_subprocessor_exhibit
+
+        chains = matter_records(
+            self._get_store().all_records(), counterparty, matter
+        )
+        if not chains:
+            raise KeyError(
+                f"No stored contracts for counterparty {counterparty!r} "
+                f"in matter {matter!r} (analyze them first)"
+            )
+        return build_subprocessor_exhibit(counterparty, matter, chains)
+
     def queue(self, today=None) -> list[dict]:
         """The counsel worklist: every contract still awaiting a
         decision, worked in the order counsel should take them —
