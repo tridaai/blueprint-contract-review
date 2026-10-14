@@ -15,8 +15,7 @@ It flags and explains. It **never** states a final legal conclusion,
 output is labelled *draft for counsel review*, and nothing external
 happens without a human decision.
 
-> Reference prototype. All contracts, counterparties, and playbook
-> entries are synthetic. Not legal advice; not a law firm.
+> Reference prototype. Not legal advice; not a law firm.
 
 <p align="center">
   <a href="https://trida.ai/blog/contract-review-agent-blueprint">
