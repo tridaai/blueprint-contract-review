@@ -246,7 +246,9 @@ For each contract, the pipeline:
    clause "acceptable as drafted" — the draft proposes; acceptability
    is counsel's call), `no_materiality_minimising` (the drafts never call the requested
    changes "routine", "minor", "technical" — materiality is counsel's
-   call), `no_prohibited_promises`, `no_pii_in_draft`, a playbook
+   call), `no_internal_position_disclosure` (the counterparty letter
+   never mentions the playbook, its entry IDs, fallbacks, or walk-away
+   lines — those stay internal), `no_prohibited_promises`, `no_pii_in_draft`, a playbook
    citation per flagged clause, the contract id present. A bounded repair loop
    redrafts once or twice; failures stand and block approval.
 10. **Pauses at counsel's gate** (LangGraph checkpoint + interrupt).
@@ -690,8 +692,8 @@ Or natively, offline, in about a minute:
 ```bash
 uv sync --extra dev        # or: make install-pip (the pip fallback)
 make demo                  # one contract, traced end to end
-make test                  # 635 tests (634 run + 1 Postgres-gated skip)
-make evals                 # golden set: 96/96 (gate ≥ 95%)
+make test                  # 720 tests (719 run + 1 Postgres-gated skip)
+make evals                 # golden set: 101/101 (gate ≥ 95%)
 make serve                 # API + console on :8000
 ```
 
@@ -710,7 +712,7 @@ is a labelled offline fallback, never the story.
 | `OPENAI_BASE_URL` | Any OpenAI-compatible endpoint. **NVIDIA NIM** (the endpoints NVIDIA's own blueprints deploy on): `https://integrate.api.nvidia.com/v1` with an `nvapi-` key from build.nvidia.com and a Nemotron model name, or a self-hosted NIM container at `http://localhost:8000/v1` |
 | `RETRIEVER` | `keyword` (default) · `semantic` · `hybrid` (RRF) — vectors in pgvector |
 | `REVIEWER_MODEL` | Optional separate model for the independent reviewer |
-| `TOKEN_BUDGET` | Per-run token budget; later steps degrade gracefully past it |
+| `RUN_TOKEN_BUDGET` | Per-run token budget; later steps degrade gracefully past it |
 
 ## Production shape
 
@@ -752,18 +754,24 @@ is a labelled offline fallback, never the story.
 - **Tests stay hermetic**: in-memory doubles inside the test suite;
   Postgres integration tests are gated on `DATABASE_URL` and skip
   without it. The Dockerfile/compose are maintained in-repo and
-  **build-verified**: `docker compose build` succeeds and the stack
-  runs healthy (developer machine, 2026-10-10; there is no CI
-  build — the gates are the local `make` commands).
+  **build-verified**: `docker compose up --build` runs healthy,
+  documents archive to the S3 store, and records survive an api
+  restart (developer machine, 2026-10-14; there is no CI build — the
+  gates are the local `make` commands). In compose, the settings in
+  `.env` reach the api container — `API_KEY` included.
 
 ## Evals
 
-`evals/golden.jsonl` — 93 synthetic cases: 46 clause-level (clause
+`evals/golden.jsonl` — 101 synthetic cases: 46 clause-level (clause
 type + expected playbook position, including 8 for the standalone
-DPA family and 8 for the employment family), 19 document-level
+DPA family and 8 for the employment family), 24 document-level
 (posture, per-type positions, absence detection, injection flags,
 information requests, repair behaviour — the clean and
-adversarial DPAs and employment drafts among them), 1
+adversarial DPAs and employment drafts among them, and 5
+format-regression cases, CTR-2043 → 2047: the same clauses with
+headings ending in a period, carrying `;` `:` `&`, written inline,
+wrapped in DOCX-export markup, or absent — none may read a present
+clause as missing), 1
 negotiation-round case (verdict movement between the CTR-2014/
 CTR-2015 round pair), 1 round-chain case (re-trades and cumulative
 movement across CTR-2014 → 2016), and 17 exhibit-consistency cases
@@ -799,7 +807,7 @@ lists across two documents with their lineage, flag a purpose
 conflict and a location conflict with both sources cited, and
 carry a prose mention as unparsed.
 `python evals/run_evals.py` runs the deterministic pipeline; the
-gate is ≥ 95% (currently 96/96).
+gate is ≥ 95% (currently 101/101).
 `evals/run_llm_evals.py` is an opt-in LLM-judge pack — it exits 2,
 loudly, when no provider is configured rather than judging mock
 drafts and calling that an LLM result.
