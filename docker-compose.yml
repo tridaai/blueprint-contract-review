@@ -7,9 +7,10 @@
 # State lives in the services (named volumes only — no host
 # bind-mounts), so the same shape scales out unchanged.
 #
-# NOTE: build-verified on a developer machine (2026-10-10) —
-# `docker compose build` succeeds and the stack runs healthy.
-# There is no CI build; the quality gates are local commands.
+# NOTE: build-verified on a developer machine (2026-10-14) —
+# `docker compose up --build` runs healthy, documents archive to the
+# S3 store, and records survive an api restart. There is no CI build;
+# the quality gates are local commands.
 
 services:
   api:
@@ -32,6 +33,42 @@ services:
       MODEL_BACKEND: ${MODEL_BACKEND:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Everything below is passed through from .env (compose reads it for
+      # interpolation) — without these lines a value set in .env never
+      # reached the container: API_KEY in .env left the API open. Unset
+      # values arrive empty, and the app treats empty as unset (defaults).
+      API_KEY: ${API_KEY:-}
+      ACTION_WEBHOOK_URL: ${ACTION_WEBHOOK_URL:-}
+      ACTION_WEBHOOK_SECRET: ${ACTION_WEBHOOK_SECRET:-}
+      ACTION_WEBHOOK_TIMEOUT_SECONDS: ${ACTION_WEBHOOK_TIMEOUT_SECONDS:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      # The ollama service, not .env's OLLAMA_BASE_URL (that one is
+      # localhost — the host's Ollama for native runs).
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-}
+      RETRIEVER: ${RETRIEVER:-}
+      REVIEWER: ${REVIEWER:-}
+      REVIEWER_MODEL: ${REVIEWER_MODEL:-}
+      CHECKPOINTS: ${CHECKPOINTS:-}
+      GUARDRAIL_REPAIR: ${GUARDRAIL_REPAIR:-}
+      GUARDRAIL_REPAIR_MAX_ATTEMPTS: ${GUARDRAIL_REPAIR_MAX_ATTEMPTS:-}
+      RUN_TOKEN_BUDGET: ${RUN_TOKEN_BUDGET:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-}
+      NODE_TIMEOUT_SECONDS: ${NODE_TIMEOUT_SECONDS:-}
+      ASSESSMENT_MAX_TOOL_CALLS: ${ASSESSMENT_MAX_TOOL_CALLS:-}
+      WEBHOOK_OUTBOX_RETENTION_DAYS: ${WEBHOOK_OUTBOX_RETENTION_DAYS:-}
+      WEBHOOK_OUTBOX_STALE_FAILURE_DAYS: ${WEBHOOK_OUTBOX_STALE_FAILURE_DAYS:-}
+      QUEUE_SLA_WALK_AWAY_BUSINESS_DAYS: ${QUEUE_SLA_WALK_AWAY_BUSINESS_DAYS:-}
+      QUEUE_SLA_REVIEW_REQUIRED_BUSINESS_DAYS: ${QUEUE_SLA_REVIEW_REQUIRED_BUSINESS_DAYS:-}
+      QUEUE_SLA_ACCEPTABLE_FALLBACK_BUSINESS_DAYS: ${QUEUE_SLA_ACCEPTABLE_FALLBACK_BUSINESS_DAYS:-}
+      OBLIGATION_DUE_WINDOW_DAYS: ${OBLIGATION_DUE_WINDOW_DAYS:-}
+      CERTIFICATE_EXPIRY_WATCH_DAYS: ${CERTIFICATE_EXPIRY_WATCH_DAYS:-}
+      CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS: ${CERTIFICATE_WATCH_FOLLOW_THROUGH_STALE_DAYS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,27 +92,54 @@ services:
   # S3-compatible store. MinIO Inc. locked public pulls of minio/minio
   # (and their quay.io mirror) behind a login/license in 2025, so this
   # runs SeaweedFS's S3 gateway instead — same path-style PUT/GET/HEAD
-  # API this app's hand-rolled SigV4 client needs, no auth enforcement
-  # in this unconfigured mode (fine for a local/dev stack). Service
-  # name stays `minio` so S3_ENDPOINT_URL above doesn't need to change.
+  # API this app's hand-rolled SigV4 client needs. Service name stays
+  # `minio` so S3_ENDPOINT_URL above doesn't need to change.
+  #
+  # SeaweedFS 4.x refuses signed requests from an identity it does not
+  # know (every PUT came back 403 AccessDenied, and nothing was
+  # archived), so the identity the api signs with is configured here
+  # (the `seaweedfs_s3` config below). The image is pinned by digest
+  # (SeaweedFS 4.48, verified 2026-10-14): `:latest` is what changed
+  # the auth behaviour under this stack in the first place.
   minio:
-    image: chrislusf/seaweedfs:latest
-    command: server -s3 -dir=/data -ip=0.0.0.0
+    image: chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data -ip=0.0.0.0
+    configs:
+      - source: seaweedfs_s3
+        target: /etc/seaweedfs/s3.json
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8333/"]
+      # `/` now requires a signed request; /healthz does not.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8333/healthz"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  # Optional local model: `docker compose --profile ollama up`, then set
-  # MODEL_BACKEND=ollama and OLLAMA_MODEL on the api service.
+  # Optional local model: set MODEL_BACKEND=ollama and OLLAMA_MODEL in
+  # .env, then `docker compose --profile ollama up` (and pull the model
+  # inside the ollama container).
   ollama:
     image: ollama/ollama:latest
     profiles: ["ollama"]
     volumes:
       - ollamadata:/root/.ollama
+
+configs:
+  # The S3 identity the api signs with (S3_ACCESS_KEY / S3_SECRET_KEY
+  # above). Local-stack credentials: a deployment points S3_* at its own
+  # store and never ships these.
+  seaweedfs_s3:
+    content: |
+      {
+        "identities": [
+          {
+            "name": "contract-agent",
+            "credentials": [{"accessKey": "minioadmin", "secretKey": "minioadmin"}],
+            "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+          }
+        ]
+      }
 
 volumes:
   pgdata:

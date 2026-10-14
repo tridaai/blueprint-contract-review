@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import threading
 import urllib.request
 from collections import Counter
@@ -528,7 +529,10 @@ class ContractService:
 
         Best-effort: an archive failure never fails an analysis (the
         record of the review is the store); the keys are deterministic
-        so a later run re-archives the same objects.
+        so a later run re-archives the same objects. Best-effort is not
+        silent, though: a failure is logged with the contract id, so a
+        misconfigured object store shows up in the logs on the first
+        analysis instead of when someone goes looking for a document.
         """
         try:
             objects = self._get_object_store()
@@ -550,8 +554,10 @@ class ContractService:
                     f"contracts/{model.contract_id}/counterparty-response.txt",
                     result.drafts.counterparty_response.encode("utf-8"),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger("contract_agent").warning(
+                "document archive failed for %s: %s", model.contract_id, exc
+            )
 
     def _resume_thread(self, contract_id: str, decision: dict) -> None:
         """Complete the checkpointed graph thread with a decision.

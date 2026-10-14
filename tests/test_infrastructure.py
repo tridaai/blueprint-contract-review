@@ -57,6 +57,16 @@ def test_s3_addressing_path_and_virtual_host():
     assert aws._url("k.txt") == "https://contracts.s3.eu-west-1.amazonaws.com/k.txt"
 
 
+def test_s3_keys_with_spaces_are_percent_encoded():
+    # Document ids are written by people ("Exhibit B"); an unencoded
+    # space made every such PUT fail before it left the client.
+    store = S3ObjectStore(bucket="contracts", endpoint_url="http://minio:9000",
+                          access_key="k", secret_key="s")
+    assert store._url("contracts/CTR-1/Exhibit B.txt") == (
+        "http://minio:9000/contracts/contracts/CTR-1/Exhibit%20B.txt"
+    )
+
+
 def test_migration_files_numbered_and_present():
     files = pending_files()
     names = [f.name for f in files]

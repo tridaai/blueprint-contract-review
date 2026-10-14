@@ -79,6 +79,10 @@ class S3ObjectStore:
     # -- addressing -----------------------------------------------------
 
     def _url(self, key: str = "") -> str:
+        # Keys carry document ids as written ("Exhibit B"): percent-encode
+        # them, "/" kept, as S3 expects. The SigV4 canonical URI is read
+        # off this same encoded path, so the signature matches.
+        key = urllib.parse.quote(key, safe="/")
         if self._endpoint:
             # Path-style: <endpoint>/<bucket>/<key> (MinIO and friends).
             return f"{self._endpoint}/{self._bucket}/{key}" if key else f"{self._endpoint}/{self._bucket}"
