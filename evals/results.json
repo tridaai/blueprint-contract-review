@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-11T16:02:03.281437+00:00",
+  "generated_at": "2026-10-14T18:19:18.803985+00:00",
   "backend": "mock (offline fallback)",
-  "total": 96,
-  "correct": 96,
+  "total": 101,
+  "correct": 101,
   "accuracy": 1.0,
   "per_kind": {
     "clause": {
@@ -11,8 +11,8 @@
       "accuracy": 1.0
     },
     "document": {
-      "total": 19,
-      "correct": 19,
+      "total": 24,
+      "correct": 24,
       "accuracy": 1.0
     },
     "effectiveness": {

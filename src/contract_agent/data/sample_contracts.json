@@ -852,5 +852,96 @@
         "raw_text": "1. Services\nThis Statement of Work is entered into under that certain Master Services Agreement (CTR-2040) between Vantage Facilities Group Inc and the Provider dated September 20, 2026. The Provider shall provide managed warehouse automation services for the Customer's northern distribution centre, as further described in the service schedule.\n\n2. Exclusivity\nThe Provider shall be the exclusive provider of managed warehouse automation services to the Customer. This exclusivity shall continue for twelve (12) months following the termination or expiry of the Master Agreement.\n\n3. Non-Compete\nDuring the engagement and for twelve (12) months following its end, the Provider shall not compete with the Customer in the facilities services market.\n\n4. Non-Circumvention\nEach party agrees not to circumvent, directly or indirectly, the other party in respect of the introductions made under this Statement of Work. This non-circumvention covenant shall run for eighteen (18) months following the expiry of the Master Agreement.\n\n5. Fees and Schedule\nThe fees for the services under this Statement of Work are as set out in the service schedule. The Customer shall pay all undisputed invoices Net 30 from the invoice date.\n"
       }
     ]
+  },
+  {
+    "contract_id": "CTR-2043",
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Halden Logistics AS",
+    "our_role": "vendor",
+    "sender_name": "",
+    "cover_email_text": "Please find our standard master services agreement attached for your review. We look forward to your comments.",
+    "notes": "Format regression: headings ending in a period, with ; : & and a curly apostrophe.",
+    "received_at": "2026-10-02T09:30:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-43",
+        "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n1. Parties\u2019 Limitation of Liability.\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification.\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Intellectual Property.\nThe Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n4. Confidentiality.\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n5. Term; Termination.\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n6. Fees & Payment.\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n7. Data Protection.\nEach party shall process personal data in accordance with the Data Processing Addendum entered into by the parties. A party shall notify the other party of a personal data breach within 48 hours of discovery and shall maintain appropriate technical and organisational security measures.\n\n8. Governing Law: Jurisdiction.\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\n9. Assignment.\nNeither party may assign this Agreement without the prior written consent of the other party, and any attempted assignment without consent is void.\n\nIn witness whereof, the parties have executed this Agreement."
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2044",
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Corvid Analytics Ltd",
+    "our_role": "vendor",
+    "sender_name": "",
+    "cover_email_text": "Please find our standard master services agreement attached for your review. We look forward to your comments.",
+    "notes": "Format regression: sentence-case inline headings (1. Fees and payment. Body...).",
+    "received_at": "2026-10-02T09:30:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-44",
+        "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n1. Limitation of liability. Each party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Indemnification. Each party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. Intellectual property. The Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n4. Confidentiality. Each party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n5. Term and termination. This Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n6. Fees and payment. The Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n7. Data protection. Each party shall process personal data in accordance with the Data Processing Addendum entered into by the parties. A party shall notify the other party of a personal data breach within 48 hours of discovery and shall maintain appropriate technical and organisational security measures.\n\n8. Governing law. This Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\n9. Assignment. Neither party may assign this Agreement without the prior written consent of the other party, and any attempted assignment without consent is void.\n\nIn witness whereof, the parties have executed this Agreement."
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2045",
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Pellucid Systems GmbH",
+    "our_role": "vendor",
+    "sender_name": "",
+    "cover_email_text": "Please find our standard master services agreement attached for your review. We look forward to your comments.",
+    "notes": "Format regression: DOCX-export markup: **n. Heading** lines.",
+    "received_at": "2026-10-02T09:30:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-45",
+        "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n**1. Limitation of Liability**\nEach party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n**2. Indemnification**\nEach party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n**3. Intellectual Property**\nThe Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n**4. Confidentiality**\nEach party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n**5. Term and Termination**\nThis Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n**6. Fees and Payment**\nThe Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n**7. Data Protection**\nEach party shall process personal data in accordance with the Data Processing Addendum entered into by the parties. A party shall notify the other party of a personal data breach within 48 hours of discovery and shall maintain appropriate technical and organisational security measures.\n\n**8. Governing Law**\nThis Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\n**9. Assignment**\nNeither party may assign this Agreement without the prior written consent of the other party, and any attempted assignment without consent is void.\n\nIn witness whereof, the parties have executed this Agreement."
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2046",
+    "doc_type": "msa",
+    "title": "Master Services Agreement",
+    "counterparty_name": "Marlow Freight plc",
+    "our_role": "vendor",
+    "sender_name": "",
+    "cover_email_text": "Please find our standard master services agreement attached for your review. We look forward to your comments.",
+    "notes": "Format regression: no headings at all: numbered paragraphs only.",
+    "received_at": "2026-10-02T09:30:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-46",
+        "raw_text": "This Master Services Agreement is entered into by the parties below and governs all statements of work issued under it.\n\n1. Each party's aggregate liability arising under this Agreement shall not exceed the fees paid or payable in the twelve (12) months preceding the claim. Neither party shall be liable for indirect or consequential damages.\n\n2. Each party shall indemnify and hold harmless the other party from and against third-party claims arising from the indemnifying party's breach of this Agreement.\n\n3. The Provider retains ownership of all intellectual property in its pre-existing tools, methods and know-how. The Customer receives a non-exclusive licence to use the Deliverables as contemplated by this Agreement, and no assignment of intellectual property is made by this clause.\n\n4. Each party shall hold the other party's Confidential Information in strict confidence and shall not disclose it to any third party for three (3) years following disclosure.\n\n5. This Agreement begins on the Effective Date and continues until terminated. Either party may terminate this Agreement for convenience on thirty (30) days' written notice, and either party may terminate for material breach if the breach is not cured within thirty (30) days.\n\n6. The Customer shall pay all undisputed invoices Net 30 from the invoice date. Late amounts bear interest at 1.0% per month.\n\n7. Each party shall process personal data in accordance with the Data Processing Addendum entered into by the parties. A party shall notify the other party of a personal data breach within 48 hours of discovery and shall maintain appropriate technical and organisational security measures.\n\n8. This Agreement is governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the courts located in Delaware.\n\n9. Neither party may assign this Agreement without the prior written consent of the other party, and any attempted assignment without consent is void.\n\nIn witness whereof, the parties have executed this Agreement."
+      }
+    ]
+  },
+  {
+    "contract_id": "CTR-2047",
+    "doc_type": "msa",
+    "title": "Master Subscription Agreement",
+    "counterparty_name": "Acme Cloud Inc.",
+    "our_role": "customer",
+    "sender_name": "",
+    "cover_email_text": "Please find our standard master services agreement attached for your review. We look forward to your comments.",
+    "notes": "Format regression: a heading carrying a semicolon (TERM; AUTOMATIC RENEWAL).",
+    "received_at": "2026-10-02T09:30:00",
+    "documents": [
+      {
+        "doc_type": "agreement",
+        "document_id": "AGR-47",
+        "raw_text": "MASTER SUBSCRIPTION AGREEMENT\n\nThis Master Subscription Agreement (the \"Agreement\") is entered into as of March 3, 2026 between Acme Cloud Inc. (\"Provider\") and the customer identified in the Order Form (\"Customer\").\n\n1. DEFINITIONS\n1.1 \"Customer Data\" means all electronic data submitted by Customer to the Services, including personal data of Customer's employees.\n\n2. FEES AND PAYMENT\n2.1 Customer shall pay all invoiced amounts within sixty (60) days of the invoice date.\n2.2 Late payments bear interest at 1.5% per month.\n\n3. TERM; AUTOMATIC RENEWAL\n3.1 The initial term is twelve (12) months and renews automatically for successive twelve (12) month terms unless either party gives notice of non-renewal at least one hundred twenty (120) days before the end of the then-current term.\n\n4. INDEMNIFICATION\n4.1 Customer shall defend, indemnify and hold harmless Provider from any and all claims arising out of or relating to Customer's use of the Services, without limitation.\n\n5. LIMITATION OF LIABILITY\n5.1 IN NO EVENT SHALL PROVIDER'S AGGREGATE LIABILITY EXCEED THE FEES PAID BY CUSTOMER IN THE THREE (3) MONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM.\n5.2 The foregoing limitation shall not apply to Customer's obligations under Section 4.\n\n6. INTELLECTUAL PROPERTY\n6.1 Customer hereby assigns to Provider all right, title and interest in any feedback, suggestions, and improvements, including any derivative works of Customer's materials.\n\n7. GOVERNING LAW\n7.1 This Agreement is governed by the laws of England and Wales.\n\n8. ASSIGNMENT\n8.1 Provider may assign this Agreement without Customer's consent. Customer may not assign without Provider's prior written consent.\n",
+        "fields": {}
+      }
+    ]
   }
 ]
