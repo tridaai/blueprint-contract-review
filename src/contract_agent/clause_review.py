@@ -56,6 +56,16 @@ def _verdict(
     )
 
 
+def _cap_stated(months, amount) -> str:
+    """The cap as the clause states it, for the rationale."""
+    parts = []
+    if months is not None:
+        parts.append(f"{months} months of fees")
+    if amount is not None:
+        parts.append(f"{amount:,.0f}")
+    return " or ".join(parts) or "a stated amount"
+
+
 def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdict:
     """The rule verdict for one clause, from its extracted signals."""
     t = extraction.clause_type
@@ -69,15 +79,21 @@ def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdi
                             ["PB-LIA-03"])
         months = s.get("cap_months_fees")
         amount = s.get("cap_amount")
+        # The rationale states the cap the clause states — never the
+        # playbook's threshold dressed as the clause's figure.
+        stated = _cap_stated(months, amount)
         if (months is not None and months >= 12) or (amount is not None and amount >= 1_000_000):
             return _verdict(unit, extraction, "preferred", 0.9,
-                            "Liability is capped at or above the playbook's preferred "
-                            "level (12 months of fees or 1,000,000) (PB-LIA-01).",
+                            f"Liability is capped at {stated}, at or above the "
+                            "playbook's preferred level (12 months of fees or "
+                            "1,000,000) (PB-LIA-01).",
                             ["PB-LIA-01"])
         if s.get("cap_present"):
             return _verdict(unit, extraction, "acceptable_fallback", 0.85,
-                            "A stated, mutual cap exists but sits below the preferred "
-                            "level — an acceptable fallback (PB-LIA-02).",
+                            f"A stated cap exists ({stated}) but sits below the "
+                            "playbook's preferred level of 12 months of fees or "
+                            "1,000,000 — an acceptable fallback; counsel confirms "
+                            "whom the cap protects (PB-LIA-02).",
                             ["PB-LIA-02"])
         return _verdict(unit, extraction, "review_required", 0.6,
                         "The clause addresses liability but states no cap the rules "
@@ -164,8 +180,9 @@ def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdi
                             "acceptable fallback where termination for convenience "
                             "exists (PB-TERM-02).",
                             ["PB-TERM-02"])
+        window = f"a {notice}-day notice window" if notice is not None else "a notice window"
         return _verdict(unit, extraction, "preferred", 0.88,
-                        "Termination for convenience on a notice window within the "
+                        f"Termination for convenience on {window}, within the "
                         "playbook's ninety days (PB-TERM-01).",
                         ["PB-TERM-01"])
 
@@ -229,7 +246,8 @@ def review_clause(unit: ClauseUnit, extraction: ClauseExtraction) -> ClauseVerdi
         if s.get("dpa_referenced") and hours is not None and hours <= 72:
             return _verdict(unit, extraction, "preferred", 0.9,
                             "A data processing addendum is incorporated and breach "
-                            "notice is within 72 hours — the preferred position "
+                            f"notice is due within {hours} hours, inside the "
+                            "playbook's 72-hour limit — the preferred position "
                             "(PB-DP-01).",
                             ["PB-DP-01"])
         if s.get("dpa_referenced") or s.get("security_measures"):

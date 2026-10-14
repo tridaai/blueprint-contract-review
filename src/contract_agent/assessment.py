@@ -137,6 +137,34 @@ def citations_for(verdicts: list, playbook: list[dict]) -> list[str]:
     return cited
 
 
+def packet_citations(
+    verdicts: list, playbook: list[dict], missing_clauses: list[str]
+) -> list[str]:
+    """The citations the packet shows counsel: the entries the clause
+    verdicts rest on, plus a retrieved entry only where it bears on
+    this contract — one about a clause type the contract is missing,
+    or a general entry when anything is missing at all.
+
+    ``citations_for`` stays the wider set: every entry retrieved for
+    the contract, which grounding checks accept a draft citing. A
+    retrieval hit is context, not a finding — citing "uncapped is a
+    walk-away" on a contract with a 12-month cap sends counsel looking
+    for a problem that is not there."""
+    cited: list[str] = []
+    for verdict in verdicts:
+        for ref in verdict.playbook_refs:
+            if ref not in cited:
+                cited.append(ref)
+    missing = set(missing_clauses or [])
+    for entry in playbook:
+        pid = entry.get("playbook_id") or entry.get("policy_id")
+        clause_type = entry.get("clause_type") or ""
+        relevant = clause_type in missing or (missing and clause_type in ("", "other"))
+        if pid and relevant and pid not in cited:
+            cited.append(pid)
+    return cited
+
+
 def build_assessment(
     *,
     contract: ContractInput,

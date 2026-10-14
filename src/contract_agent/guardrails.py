@@ -149,6 +149,38 @@ _PROMISE_PATTERNS = [
     r"\b(decision|signed copy|executed copy|answer) (within|in|by)\b[^.]{0,20}\b(\d+|tomorrow|end of)\b",
 ]
 
+# The counterparty letter leaves the company: it may state requested
+# changes and proposed wording, but never our internal machinery —
+# the playbook, its entry IDs, or the positions we would accept or
+# walk away at. Unlike the phrasing checks above there is no negation
+# exemption: "this is not our walk-away" discloses just as much.
+_INTERNAL_POSITION_PATTERNS = [
+    r"\bplaybook\b",
+    r"\bPB-[A-Z]{2,5}-\d+\b",
+    r"\bwalk[- ]?away\b",
+    r"\bfall-?back\b",
+    r"\bpreferred position\b",
+    r"\breview packet\b",
+]
+
+
+# "Clause 6 (Fallback Rate)": the parenthesised heading is the
+# counterparty's own wording echoed back, not our disclosure — without
+# this, a contract with a clause headed "Fallback Rate" could never be
+# approved.
+_CLAUSE_HEADING_ECHO = re.compile(r"(\bclause\s+[\w.§-]+\s*)\([^)\n]{1,80}\)", re.IGNORECASE)
+
+
+def find_internal_position_hit(text: str) -> str | None:
+    """First mention of internal negotiating machinery in ``text``."""
+    text = _CLAUSE_HEADING_ECHO.sub(r"\1()", text or "")
+    for pattern in _INTERNAL_POSITION_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(0)
+    return None
+
+
 _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 _PASSPORT = re.compile(r"\b[A-Z]\d{8}\b")
 
@@ -241,6 +273,20 @@ def validate_drafts(
                 if acceptability_hit is None
                 else f"acceptability pronouncement found in the counterparty draft: '{acceptability_hit}' — "
                 "the draft proposes changes; whether a clause is acceptable is counsel's call"
+            ),
+        )
+    )
+
+    disclosure_hit = find_internal_position_hit(response)
+    checks.append(
+        GuardrailCheck(
+            name="no_internal_position_disclosure",
+            passed=disclosure_hit is None,
+            detail=(
+                "the counterparty draft reveals no internal position"
+                if disclosure_hit is None
+                else f"internal position disclosed in the counterparty draft: '{disclosure_hit}' — "
+                "state requested changes and proposed wording only; the playbook stays internal"
             ),
         )
     )

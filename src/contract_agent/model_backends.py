@@ -99,17 +99,22 @@ class DraftContext(dict):
 from .ports import ModelBackend  # noqa: E402,F401
 
 
+# The counterparty letter goes outside the company, so it speaks only
+# of requested changes — never of the playbook, its positions, its
+# entry IDs, or our walk-away lines. Telling the other side which
+# terms we would accept, or where we would walk, gives the negotiation
+# away (guardrails.py blocks it: no_internal_position_disclosure).
 _NEXT_STEP = {
-    "accept_as_preferred": "no change is requested on the recommended clause; it already matches our preferred position.",
-    "propose_fallback_language": "we propose the fallback wording set out in the review packet for the recommended clause, and we will review your revised draft when it arrives.",
-    "escalate_to_senior_counsel": "the recommended clause is with our senior counsel for a decision; we will come back to you once counsel has reviewed it.",
-    "request_counterparty_info": "we still need the items listed in the review packet before this clause can be decided; the next step is receiving them.",
+    "accept_as_preferred": "no change is requested on that clause.",
+    "propose_fallback_language": "we propose the wording set out above, and we will review your revised draft when it arrives.",
+    "escalate_to_senior_counsel": "the draft is with our senior counsel for a decision; we will come back to you once counsel has reviewed it.",
+    "request_counterparty_info": "we still need further information before the open clauses can be decided; the next step is receiving it.",
 }
 
 _POSTURE_SENTENCE = {
-    "aligned": "The draft aligns with our playbook on the clauses reviewed, subject to counsel's final check.",
-    "negotiable": "The draft is workable, with the changes listed below requested before counsel can clear it.",
-    "escalation_required": "The draft contains positions our playbook treats as walk-away items or critical gaps, and it is with senior counsel.",
+    "aligned": "We have no changes to request on the clauses reviewed, subject to counsel's final review.",
+    "negotiable": "We request the changes listed below before counsel can complete the review.",
+    "escalation_required": "We request the changes listed below; the draft is also with our senior counsel for review.",
 }
 
 
@@ -231,6 +236,12 @@ class MockModelBackend:
             for o in (context.get("options") or [])
         ]
         packet_lines.append(f"Playbook citations: {citation_text}")
+        consulted = context.get("consulted_citations") or []
+        if consulted:
+            packet_lines.append(
+                "Also consulted (retrieved playbook context, not findings): "
+                + " ".join(f"[{c}]" for c in consulted)
+            )
         packet_lines.append(
             "Status: draft for counsel review — awaiting counsel's decision. "
             "This packet flags positions against the playbook; it is not a "
@@ -242,20 +253,25 @@ class MockModelBackend:
             f"Dear {context['counterparty_name']} team,",
             (
                 f"Thank you for the draft {context['doc_type']} ({context.get('title') or 'untitled'}). "
-                f"{_POSTURE_SENTENCE[posture]} Our requested changes, clause by clause, are:"
+                f"{_POSTURE_SENTENCE[posture]}"
+                + (" Our requested changes, clause by clause, are:" if flagged else "")
             ),
         ]
         changes = [
-            f"- Clause {r.get('ref') or r['clause_id']} ({r.get('heading') or r['clause_type']}): "
-            f"requested position per our playbook [{', '.join(r.get('refs') or [])}]"
-            + (f" — proposed wording: {r['fallback']}" if r.get("fallback") else "")
+            f"- Clause {r.get('ref') or r['clause_id']} ({r.get('heading') or r['clause_type'].replace('_', ' ')}): "
+            + (
+                f"we propose this wording: {r['fallback']}"
+                if r.get("fallback")
+                else "we request a revision; our counsel will follow up with proposed wording."
+            )
             for r in flagged
         ]
-        paragraphs.append("\n".join(changes) if changes else "No changes are requested on the clauses reviewed.")
+        if changes:
+            paragraphs.append("\n".join(changes))
         if context.get("missing_clauses"):
             paragraphs.append(
-                "The draft also omits standard clauses we expect to see: "
-                + ", ".join(context["missing_clauses"])
+                "The draft also omits clauses we expect to see: "
+                + ", ".join(c.replace("_", " ") for c in context["missing_clauses"])
                 + ". Please include them in your revised draft."
             )
         if context.get("cover_text") and not context.get("repair_feedback"):

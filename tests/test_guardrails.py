@@ -79,8 +79,8 @@ def test_materiality_negation_and_playbook_wording_pass():
     # characterisation of the changes.
     drafts.counterparty_response += (
         "\nWe do not characterise these changes as minor; their materiality "
-        "is for counsel to judge. The standard clause wording in the packet "
-        "is our playbook's fallback position."
+        "is for counsel to judge. The standard clause wording set out above "
+        "is our proposed wording."
     )
     validation = validate_drafts(CONTRACT, drafts, ["PB-LIA-03"], flagged_refs=[["PB-LIA-03"]])
     assert validation.passed, [c for c in validation.checks if not c.passed]

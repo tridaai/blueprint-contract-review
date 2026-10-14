@@ -52,7 +52,12 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
-from .assessment import build_assessment, citations_for, memory_evidence_lines
+from .assessment import (
+    build_assessment,
+    citations_for,
+    memory_evidence_lines,
+    packet_citations,
+)
 from .autonomy import recommend_autonomy
 from .clause_diffs import build_clause_diffs
 from .clause_review import review_clause
@@ -292,6 +297,11 @@ def _draft_context(
     assessment = Assessment.model_validate(state["assessment"])
     verdicts = [ClauseVerdict.model_validate(v) for v in state.get("verdicts", [])]
     recommended = next((o for o in options if o.recommended), None)
+    # The packet separates what the verdicts rest on from what retrieval
+    # merely surfaced: both stay visible (the reviewer checks the packet
+    # carries every retrieved entry), but only the first are findings.
+    retrieved = [g.model_dump() for g in playbook]
+    cited = packet_citations(verdicts, retrieved, facts.missing_standard_clauses)
     context = DraftContext(
         contract_id=contract.contract_id,
         counterparty_name=contract.counterparty_name,
@@ -308,7 +318,10 @@ def _draft_context(
         assessment_summary=assessment.summary,
         assessment_risk_factors=assessment.risk_factors,
         playbook_details=[g.model_dump() for g in playbook],
-        citations=citations_for(verdicts, [g.model_dump() for g in playbook]),
+        citations=cited,
+        consulted_citations=[
+            c for c in citations_for(verdicts, retrieved) if c not in cited
+        ],
         options=[o.model_dump() for o in options],
         recommended_option_kind=recommended.kind if recommended else "",
         recommended_option_text=(
